@@ -45,8 +45,8 @@ export const INITIAL_PROJECT: Project = {
         }
       ],
       edges: [
-        { id: 'e1-2', source: 'node-1', target: 'node-2', animated: true, style: { stroke: '#71717a' } },
-        { id: 'e1-3', source: 'node-1', target: 'node-3', animated: true, style: { stroke: '#71717a' } },
+        { id: 'e1-2', source: 'node-1', target: 'node-2', type: 'floating', animated: true, style: { stroke: '#71717a' } },
+        { id: 'e1-3', source: 'node-1', target: 'node-3', type: 'floating', animated: true, style: { stroke: '#71717a' } },
       ],
     },
     {

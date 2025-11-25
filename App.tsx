@@ -16,7 +16,8 @@ import ReactFlow, {
   Node,
   reconnectEdge,
   SelectionMode,
-  PanOnScrollMode
+  PanOnScrollMode,
+  ConnectionMode
 } from 'reactflow';
 import SidebarLeft from './components/SidebarLeft';
 import ContextMenu, { ContextMenuOption } from './components/ContextMenu';
@@ -28,6 +29,7 @@ import PlayMode from './components/PlayMode';
 import { INITIAL_PROJECT } from './constants';
 import { Project, AppNode } from './types';
 import { Play, Download, PlusCircle, GitFork, ArrowRightCircle, Home, Copy, X, Trash2, Copy as CopyIcon, Edit, Pipette, MessageSquare } from 'lucide-react';
+import FloatingEdge from '@/components/edge/FloatingEdge';
 
 // Custom Node Types Registration
 const nodeTypes = {
@@ -36,7 +38,9 @@ const nodeTypes = {
   jumpNode: JumpNode,
   commentNode: CommentNode,
 };
-
+const edgeTypes = {
+  floating: FloatingEdge,
+};
 function FlowApp() {
   const [project, setProject] = useState<Project>(INITIAL_PROJECT);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -101,14 +105,31 @@ function FlowApp() {
   }, [currentView.edges, updateActiveView]);
 
   const onConnect = useCallback((params: Connection) => {
+    // Validation: Condition Nodes can only have one edge per source handle
+    const sourceNode = currentView.nodes.find(n => n.id === params.source);
+    let currentEdges = currentView.edges;
+
+    if (sourceNode?.type === 'conditionNode') {
+        const existingEdge = currentEdges.find(e => 
+            e.source === params.source && 
+            e.sourceHandle === params.sourceHandle
+        );
+        
+        if (existingEdge) {
+            // Remove existing edge to enforce 1-to-1
+            currentEdges = currentEdges.filter(e => e.id !== existingEdge.id);
+        }
+    }
+
     const edge: Edge = { 
         ...params, 
+        type: 'floating',
         id: `e-${params.source}-${params.target}-${Date.now()}`,
         animated: true,
-        style: { stroke: '#71717a', strokeWidth: 2 } // Default styling
+        style: { stroke: '#71717a', strokeWidth: 1 } // Default styling
     };
-    updateActiveView({ edges: addEdge(edge, currentView.edges) });
-  }, [currentView.edges, updateActiveView]);
+    updateActiveView({ edges: addEdge(edge, currentEdges) });
+  }, [currentView.edges, currentView.nodes, updateActiveView]);
 
   const onReconnect = useCallback((oldEdge: Edge, newConnection: Connection) => {
     const newEdges = reconnectEdge(oldEdge, newConnection, currentView.edges);
@@ -441,6 +462,7 @@ function FlowApp() {
             onDrop={onDrop}
             nodeTypes={nodeTypes}
             fitView
+            edgeTypes={edgeTypes}
             snapToGrid={true}
             snapGrid={[20, 20]}
             proOptions={{ hideAttribution: true }}

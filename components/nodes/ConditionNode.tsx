@@ -36,16 +36,21 @@ const ConditionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
 
   return (
     <div
-      className={`min-w-[240px] bg-[#09090b] rounded-md overflow-hidden border shadow-xl transition-all ${
+      className={`min-w-[240px] bg-[#09090b] rounded-md border shadow-xl transition-all ${
         selected ? 'border-blue-500 shadow-blue-500/20' : 'border-zinc-800'
       }`}
     >
        {/* Main Input Handle */}
-       <div className="absolute left-0 top-[18px]">
+       <div className="absolute left-0 top-[23px]">
          <Handle
             type="target"
             position={Position.Left}
-            className="!w-3 !h-3 !bg-blue-500 !border-zinc-900 !left-[-6px]"
+            className="!w-3 !h-3 !bg-black !border-zinc-400 !left-[-6px]"
+        />
+        <Handle 
+            type="source"
+            position={Position.Right}
+            className="!w-3 !h-3 !bg-black !border-zinc-400 !right-[-6px]"
         />
       </div>
 
@@ -58,7 +63,7 @@ const ConditionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
           return (
             <div 
                 key={branch.id} 
-                className="relative flex items-center h-10 px-3 border-b border-zinc-800/50 last:border-0 group hover:bg-zinc-900/30 transition-colors"
+                className="relative flex items-center h-10 pr-3 border-b border-zinc-800/50 last:border-0 group hover:bg-zinc-900/30 transition-colors"
             >
                 {/* Keyword */}
                 <span className={`text-xs font-bold font-mono w-14 shrink-0 text-right mr-3 ${keywordColor}`}>
@@ -94,7 +99,7 @@ const ConditionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
                     type="source"
                     position={Position.Right}
                     id={branch.id}
-                    className={`!w-2.5 !h-2.5 !right-[-5px] transition-all !border-zinc-900 ${isElse ? '!bg-zinc-500' : '!bg-blue-500'}`}
+                    className={`!w-3 !h-3 !right-[-5px] transition-all !border-zinc-400 bg-black`}
                 />
             </div>
           );
