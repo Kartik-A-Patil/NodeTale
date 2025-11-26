@@ -44,6 +44,7 @@ export interface NodeData {
   
   // Visual & State
   color?: string;
+  date?: string; // ISO string for date and time
 
   [key: string]: any;
 }

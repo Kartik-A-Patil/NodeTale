@@ -8,7 +8,8 @@ import {
   Underline,
   Code,
   List,
-  Quote
+  Quote,
+  Calendar
 } from "lucide-react";
 import { NodeData, Variable } from "../../types";
 import clsx from "clsx";
@@ -368,9 +369,34 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
             )}
           </div>
         </div>
-        {data.assets && data.assets.length > 0 && (
-          <ImageIcon size={14} className="text-zinc-500 shrink-0" />
-        )}
+        
+        <div className="flex items-center gap-2 ml-2">
+            <div className="relative group/date flex items-center gap-1.5">
+                <div className="relative flex items-center justify-center w-5 h-5">
+                    <Calendar 
+                        size={14} 
+                        className={`shrink-0 transition-colors ${data.date ? 'text-blue-400' : 'text-zinc-500 group-hover/date:text-zinc-300'}`} 
+                    />
+                    <input
+                        type="datetime-local"
+                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
+                        value={data.date || ''}
+                        onChange={(e) => handleChange('date', e.target.value)}
+                        title="Set date and time"
+                    />
+                </div>
+                {data.date && (
+                    <span className="text-[10px] text-blue-400 font-mono font-medium pt-0.5">
+                        {new Date(data.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        <span className="mx-1 opacity-50">|</span>
+                        {new Date(data.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                    </span>
+                )}
+            </div>
+            {data.assets && data.assets.length > 0 && (
+                <ImageIcon size={14} className="text-zinc-500 shrink-0" />
+            )}
+        </div>
       </div>
 
       {/* Body */}
@@ -401,12 +427,12 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
           )}
         </div>
       </div>
-      {/* Target Handles - Invisible connection points with hover detection */}
+      {/* Target Handles - Full size for easy dropping */}
       <Handle
         type="target"
         position={Position.Top}
         id="target-top"
-        className="!opacity-0 !w-full !h-4 !left-[4px] !-top-3 !transform-none !border-0 !rounded-none"
+        className="!opacity-0 !w-full !h-4 !left-0 !-top-3 !transform-none !border-0 !rounded-none z-40"
         onMouseEnter={() => setHoveredSide("top")}
         onMouseLeave={() => setHoveredSide(null)}
       />
@@ -414,7 +440,7 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
         type="target"
         position={Position.Right}
         id="target-right"
-        className="!opacity-0 !w-4 !h-full !-right-3 !top-[4px] !transform-none !border-0 !rounded-none"
+        className="!opacity-0 !w-4 !h-full !-right-3 !top-0 !transform-none !border-0 !rounded-none z-40"
         onMouseEnter={() => setHoveredSide("right")}
         onMouseLeave={() => setHoveredSide(null)}
       />
@@ -422,7 +448,7 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
         type="target"
         position={Position.Bottom}
         id="target-bottom"
-        className="!opacity-0 !w-full !h-4 !left-[4px] !-bottom-3 !transform-none !border-0 !rounded-none"
+        className="!opacity-0 !w-full !h-4 !left-0 !-bottom-3 !transform-none !border-0 !rounded-none z-40"
         onMouseEnter={() => setHoveredSide("bottom")}
         onMouseLeave={() => setHoveredSide(null)}
       />
@@ -430,17 +456,17 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
         type="target"
         position={Position.Left}
         id="target-left"
-        className="!opacity-0 !w-4 !h-full !-left-3 !top-[4px] !transform-none !border-0 !rounded-none"
+        className="!opacity-0 !w-4 !h-full !-left-3 !top-0 !transform-none !border-0 !rounded-none z-40"
         onMouseEnter={() => setHoveredSide("left")}
         onMouseLeave={() => setHoveredSide(null)}
       />
 
-      {/* Source Handles - Invisible connection points with hover detection */}
+      {/* Source Handles - Centered and smaller for dragging out */}
       <Handle
         type="source"
         position={Position.Top}
         id="source-top"
-        className="!opacity-0 !w-full !h-4 !left-0 !-top-3 !transform-none !border-0 !rounded-none"
+        className="!opacity-0 !w-3 !h-3 !left-1/2 !-translate-x-1/2 !-top-3 !border-0 !rounded-none z-50 cursor-crosshair"
         onMouseEnter={() => setHoveredSide("top")}
         onMouseLeave={() => setHoveredSide(null)}
       />
@@ -448,7 +474,7 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
         type="source"
         position={Position.Right}
         id="source-right"
-        className="!opacity-0 !w-4 !h-full !-right-3 !top-0 !transform-none !border-0 !rounded-none"
+        className="!opacity-0 !w-3 !h-3 !-right-3 !top-1/2 !-translate-y-1/2 !border-0 !rounded-none z-50 cursor-crosshair"
         onMouseEnter={() => setHoveredSide("right")}
         onMouseLeave={() => setHoveredSide(null)}
       />
@@ -456,7 +482,7 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
         type="source"
         position={Position.Bottom}
         id="source-bottom"
-        className="!opacity-0 !w-full !h-4 !left-0 !-bottom-3 !transform-none !border-0 !rounded-none"
+        className="!opacity-0 !w-3 !h-3 !left-1/2 !-translate-x-1/2 !-bottom-3 !border-0 !rounded-none z-50 cursor-crosshair"
         onMouseEnter={() => setHoveredSide("bottom")}
         onMouseLeave={() => setHoveredSide(null)}
       />
@@ -464,7 +490,7 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
         type="source"
         position={Position.Left}
         id="source-left"
-        className="!opacity-0 !w-4 !h-full !-left-3 !top-0 !transform-none !border-0 !rounded-none"
+        className="!opacity-0 !w-3 !h-3 !-left-3 !top-1/2 !-translate-y-1/2 !border-0 !rounded-none z-50 cursor-crosshair"
         onMouseEnter={() => setHoveredSide("left")}
         onMouseLeave={() => setHoveredSide(null)}
       />

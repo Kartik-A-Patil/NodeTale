@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { useStore, getBezierPath, EdgeProps, Node, Position } from 'reactflow';
 import { getEdgeParams } from '../../utils/EdgeUtils';
 
-function FloatingEdge({ id, source, target, sourceHandleId, targetHandleId, markerEnd, style }: EdgeProps) {
+function FloatingEdge({ id, source, target, sourceHandleId, targetHandleId, markerEnd, style, selected }: EdgeProps) {
   const sourceNode = useStore(useCallback((store) => store.nodeInternals.get(source), [source]));
   const targetNode = useStore(useCallback((store) => store.nodeInternals.get(target), [target]));
 
@@ -12,7 +12,8 @@ function FloatingEdge({ id, source, target, sourceHandleId, targetHandleId, mark
 
   // Helper to get handle position if node is not floating
   const getHandlePosition = (node: Node, handleId: string | null | undefined, type: 'source' | 'target') => {
-      if (node.type === 'elementNode') return undefined; // Element nodes always float
+      // Element nodes should be floating, so we ignore specific handles to allow dynamic connection points
+      if (node.type === 'elementNode') return undefined; 
 
       // Try to get exact handle bounds first
       const handleBounds = node[Symbol.for('__reactFlowHandleBounds') as any] || (node as any).handleBounds;
@@ -31,12 +32,11 @@ function FloatingEdge({ id, source, target, sourceHandleId, targetHandleId, mark
           }
       }
 
-      // Fallback: Enforce sides for specific node types if handleBounds is missing
       if (node.type === 'conditionNode') {
           if (type === 'target') {
                return {
                    x: (node.positionAbsolute?.x ?? 0),
-                   y: (node.positionAbsolute?.y ?? 0) + 24, // Approx header center
+                   y: (node.positionAbsolute?.y ?? 0) + ((node.height && node.height > 0) ? node.height : 100) / 2,
                    position: Position.Left
                };
           }
@@ -95,13 +95,26 @@ function FloatingEdge({ id, source, target, sourceHandleId, targetHandleId, mark
   });
 
   return (
-    <path
-      id={id}
-      className="react-flow__edge-path"
-      d={edgePath}
-      markerEnd={markerEnd}
-      style={style}
-    />
+    <>
+      <path
+        d={edgePath}
+        fill="none"
+        strokeOpacity={0}
+        strokeWidth={20}
+        className="react-flow__edge-interaction"
+      />
+      <path
+        id={id}
+        className="react-flow__edge-path"
+        d={edgePath}
+        markerEnd={markerEnd}
+        style={{
+          ...style,
+          strokeWidth: selected ? 2 : 1,
+          stroke: selected ? '#a0a0a0ff' : (style?.stroke || '#71717a')
+        }}
+      />
+    </>
   );
 }
 

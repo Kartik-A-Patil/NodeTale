@@ -5,19 +5,14 @@ import ReactFlow, {
   Controls, 
   Connection, 
   Edge, 
-  NodeChange, 
-  EdgeChange, 
-  applyNodeChanges, 
-  applyEdgeChanges,
   ReactFlowProvider,
-  Panel,
   BackgroundVariant,
   ReactFlowInstance,
   Node,
   reconnectEdge,
-  SelectionMode,
   PanOnScrollMode,
-  ConnectionMode
+  useNodesState,
+  useEdgesState
 } from 'reactflow';
 import SidebarLeft from './components/SidebarLeft';
 import ContextMenu, { ContextMenuOption } from './components/ContextMenu';
@@ -26,24 +21,21 @@ import ConditionNode from './components/nodes/ConditionNode';
 import JumpNode from './components/nodes/JumpNode';
 import CommentNode from './components/nodes/CommentNode';
 import PlayMode from './components/PlayMode';
-import { INITIAL_PROJECT } from './constants';
-import { Project, AppNode } from './types';
-import { Play, Download, PlusCircle, GitFork, ArrowRightCircle, Home, Copy, X, Trash2, Copy as CopyIcon, Edit, Pipette, MessageSquare } from 'lucide-react';
+import { AppNode } from './types';
+import { GitFork, ArrowRightCircle, Copy as CopyIcon, Trash2, PlusCircle, MessageSquare } from 'lucide-react';
 import FloatingEdge from '@/components/edge/FloatingEdge';
+import { useProjectState } from './hooks/useProjectState';
+import { TopToolbar } from './components/TopToolbar';
 
-// Custom Node Types Registration
-const nodeTypes = {
-  elementNode: ElementNode,
-  conditionNode: ConditionNode,
-  jumpNode: JumpNode,
-  commentNode: CommentNode,
-};
-const edgeTypes = {
-  floating: FloatingEdge,
-};
 function FlowApp() {
-  const [project, setProject] = useState<Project>(INITIAL_PROJECT);
+  // Local state for React Flow performance
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+
+  const { project, setProject, isInitializing, lastSaved } = useProjectState(nodes, edges, setNodes, setEdges);
+
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [jumpClipboard, setJumpClipboard] = useState<{ id: string; label: string } | null>(null);
   
   // Context Menu State
@@ -51,73 +43,81 @@ function FlowApp() {
 
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
+  
+  // Memoize nodeTypes and edgeTypes
+  const nodeTypes = useMemo(() => ({
+    elementNode: ElementNode,
+    conditionNode: ConditionNode,
+    jumpNode: JumpNode,
+    commentNode: CommentNode,
+  }), []);
 
-  // Derive active view (Board)
-  const activeBoard = project.boards.find(b => b.id === project.activeBoardId);
-                      
-  // Fallback to first board if nothing found
-  const currentView = activeBoard || project.boards[0];
+  const edgeTypes = useMemo(() => ({
+    floating: FloatingEdge,
+  }), []);
+
+  // Cache for memoized nodes
+  const nodeWrapperCache = useRef(new WeakMap<AppNode, AppNode>());
 
   // Inject variables into nodes for highlighting
   const nodesWithContext = useMemo(() => {
-    return currentView.nodes.map(node => ({
-      ...node,
-      data: {
-        ...node.data,
-        variables: project.variables
+    return nodes.map(node => {
+      const cached = nodeWrapperCache.current.get(node as AppNode);
+      if (cached && cached.data.variables === project.variables) {
+        return cached;
       }
-    }));
-  }, [currentView.nodes, project.variables]);
 
-  // Helper to update specific board state
-  const updateActiveView = useCallback((updates: Partial<typeof currentView>) => {
-    setProject(prev => {
-      const boardIndex = prev.boards.findIndex(b => b.id === currentView.id);
-      if (boardIndex !== -1) {
-          const newBoards = [...prev.boards];
-          newBoards[boardIndex] = { ...newBoards[boardIndex], ...updates };
-          return { ...prev, boards: newBoards };
-      }
-      return prev;
+      const newNode = {
+        ...node,
+        data: {
+          ...node.data,
+          variables: project.variables
+        }
+      };
+      nodeWrapperCache.current.set(node as AppNode, newNode as AppNode);
+      return newNode;
     });
-  }, [currentView.id]);
+  }, [nodes, project.variables]);
 
   // Helper to update a specific node's data
   const updateNodeData = useCallback((id: string, data: any) => {
-    const updatedNodes = currentView.nodes.map(node => {
+    setNodes(nds => nds.map(node => {
       if (node.id === id) {
         return { ...node, data: { ...node.data, ...data } };
       }
       return node;
-    });
-    updateActiveView({ nodes: updatedNodes });
-  }, [currentView.nodes, updateActiveView]);
+    }));
+  }, [setNodes]);
 
-  // React Flow Handlers
-  const onNodesChange = useCallback((changes: NodeChange[]) => {
-    const updatedNodes = applyNodeChanges(changes, currentView.nodes);
-    updateActiveView({ nodes: updatedNodes as AppNode[] });
-  }, [currentView.nodes, updateActiveView]);
+  const onConnectStart = useCallback(() => {
+    setIsConnecting(true);
+  }, []);
 
-  const onEdgesChange = useCallback((changes: EdgeChange[]) => {
-    const updatedEdges = applyEdgeChanges(changes, currentView.edges);
-    updateActiveView({ edges: updatedEdges });
-  }, [currentView.edges, updateActiveView]);
+  const onConnectEnd = useCallback(() => {
+    setIsConnecting(false);
+  }, []);
 
   const onConnect = useCallback((params: Connection) => {
-    // Validation: Condition Nodes can only have one edge per source handle
-    const sourceNode = currentView.nodes.find(n => n.id === params.source);
-    let currentEdges = currentView.edges;
+    if (params.source === params.target) return;
+
+    const isDuplicate = edges.some(edge => 
+      (edge.source === params.source && edge.target === params.target) ||
+      (edge.source === params.target && edge.target === params.source)
+    );
+
+    if (isDuplicate) return;
+
+    const sourceNode = nodes.find(n => n.id === params.source);
+    let currentEdges = edges;
 
     if (sourceNode?.type === 'conditionNode') {
-        const existingEdge = currentEdges.find(e => 
+        const existingBranchEdge = currentEdges.find(e => 
             e.source === params.source && 
             e.sourceHandle === params.sourceHandle
         );
         
-        if (existingEdge) {
-            // Remove existing edge to enforce 1-to-1
-            currentEdges = currentEdges.filter(e => e.id !== existingEdge.id);
+        if (existingBranchEdge) {
+            currentEdges = currentEdges.filter(e => e.id !== existingBranchEdge.id);
         }
     }
 
@@ -126,21 +126,19 @@ function FlowApp() {
         type: 'floating',
         id: `e-${params.source}-${params.target}-${Date.now()}`,
         animated: true,
-        style: { stroke: '#71717a', strokeWidth: 1 } // Default styling
+        style: { stroke: '#71717a'}
     };
-    updateActiveView({ edges: addEdge(edge, currentEdges) });
-  }, [currentView.edges, currentView.nodes, updateActiveView]);
+    setEdges(eds => addEdge(edge, currentEdges));
+  }, [edges, nodes, setEdges]);
 
   const onReconnect = useCallback((oldEdge: Edge, newConnection: Connection) => {
-    const newEdges = reconnectEdge(oldEdge, newConnection, currentView.edges);
-    updateActiveView({ edges: newEdges });
-  }, [currentView.edges, updateActiveView]);
+    setEdges(eds => reconnectEdge(oldEdge, newConnection, eds));
+  }, [setEdges]);
 
   const onPaneClick = useCallback(() => {
       setMenu(null);
   }, []);
 
-  // Context Menu Handlers
   const onNodeContextMenu = useCallback(
     (event: React.MouseEvent, node: Node) => {
       event.preventDefault();
@@ -158,6 +156,7 @@ function FlowApp() {
   const onEdgeContextMenu = useCallback(
     (event: React.MouseEvent, edge: Edge) => {
       event.preventDefault();
+      if (!edge.selected) return;
       setMenu({
         x: event.clientX,
         y: event.clientY,
@@ -180,7 +179,6 @@ function FlowApp() {
     []
   );
 
-  // CRUD Operations
   const addNode = (type: 'elementNode' | 'conditionNode' | 'jumpNode' | 'commentNode', position?: { x: number, y: number }, extraData?: any) => {
     const id = `node-${Date.now()}`;
     const newNode: AppNode = {
@@ -195,31 +193,32 @@ function FlowApp() {
           ...extraData
       },
     };
-    updateActiveView({ nodes: [...currentView.nodes, newNode] });
+    setNodes(nds => [...nds, newNode]);
   };
 
   const deleteNode = (id: string) => {
-    const updatedNodes = currentView.nodes.filter(n => n.id !== id);
-    const updatedEdges = currentView.edges.filter(e => e.source !== id && e.target !== id);
-    updateActiveView({ nodes: updatedNodes, edges: updatedEdges });
+    setNodes(nds => nds.filter(n => n.id !== id));
+    setEdges(eds => eds.filter(e => e.source !== id && e.target !== id));
   };
 
   const deleteEdge = (id: string) => {
-      const updatedEdges = currentView.edges.filter(e => e.id !== id);
-      updateActiveView({ edges: updatedEdges });
+      setEdges(eds => eds.filter(e => e.id !== id));
   };
 
+  const onEdgeDoubleClick = useCallback((event: React.MouseEvent, edge: Edge) => {
+      event.stopPropagation();
+      deleteEdge(edge.id);
+  }, []);
+
   const updateEdgeColor = (id: string, color: string) => {
-      const updatedEdges = currentView.edges.map(e => {
+      setEdges(eds => eds.map(e => {
           if (e.id === id) {
               return { ...e, style: { ...e.style, stroke: color } };
           }
           return e;
-      });
-      updateActiveView({ edges: updatedEdges });
+      }));
   };
 
-  // Drag and Drop
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
@@ -253,9 +252,9 @@ function FlowApp() {
         },
       };
 
-      updateActiveView({ nodes: [...currentView.nodes, newNode] });
+      setNodes(nds => [...nds, newNode]);
     },
-    [reactFlowInstance, currentView, updateActiveView]
+    [reactFlowInstance]
   );
 
   const exportProject = () => {
@@ -268,22 +267,14 @@ function FlowApp() {
       downloadAnchorNode.remove();
   };
 
-  const navigateHome = () => {
-      if (project.boards.length > 0) {
-          setProject(p => ({ ...p, activeBoardId: p.boards[0].id }));
-      }
-  };
-
-  // Generate Menu Options
   const getMenuOptions = (): ContextMenuOption[] => {
     if (!menu) return [];
 
     if (menu.type === 'node') {
-        const node = currentView.nodes.find(n => n.id === menu.id);
+        const node = nodes.find(n => n.id === menu.id);
         
         const options: ContextMenuOption[] = [];
 
-        // Special options for Condition Node
         if (node && node.type === 'conditionNode') {
             options.push(
                 {
@@ -295,7 +286,6 @@ function FlowApp() {
                          const newBranch = { id: `branch-${Date.now()}`, label: 'Else If', condition: 'var == true' };
                          const newBranches = [...branches];
                          
-                         // Insert before Else, or at end if no Else
                          if (elseIdx !== -1) {
                              newBranches.splice(elseIdx, 0, newBranch);
                          } else {
@@ -398,63 +388,45 @@ function FlowApp() {
     return [];
   };
 
+  if (isInitializing) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-[#121212] text-zinc-400 flex-col gap-4">
+        <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+        <p>Loading Project...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen w-screen bg-[#121212] text-zinc-100 overflow-hidden font-sans">
       
-      {/* Left Sidebar */}
       <SidebarLeft project={project} setProject={setProject} />
 
-      {/* Main Canvas Area */}
-      <div className="flex-1 relative flex flex-col h-full">
+      <div className={`flex-1 relative flex flex-col h-full ${isConnecting ? 'is-connecting' : ''}`}>
         
-        {/* Top Toolbar */}
-        <div className="h-14 bg-[#18181b] border-b border-[#27272a] flex items-center justify-between px-4 z-10 shrink-0">
-          <div className="flex items-center gap-4">
-             
-              <div className="flex gap-1">
-                  <button onClick={() => addNode('elementNode')} className="flex items-center gap-1 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded text-xs transition-colors border border-zinc-700">
-                      <PlusCircle size={14} className="text-orange-500" /> Element
-                  </button>
-                  <button onClick={() => addNode('conditionNode')} className="flex items-center gap-1 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded text-xs transition-colors border border-zinc-700">
-                      <GitFork size={14} className="text-blue-500" /> Branch
-                  </button>
-                  <button onClick={() => addNode('jumpNode')} className="flex items-center gap-1 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded text-xs transition-colors border border-zinc-700">
-                      <ArrowRightCircle size={14} className="text-purple-500" /> Jump
-                  </button>
-                  <button onClick={() => addNode('commentNode')} className="flex items-center gap-1 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded text-xs transition-colors border border-zinc-700">
-                      <MessageSquare size={14} className="text-yellow-400" /> Comment
-                  </button>
-              </div>
-          </div>
-          <div className="flex items-center gap-2">
-             {jumpClipboard && (
-                  <div className="flex items-center gap-2 px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-[10px] text-zinc-400 animate-in fade-in">
-                      <Copy size={10} />
-                      <span className="max-w-[100px] truncate">Copied: {jumpClipboard.label}</span>
-                      <button onClick={() => setJumpClipboard(null)} className="hover:text-white ml-1"><X size={10}/></button>
-                  </div>
-              )}
-              <button onClick={() => setIsPlaying(true)} className="flex items-center gap-2 px-4 py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded text-sm font-semibold transition-colors shadow-lg shadow-orange-900/20">
-                  <Play size={14} fill="currentColor" /> Play
-              </button>
-              <button onClick={exportProject} className="p-2 text-zinc-400 hover:text-white transition-colors">
-                  <Download size={18} />
-              </button>
-          </div>
-        </div>
+        <TopToolbar 
+            onAddNode={(type) => addNode(type)}
+            onPlay={() => setIsPlaying(true)}
+            onExport={exportProject}
+            lastSaved={lastSaved}
+            jumpClipboard={jumpClipboard}
+            setJumpClipboard={setJumpClipboard}
+        />
 
-        {/* Canvas */}
         <div className="flex-1 bg-[#0f0f11] relative" ref={reactFlowWrapper}>
           <ReactFlow
-            key={currentView.id} // Force remount when switching views
+            key={project.activeBoardId}
             nodes={nodesWithContext}
-            edges={currentView.edges}
+            edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
+            onConnectStart={onConnectStart}
+            onConnectEnd={onConnectEnd}
             onReconnect={onReconnect}
             onNodeContextMenu={onNodeContextMenu}
             onEdgeContextMenu={onEdgeContextMenu}
+            onEdgeDoubleClick={onEdgeDoubleClick}
             onPaneContextMenu={onPaneContextMenu}
             onPaneClick={onPaneClick}
             onInit={setReactFlowInstance}
@@ -468,19 +440,16 @@ function FlowApp() {
             proOptions={{ hideAttribution: true }}
             className="bg-[#0f0f11]"
             multiSelectionKeyCode={['Control', 'Meta']}
-            selectionOnDrag={true}
-            panOnDrag={[1, 2]} // Pan only with Middle(1) or Right(2) mouse button. Left drag selects.
-            selectionMode={SelectionMode.Partial}
+            selectionOnDrag={false}
+            panOnDrag={[1, 2]}
             panOnScroll={true}
             panOnScrollMode={PanOnScrollMode.Free}
+            connectionRadius={30}
           >
             <Background color="#52525b" gap={20} size={1} variant={BackgroundVariant.Dots} />
             <Controls className="bg-zinc-800 border-zinc-700 text-zinc-400" />
-            
-            
           </ReactFlow>
 
-          {/* Context Menu */}
           {menu && (
             <ContextMenu 
                 x={menu.x} 
@@ -492,10 +461,21 @@ function FlowApp() {
         </div>
       </div>
 
-      {/* Play Mode Overlay */}
       {isPlaying && (
           <PlayMode project={project} onClose={() => setIsPlaying(false)} />
       )}
+      <style>{`
+        .is-connecting .react-flow__handle-source {
+            pointer-events: none !important;
+            opacity: 0 !important;
+        }
+        .is-connecting .react-flow__handle-target {
+            opacity: 0.4 !important;
+            background-color: #3b82f6 !important;
+            transition: all 0.2s ease;
+            z-index: 100 !important;
+        }
+      `}</style>
     </div>
   );
 }

@@ -25,14 +25,13 @@ const CommentNode = ({ id, data, selected }: NodeProps<NodeData>) => {
 
   return (
     <div
-      className={`h-full w-full min-w-[150px] min-h-[100px] rounded-lg shadow-sm transition-all flex flex-col group backdrop-blur-sm ${
-        selected ? 'ring-1 ring-white/50' : 'hover:shadow-md'
-      }`}
+      className={`h-full w-full min-w-[250px] min-h-[200px] rounded-lg shadow-sm transition-all flex flex-col group backdrop-blur-sm z-0`}
       style={{
         // Append 80 for approx 50% opacity hex code
-        backgroundColor: `${baseColor}80`, 
+        backgroundColor: `${baseColor}70`, 
         borderColor: baseColor,
         borderWidth: '1px'
+        
       }}
     >
       <NodeResizer 
@@ -46,7 +45,7 @@ const CommentNode = ({ id, data, selected }: NodeProps<NodeData>) => {
       {/* Header (Drag handle) - Solid color for clearer identification */}
       <div 
         className="h-6 w-full rounded-t-[7px] cursor-move flex items-center px-2 border-b border-white/5"
-        style={{ backgroundColor: baseColor }}
+        style={{ backgroundColor: `${baseColor}50` }}
       >
          <div className="w-2 h-2 rounded-full bg-white/20" />
       </div>
