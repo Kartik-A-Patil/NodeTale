@@ -2,13 +2,16 @@ import React, { useEffect, useRef } from 'react';
 import { Trash2, Palette } from 'lucide-react';
 
 export interface ContextMenuOption {
-  label: string;
+  label?: string;
   onClick?: () => void;
   danger?: boolean;
-  type?: 'action' | 'color-picker' | 'divider';
+  type?: 'action' | 'color-picker' | 'divider' | 'color-grid' | 'icon-row';
   icon?: React.ReactNode;
   color?: string; // For preset indicators or initial value
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  colors?: string[];
+  onColorSelect?: (color: string) => void;
+  items?: { icon: React.ReactNode; onClick: () => void; label: string; active?: boolean }[];
 }
 
 interface ContextMenuProps {
@@ -41,6 +44,45 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => 
       {options.map((opt, i) => {
         if (opt.type === 'divider') {
             return <div key={i} className="h-[1px] bg-[#27272a] my-1 mx-2" />;
+        }
+
+        if (opt.type === 'color-grid') {
+            return (
+                <div key={i} className="grid grid-cols-6 gap-1 px-2 py-2">
+                    {opt.colors?.map((c, idx) => (
+                        <button
+                            key={idx}
+                            className="w-5 h-5 rounded-sm hover:scale-110 transition-transform border border-white/10"
+                            style={{ backgroundColor: c }}
+                            onClick={() => {
+                                opt.onColorSelect?.(c);
+                                onClose();
+                            }}
+                            title={c}
+                        />
+                    ))}
+                </div>
+            );
+        }
+
+        if (opt.type === 'icon-row') {
+            return (
+                <div key={i} className="flex items-center justify-around px-2 py-2">
+                    {opt.items?.map((item, idx) => (
+                        <button
+                            key={idx}
+                            className={`p-1.5 rounded hover:bg-[#27272a] text-zinc-400 hover:text-zinc-100 transition-colors ${item.active ? 'bg-[#27272a] text-zinc-100' : ''}`}
+                            onClick={() => {
+                                item.onClick();
+                                onClose();
+                            }}
+                            title={item.label}
+                        >
+                            {item.icon}
+                        </button>
+                    ))}
+                </div>
+            );
         }
 
         if (opt.type === 'color-picker') {

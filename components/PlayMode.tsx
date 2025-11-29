@@ -186,8 +186,8 @@ const PlayMode: React.FC<PlayModeProps> = ({ project, onClose }) => {
        )
   }
 
-  const bgImage = currentNode.data.assets && currentNode.data.assets.length > 0 
-    ? project.assets.find(a => a.id === currentNode.data.assets![0])?.url 
+  const bgAsset = currentNode.data.assets && currentNode.data.assets.length > 0 
+    ? project.assets.find(a => a.id === currentNode.data.assets![0])
     : null;
 
   const processedContent = replaceVariablesInText(currentNode.data.content, runtimeVars);
@@ -196,11 +196,20 @@ const PlayMode: React.FC<PlayModeProps> = ({ project, onClose }) => {
     <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center animate-in fade-in duration-300">
         
         {/* Background Layer */}
-        {bgImage && (
+        {bgAsset && bgAsset.type === 'image' && (
             <div className="absolute inset-0 z-0">
-                <img src={bgImage} className="w-full h-full object-cover opacity-30" />
+                <img src={bgAsset.url} className="w-full h-full object-cover opacity-30" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/80 to-transparent" />
             </div>
+        )}
+        {bgAsset && bgAsset.type === 'video' && (
+            <div className="absolute inset-0 z-0">
+                <video src={bgAsset.url} className="w-full h-full object-cover opacity-30" autoPlay loop muted />
+                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/80 to-transparent" />
+            </div>
+        )}
+        {bgAsset && bgAsset.type === 'audio' && (
+             <audio src={bgAsset.url} autoPlay loop />
         )}
 
         {/* Top Controls */}

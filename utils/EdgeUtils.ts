@@ -116,6 +116,19 @@ export function getEdgeParams(
 
       const targetIntersectionPoint = getNodeIntersection(target, sourceRef);
       targetPos = getEdgePosition(target, targetIntersectionPoint);
+
+      // Prevent target from connecting to the Right side
+      if (targetPos === Position.Right) {
+        const targetCenterY = (target.positionAbsolute?.y ?? 0) + (target.height ?? 0) / 2;
+        const sourceRefCenterY = sourceRef.y + sourceRef.height / 2;
+
+        if (sourceRefCenterY < targetCenterY) {
+          targetPos = Position.Top;
+        } else {
+          targetPos = Position.Bottom;
+        }
+      }
+
       const targetCoords = getHandleCoordsByPosition(target, targetPos);
       tx = targetCoords.x;
       ty = targetCoords.y;

@@ -10,9 +10,10 @@ export const INITIAL_PROJECT: Project = {
     { id: 'var-3', name: 'playerName', type: VariableType.STRING, value: 'Traveler' },
   ],
   assets: [
-    { id: 'asset-1', name: 'Castle Image', type: 'image', url: 'https://picsum.photos/400/250' },
-    { id: 'asset-2', name: 'Forest Bg', type: 'image', url: 'https://picsum.photos/400/251' },
+    { id: 'asset-1', name: 'Castle Image', type: 'image', url: 'https://picsum.photos/400/250', parentId: null },
+    { id: 'asset-2', name: 'Forest Bg', type: 'image', url: 'https://picsum.photos/400/251', parentId: null },
   ],
+  folders: [],
   boards: [
     {
       id: 'board-1',

@@ -13,11 +13,18 @@ export interface Variable {
   value: string | number | boolean;
 }
 
+export interface Folder {
+  id: string;
+  name: string;
+  parentId: string | null;
+}
+
 export interface Asset {
   id: string;
   name: string;
   url: string;
-  type: 'image' | 'audio';
+  type: 'image' | 'audio' | 'video';
+  parentId: string | null;
 }
 
 export interface Branch {
@@ -65,4 +72,5 @@ export interface Project {
   activeBoardId: string;
   variables: Variable[];
   assets: Asset[];
+  folders: Folder[];
 }

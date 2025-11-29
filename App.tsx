@@ -1,392 +1,195 @@
-import React, { useState, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import ReactFlow, { 
-  addEdge, 
   Background, 
   Controls, 
-  Connection, 
-  Edge, 
+  ControlButton,
   ReactFlowProvider,
   BackgroundVariant,
   ReactFlowInstance,
-  Node,
-  reconnectEdge,
   PanOnScrollMode,
-  useNodesState,
-  useEdgesState
+  useReactFlow,
+  useViewport,
 } from 'reactflow';
+import { Hand, MousePointer2, Plus, Minus, Maximize } from 'lucide-react';
 import SidebarLeft from './components/SidebarLeft';
-import ContextMenu, { ContextMenuOption } from './components/ContextMenu';
+import ContextMenu from './components/ContextMenu';
 import ElementNode from './components/nodes/ElementNode';
 import ConditionNode from './components/nodes/ConditionNode';
 import JumpNode from './components/nodes/JumpNode';
 import CommentNode from './components/nodes/CommentNode';
+import SectionNode from './components/nodes/SectionNode';
+import AnnotationNode from './components/nodes/AnnotationNode';
 import PlayMode from './components/PlayMode';
-import { AppNode } from './types';
-import { GitFork, ArrowRightCircle, Copy as CopyIcon, Trash2, PlusCircle, MessageSquare } from 'lucide-react';
 import FloatingEdge from '@/components/edge/FloatingEdge';
-import { useProjectState } from './hooks/useProjectState';
 import { TopToolbar } from './components/TopToolbar';
+import { TimelineView } from './components/TimelineView';
+import { useFlowLogic } from './hooks/useFlowLogic';
+import { useContextMenu } from './hooks/useContextMenu';
+import { useDragAndDrop } from './hooks/useDragAndDrop';
+import { useMenuOptions } from './hooks/useMenuOptions';
+import { exportProject } from './utils/projectUtils';
+
+const CustomControls = ({ isPanMode, setIsPanMode }: { isPanMode: boolean, setIsPanMode: (v: boolean) => void }) => {
+  const { zoomIn, zoomOut, fitView } = useReactFlow();
+  const { zoom } = useViewport();
+
+  return (
+    <Controls 
+      position="bottom-left" 
+      orientation="horizontal" 
+      showZoom={false} 
+      showFitView={false} 
+      showInteractive={false}
+      className="!flex !flex-row !gap-2 !bg-transparent !border-none !shadow-none !items-center"
+    >
+       <ControlButton onClick={() => zoomOut({ duration: 300 })} className="!w-9 !h-9 !bg-zinc-800 !border !border-zinc-700 !text-zinc-400 hover:!text-zinc-100 !rounded-md !shadow-sm !flex !items-center !justify-center !p-0" title="Zoom Out">
+        <Minus size={18} />
+      </ControlButton>
+      
+      <div className="flex items-center justify-center w-14 h-9 text-xs font-medium text-zinc-400 bg-zinc-800 border border-zinc-700 rounded-md shadow-sm select-none">
+        {Math.round(zoom * 100)}%
+      </div>
+
+      <ControlButton onClick={() => zoomIn({ duration: 300 })} className="!w-9 !h-9 !bg-zinc-800 !border !border-zinc-700 !text-zinc-400 hover:!text-zinc-100 !rounded-md !shadow-sm !flex !items-center !justify-center !p-0" title="Zoom In">
+        <Plus size={18} />
+      </ControlButton>
+
+      <ControlButton onClick={() => fitView({ duration: 300 })} className="!w-9 !h-9 !bg-zinc-800 !border !border-zinc-700 !text-zinc-400 hover:!text-zinc-100 !rounded-md !shadow-sm !flex !items-center !justify-center !p-0" title="Fit View">
+        <Maximize size={18} />
+      </ControlButton>
+
+      <ControlButton onClick={() => setIsPanMode(!isPanMode)} className="!w-9 !h-9 !bg-zinc-800 !border !border-zinc-700 !text-zinc-400 hover:!text-zinc-100 !rounded-md !shadow-sm !flex !items-center !justify-center !p-0" title={isPanMode ? "Switch to Selection Mode" : "Switch to Pan Mode"}>
+        {isPanMode ? <MousePointer2 size={18} /> : <Hand size={18} />}
+      </ControlButton>
+    </Controls>
+  );
+};
 
 function FlowApp() {
-  // Local state for React Flow performance
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-
-  const { project, setProject, isInitializing, lastSaved } = useProjectState(nodes, edges, setNodes, setEdges);
-
+  const [viewMode, setViewMode] = useState<'flow' | 'timeline'>('flow');
   const [isPlaying, setIsPlaying] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [jumpClipboard, setJumpClipboard] = useState<{ id: string; label: string } | null>(null);
+  const [isPanMode, setIsPanMode] = useState(false);
   
-  // Context Menu State
-  const [menu, setMenu] = useState<{ x: number; y: number; type: 'node' | 'pane' | 'edge'; id?: string; label?: string } | null>(null);
-
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
-  
+
+  const {
+    nodes,
+    edges,
+    nodesWithContext,
+    setNodes,
+    setEdges,
+    onNodesChange,
+    onEdgesChange,
+    onConnect,
+    onReconnect,
+    addNode,
+    deleteNode,
+    deleteEdge,
+    updateNodeData,
+    updateEdgeData,
+    updateEdgeColor,
+    updateEdgeLabel,
+    project,
+    setProject,
+    isInitializing,
+    lastSaved,
+    jumpClipboard,
+    setJumpClipboard,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    onNodeDragStart,
+    takeSnapshot
+  } = useFlowLogic();
+
+  const {
+    menu,
+    setMenu,
+    onNodeContextMenu,
+    onEdgeContextMenu,
+    onPaneContextMenu,
+    onPaneClick
+  } = useContextMenu();
+
+  const { onDragOver, onNodeDragStop, onDrop } = useDragAndDrop(
+      nodes,
+      setNodes,
+      reactFlowInstance,
+      reactFlowWrapper,
+      takeSnapshot
+  );
+
+  // Keyboard shortcuts
+  React.useEffect(() => {
+      const handleKeyDown = (event: KeyboardEvent) => {
+          // Ignore if input or textarea is focused
+          if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+              return;
+          }
+
+          if ((event.metaKey || event.ctrlKey) && event.key === 'z') {
+              if (event.shiftKey) {
+                  redo();
+              } else {
+                  undo();
+              }
+              event.preventDefault();
+          }
+          if ((event.metaKey || event.ctrlKey) && event.key === 'y') {
+              redo();
+              event.preventDefault();
+          }
+      };
+
+      document.addEventListener('keydown', handleKeyDown);
+      return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo]);
+
+  const getMenuOptions = useMenuOptions({
+      menu,
+      nodes,
+      edges,
+      updateNodeData,
+      deleteNode,
+      setJumpClipboard,
+      jumpClipboard,
+      updateEdgeLabel,
+      updateEdgeColor,
+      updateEdgeData,
+      deleteEdge,
+      addNode,
+      reactFlowInstance
+  });
+
   // Memoize nodeTypes and edgeTypes
   const nodeTypes = useMemo(() => ({
     elementNode: ElementNode,
     conditionNode: ConditionNode,
     jumpNode: JumpNode,
     commentNode: CommentNode,
+    sectionNode: SectionNode,
+    annotationNode: AnnotationNode,
   }), []);
 
   const edgeTypes = useMemo(() => ({
     floating: FloatingEdge,
   }), []);
 
-  // Cache for memoized nodes
-  const nodeWrapperCache = useRef(new WeakMap<AppNode, AppNode>());
-
-  // Inject variables into nodes for highlighting
-  const nodesWithContext = useMemo(() => {
-    return nodes.map(node => {
-      const cached = nodeWrapperCache.current.get(node as AppNode);
-      if (cached && cached.data.variables === project.variables) {
-        return cached;
-      }
-
-      const newNode = {
-        ...node,
-        data: {
-          ...node.data,
-          variables: project.variables
-        }
-      };
-      nodeWrapperCache.current.set(node as AppNode, newNode as AppNode);
-      return newNode;
-    });
-  }, [nodes, project.variables]);
-
-  // Helper to update a specific node's data
-  const updateNodeData = useCallback((id: string, data: any) => {
-    setNodes(nds => nds.map(node => {
-      if (node.id === id) {
-        return { ...node, data: { ...node.data, ...data } };
-      }
-      return node;
-    }));
-  }, [setNodes]);
-
-  const onConnectStart = useCallback(() => {
+  const onConnectStart = React.useCallback(() => {
     setIsConnecting(true);
   }, []);
 
-  const onConnectEnd = useCallback(() => {
+  const onConnectEnd = React.useCallback(() => {
     setIsConnecting(false);
   }, []);
 
-  const onConnect = useCallback((params: Connection) => {
-    if (params.source === params.target) return;
-
-    const isDuplicate = edges.some(edge => 
-      (edge.source === params.source && edge.target === params.target) ||
-      (edge.source === params.target && edge.target === params.source)
-    );
-
-    if (isDuplicate) return;
-
-    const sourceNode = nodes.find(n => n.id === params.source);
-    let currentEdges = edges;
-
-    if (sourceNode?.type === 'conditionNode') {
-        const existingBranchEdge = currentEdges.find(e => 
-            e.source === params.source && 
-            e.sourceHandle === params.sourceHandle
-        );
-        
-        if (existingBranchEdge) {
-            currentEdges = currentEdges.filter(e => e.id !== existingBranchEdge.id);
-        }
-    }
-
-    const edge: Edge = { 
-        ...params, 
-        type: 'floating',
-        id: `e-${params.source}-${params.target}-${Date.now()}`,
-        animated: true,
-        style: { stroke: '#71717a'}
-    };
-    setEdges(eds => addEdge(edge, currentEdges));
-  }, [edges, nodes, setEdges]);
-
-  const onReconnect = useCallback((oldEdge: Edge, newConnection: Connection) => {
-    setEdges(eds => reconnectEdge(oldEdge, newConnection, eds));
-  }, [setEdges]);
-
-  const onPaneClick = useCallback(() => {
-      setMenu(null);
-  }, []);
-
-  const onNodeContextMenu = useCallback(
-    (event: React.MouseEvent, node: Node) => {
-      event.preventDefault();
-      setMenu({
-        x: event.clientX,
-        y: event.clientY,
-        type: 'node',
-        id: node.id,
-        label: node.data.label
-      });
-    },
-    []
-  );
-
-  const onEdgeContextMenu = useCallback(
-    (event: React.MouseEvent, edge: Edge) => {
-      event.preventDefault();
-      if (!edge.selected) return;
-      setMenu({
-        x: event.clientX,
-        y: event.clientY,
-        type: 'edge',
-        id: edge.id
-      });
-    },
-    []
-  );
-
-  const onPaneContextMenu = useCallback(
-    (event: React.MouseEvent) => {
-      event.preventDefault();
-      setMenu({
-        x: event.clientX,
-        y: event.clientY,
-        type: 'pane'
-      });
-    },
-    []
-  );
-
-  const addNode = (type: 'elementNode' | 'conditionNode' | 'jumpNode' | 'commentNode', position?: { x: number, y: number }, extraData?: any) => {
-    const id = `node-${Date.now()}`;
-    const newNode: AppNode = {
-      id,
-      type,
-      position: position || { x: Math.random() * 400 + 100, y: Math.random() * 400 + 100 },
-      data: { 
-          label: type === 'elementNode' ? 'New Element' : type === 'conditionNode' ? 'Logic Check' : 'Jump', 
-          content: '',
-          condition: type === 'conditionNode' ? 'var == true' : undefined,
-          text: '',
-          ...extraData
-      },
-    };
-    setNodes(nds => [...nds, newNode]);
-  };
-
-  const deleteNode = (id: string) => {
-    setNodes(nds => nds.filter(n => n.id !== id));
-    setEdges(eds => eds.filter(e => e.source !== id && e.target !== id));
-  };
-
-  const deleteEdge = (id: string) => {
-      setEdges(eds => eds.filter(e => e.id !== id));
-  };
-
-  const onEdgeDoubleClick = useCallback((event: React.MouseEvent, edge: Edge) => {
+  const onEdgeDoubleClick = React.useCallback((event: React.MouseEvent, edge: any) => {
       event.stopPropagation();
       deleteEdge(edge.id);
-  }, []);
-
-  const updateEdgeColor = (id: string, color: string) => {
-      setEdges(eds => eds.map(e => {
-          if (e.id === id) {
-              return { ...e, style: { ...e.style, stroke: color } };
-          }
-          return e;
-      }));
-  };
-
-  const onDragOver = useCallback((event: React.DragEvent) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
-  }, []);
-
-  const onDrop = useCallback(
-    (event: React.DragEvent) => {
-      event.preventDefault();
-
-      if (!reactFlowWrapper.current || !reactFlowInstance) return;
-
-      const type = event.dataTransfer.getData('application/reactflow/type');
-      const payloadStr = event.dataTransfer.getData('application/reactflow/payload');
-      
-      if (!type) return;
-
-      const position = reactFlowInstance.screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
-      });
-
-      const payload = payloadStr ? JSON.parse(payloadStr) : {};
-      
-      const newNode: AppNode = {
-        id: `node-${Date.now()}`,
-        type,
-        position,
-        data: { 
-            label: payload.label || 'New Node',
-            ...payload
-        },
-      };
-
-      setNodes(nds => [...nds, newNode]);
-    },
-    [reactFlowInstance]
-  );
-
-  const exportProject = () => {
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(project));
-      const downloadAnchorNode = document.createElement('a');
-      downloadAnchorNode.setAttribute("href",     dataStr);
-      downloadAnchorNode.setAttribute("download", project.name.replace(" ", "_") + ".json");
-      document.body.appendChild(downloadAnchorNode);
-      downloadAnchorNode.click();
-      downloadAnchorNode.remove();
-  };
-
-  const getMenuOptions = (): ContextMenuOption[] => {
-    if (!menu) return [];
-
-    if (menu.type === 'node') {
-        const node = nodes.find(n => n.id === menu.id);
-        
-        const options: ContextMenuOption[] = [];
-
-        if (node && node.type === 'conditionNode') {
-            options.push(
-                {
-                    label: 'Add Condition Case',
-                    icon: <GitFork size={14} />,
-                    onClick: () => {
-                         const branches = node.data.branches || [];
-                         const elseIdx = branches.findIndex((b: any) => b.label === 'Else');
-                         const newBranch = { id: `branch-${Date.now()}`, label: 'Else If', condition: 'var == true' };
-                         const newBranches = [...branches];
-                         
-                         if (elseIdx !== -1) {
-                             newBranches.splice(elseIdx, 0, newBranch);
-                         } else {
-                             newBranches.push(newBranch);
-                         }
-                         updateNodeData(node.id, { branches: newBranches });
-                    }
-                },
-                { type: 'divider' } as ContextMenuOption
-            );
-        }
-
-        options.push(
-            {
-                label: 'Copy as Jump Target',
-                icon: <CopyIcon size={14} />,
-                onClick: () => setJumpClipboard({ id: menu.id!, label: menu.label || 'Untitled' })
-            },
-            { type: 'divider' } as ContextMenuOption,
-            { label: 'Orange', color: '#f97316', onClick: () => updateNodeData(menu.id!, { color: '#f97316' }) },
-            { label: 'Blue', color: '#3b82f6', onClick: () => updateNodeData(menu.id!, { color: '#3b82f6' }) },
-            { label: 'Green', color: '#22c55e', onClick: () => updateNodeData(menu.id!, { color: '#22c55e' }) },
-            { label: 'Purple', color: '#a855f7', onClick: () => updateNodeData(menu.id!, { color: '#a855f7' }) },
-            { label: 'Red', color: '#ef4444', onClick: () => updateNodeData(menu.id!, { color: '#ef4444' }) },
-            { 
-                label: 'Custom Color', 
-                type: 'color-picker', 
-                color: '#f97316', 
-                onChange: (e) => updateNodeData(menu.id!, { color: e.target.value }) 
-            },
-            { type: 'divider' } as ContextMenuOption,
-            {
-                label: 'Delete Node',
-                danger: true,
-                icon: <Trash2 size={14} />,
-                onClick: () => deleteNode(menu.id!)
-            }
-        );
-        return options;
-    }
-
-    if (menu.type === 'edge') {
-        return [
-            { label: 'Red', color: '#ef4444', onClick: () => updateEdgeColor(menu.id!, '#ef4444') },
-            { label: 'Green', color: '#22c55e', onClick: () => updateEdgeColor(menu.id!, '#22c55e') },
-            { label: 'Blue', color: '#3b82f6', onClick: () => updateEdgeColor(menu.id!, '#3b82f6') },
-            { 
-                label: 'Custom Color', 
-                type: 'color-picker', 
-                color: '#ffffff', 
-                onChange: (e) => updateEdgeColor(menu.id!, e.target.value) 
-            },
-            { type: 'divider' } as ContextMenuOption,
-            { label: 'Delete Connection', danger: true, icon: <Trash2 size={14}/>, onClick: () => deleteEdge(menu.id!) }
-        ];
-    }
-
-    if (menu.type === 'pane') {
-        const options: ContextMenuOption[] = [
-             {
-                label: 'Add Element',
-                icon: <PlusCircle size={14} />,
-                onClick: () => {
-                     if (reactFlowInstance) {
-                        const position = reactFlowInstance.screenToFlowPosition({ x: menu.x, y: menu.y });
-                        addNode('elementNode', position);
-                    }
-                }
-            },
-            {
-                label: 'Add Comment',
-                icon: <MessageSquare size={14} />,
-                onClick: () => {
-                     if (reactFlowInstance) {
-                        const position = reactFlowInstance.screenToFlowPosition({ x: menu.x, y: menu.y });
-                        addNode('commentNode', position);
-                    }
-                }
-            }
-        ];
-
-        if (jumpClipboard) {
-            options.unshift({
-                label: `Paste Jump to "${jumpClipboard.label}"`,
-                icon: <ArrowRightCircle size={14} />,
-                onClick: () => {
-                    if (reactFlowInstance) {
-                        const position = reactFlowInstance.screenToFlowPosition({ x: menu.x, y: menu.y });
-                        addNode('jumpNode', position, { 
-                            jumpTargetId: jumpClipboard.id,
-                            jumpTargetLabel: jumpClipboard.label
-                        });
-                    }
-                }
-            });
-        }
-        return options;
-    }
-
-    return [];
-  };
+  }, [deleteEdge]);
 
   if (isInitializing) {
     return (
@@ -398,7 +201,7 @@ function FlowApp() {
   }
 
   return (
-    <div className="flex h-screen w-screen bg-[#121212] text-zinc-100 overflow-hidden font-sans">
+    <div className="flex h-screen w-screen bg-[#121212] text-zinc-100 overflow-hidden">
       
       <SidebarLeft project={project} setProject={setProject} />
 
@@ -407,14 +210,21 @@ function FlowApp() {
         <TopToolbar 
             onAddNode={(type) => addNode(type)}
             onPlay={() => setIsPlaying(true)}
-            onExport={exportProject}
+            onExport={() => exportProject(project)}
             lastSaved={lastSaved}
             jumpClipboard={jumpClipboard}
             setJumpClipboard={setJumpClipboard}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            onUndo={undo}
+            onRedo={redo}
+            canUndo={canUndo}
+            canRedo={canRedo}
         />
 
         <div className="flex-1 bg-[#0f0f11] relative" ref={reactFlowWrapper}>
-          <ReactFlow
+          {viewMode === 'flow' ? (
+            <ReactFlow
             key={project.activeBoardId}
             nodes={nodesWithContext}
             edges={edges}
@@ -424,6 +234,8 @@ function FlowApp() {
             onConnectStart={onConnectStart}
             onConnectEnd={onConnectEnd}
             onReconnect={onReconnect}
+            onNodeDragStop={onNodeDragStop}
+            onNodeDragStart={onNodeDragStart}
             onNodeContextMenu={onNodeContextMenu}
             onEdgeContextMenu={onEdgeContextMenu}
             onEdgeDoubleClick={onEdgeDoubleClick}
@@ -435,22 +247,24 @@ function FlowApp() {
             nodeTypes={nodeTypes}
             fitView
             edgeTypes={edgeTypes}
-            snapToGrid={true}
-            snapGrid={[20, 20]}
             proOptions={{ hideAttribution: true }}
             className="bg-[#0f0f11]"
             multiSelectionKeyCode={['Control', 'Meta']}
-            selectionOnDrag={false}
-            panOnDrag={[1, 2]}
+            selectionOnDrag={!isPanMode}
+            panOnDrag={isPanMode ? [0, 1, 2] : [1, 2]}
             panOnScroll={true}
             panOnScrollMode={PanOnScrollMode.Free}
             connectionRadius={30}
+            elevateNodesOnSelect={false}
           >
             <Background color="#52525b" gap={20} size={1} variant={BackgroundVariant.Dots} />
-            <Controls className="bg-zinc-800 border-zinc-700 text-zinc-400" />
+            <CustomControls isPanMode={isPanMode} setIsPanMode={setIsPanMode} />
           </ReactFlow>
+          ) : (
+            <TimelineView nodes={nodesWithContext} />
+          )}
 
-          {menu && (
+          {menu && viewMode === 'flow' && (
             <ContextMenu 
                 x={menu.x} 
                 y={menu.y} 

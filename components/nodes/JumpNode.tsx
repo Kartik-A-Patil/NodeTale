@@ -1,10 +1,13 @@
 import React, { memo, useState } from 'react';
-import { Handle, Position, NodeProps, useReactFlow } from 'reactflow';
+import { Handle, Position, NodeProps, useReactFlow, useStore } from 'reactflow';
 import { Forward, Link as LinkIcon } from 'lucide-react';
 import { NodeData } from '../../types';
 
 const JumpNode = ({ id, data, selected }: NodeProps<NodeData>) => {
   const { setNodes, getNodes } = useReactFlow();
+  const connectionNodeId = useStore((state) => state.connectionNodeId);
+  const isTarget = connectionNodeId && connectionNodeId !== id;
+
   const [isEditing, setIsEditing] = useState(false);
   const primaryColor = data.color || '#a855f7'; // Default purple
 
@@ -34,9 +37,9 @@ const JumpNode = ({ id, data, selected }: NodeProps<NodeData>) => {
 
   return (
     <div
-      className={`px-3 py-2 bg-[#18181b] border-2 rounded-lg flex items-center gap-3 min-w-[160px] transition-all ${
+      className={`px-3 py-2 bg-[#18181b] border-2 rounded-lg flex items-center gap-3 min-w-[160px] transition-all relative ${
         selected ? 'shadow-lg' : ''
-      }`}
+      } ${isTarget ? "hover:!border-blue-500 hover:bg-blue-500/5 hover:shadow-[0_0_20px_rgba(59,130,246,0.3)]" : ""}`}
       style={{ 
         borderColor: selected ? primaryColor : data.color || '#581c87',
         boxShadow: selected ? `0 0 10px ${primaryColor}33` : 'none',
@@ -44,6 +47,17 @@ const JumpNode = ({ id, data, selected }: NodeProps<NodeData>) => {
       }}
       onDoubleClick={() => setIsEditing(true)}
     >
+      {/* Global Target Handle */}
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="!w-full !h-full !absolute !inset-0 !transform-none !border-0 !rounded-lg z-[100] !opacity-0"
+        style={{ 
+            borderRadius: "inherit",
+            pointerEvents: isTarget ? 'all' : 'none'
+        }}
+      />
+
       <div 
           className="p-1.5 rounded-md"
           style={{ backgroundColor: `${primaryColor}22` }}
@@ -77,13 +91,6 @@ const JumpNode = ({ id, data, selected }: NodeProps<NodeData>) => {
             </div>
           )}
       </div>
-      
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="!w-3 !h-3 !border-zinc-900"
-        style={{ backgroundColor: primaryColor }}
-      />
     </div>
   );
 };

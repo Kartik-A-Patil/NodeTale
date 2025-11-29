@@ -1,11 +1,14 @@
 import React, { memo, useState } from 'react';
-import { Handle, Position, NodeProps, useReactFlow } from 'reactflow';
+import { Handle, Position, NodeProps, useReactFlow, useStore } from 'reactflow';
 import { NodeData, Branch } from '../../types';
 import { X, GitBranch } from 'lucide-react';
 import clsx from 'clsx';
 
 const ConditionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
   const { setNodes } = useReactFlow();
+  const connectionNodeId = useStore((state) => state.connectionNodeId);
+  const isTarget = connectionNodeId && connectionNodeId !== id;
+
   const [editingField, setEditingField] = useState<'label' | null>(null);
   const [hoveredSide, setHoveredSide] = useState<'left' | null>(null);
 
@@ -63,10 +66,21 @@ const ConditionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
 
   return (
     <div
-      className={`min-w-[240px] bg-[#09090b] rounded-md border shadow-xl transition-all flex flex-col relative ${
+      className={`min-w-[240px] bg-[#09090b] rounded-md border transition-all flex flex-col relative ${
         selected ? 'border-blue-500 shadow-blue-500/20' : 'border-zinc-800'
-      }`}
+      } ${isTarget ? "hover:!border-blue-500 hover:bg-blue-500/5 hover:shadow-[0_0_20px_rgba(59,130,246,0.3)]" : ""}`}
     >
+      {/* Global Target Handle */}
+      <Handle
+          type="target"
+          position={Position.Left}
+          className="!w-full !h-full !absolute !inset-0 !transform-none !border-0 !rounded-md z-[100] !opacity-0"
+          style={{ 
+              borderRadius: "inherit",
+              pointerEvents: isTarget ? 'all' : 'none'
+          }}
+      />
+
       {/* Header */}
       <div className="p-2 rounded-t-md flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/50">
         <GitBranch size={16} className="text-purple-400 shrink-0" />
@@ -93,15 +107,6 @@ const ConditionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
           )}
         </div>
       </div>
-
-       {/* Main Input Handle - Invisible Area */}
-       <Handle
-          type="target"
-          position={Position.Left}
-          className="!opacity-0 !w-4 !h-full !-left-3 !top-0 !transform-none !border-0 !rounded-none z-40"
-          onMouseEnter={() => setHoveredSide('left')}
-          onMouseLeave={() => setHoveredSide(null)}
-      />
 
       {/* Visual Border Indicator */}
       <div

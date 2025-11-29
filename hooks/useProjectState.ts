@@ -27,6 +27,11 @@ export function useProjectState(
       try {
         const savedProject = await loadProject();
         if (savedProject) {
+          // Migration: Ensure tracks exist
+          if (!savedProject.tracks) {
+              savedProject.tracks = INITIAL_PROJECT.tracks;
+          }
+          
           setProject(savedProject);
           const savedActiveBoardId = localStorage.getItem('activeBoardId');
           if (savedActiveBoardId && savedProject.boards.some(b => b.id === savedActiveBoardId)) {
