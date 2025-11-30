@@ -90,7 +90,8 @@ export function useFlowLogic() {
         ...node,
         data: {
           ...node.data,
-          variables: project.variables
+          variables: project.variables,
+          projectAssets: project.assets
         }
       };
       nodeWrapperCache.current.set(node as AppNode, newNode as AppNode);
@@ -106,6 +107,16 @@ export function useFlowLogic() {
       }
       return node;
     }));
+  }, [setNodes, takeSnapshot]);
+
+  const updateNode = useCallback((id: string, patch: Partial<AppNode>) => {
+      takeSnapshot();
+      setNodes(nds => nds.map(node => {
+          if (node.id === id) {
+              return { ...node, ...patch };
+          }
+          return node;
+      }));
   }, [setNodes, takeSnapshot]);
 
   const updateEdgeData = useCallback((id: string, data: any) => {
@@ -195,7 +206,7 @@ export function useFlowLogic() {
           ...extraData
       },
       zIndex: type === 'sectionNode' ? -1 : undefined,
-      style: type === 'sectionNode' ? { width: 400, height: 300 } : undefined,
+      style: type === 'sectionNode' ? { width: 400, height: 300, ...extraData?.style } : extraData?.style,
     };
     setNodes(nds => [...nds, newNode]);
   }, [setNodes, takeSnapshot]);
@@ -270,6 +281,7 @@ export function useFlowLogic() {
     deleteNode,
     deleteEdge,
     updateNodeData,
+    updateNode,
     updateEdgeData,
     updateEdgeColor,
     updateEdgeLabel,

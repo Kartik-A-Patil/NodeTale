@@ -7,6 +7,7 @@ import clsx from 'clsx';
 const ConditionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
   const { setNodes } = useReactFlow();
   const connectionNodeId = useStore((state) => state.connectionNodeId);
+  const edges = useStore((state) => state.edges);
   const isTarget = connectionNodeId && connectionNodeId !== id;
 
   const [editingField, setEditingField] = useState<'label' | null>(null);
@@ -67,7 +68,7 @@ const ConditionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
   return (
     <div
       className={`min-w-[240px] bg-[#09090b] rounded-md border transition-all flex flex-col relative ${
-        selected ? 'border-blue-500 shadow-blue-500/20' : 'border-zinc-800'
+        selected ? 'border-blue-500' : 'border-zinc-800'
       } ${isTarget ? "hover:!border-blue-500 hover:bg-blue-500/5 hover:shadow-[0_0_20px_rgba(59,130,246,0.3)]" : ""}`}
     >
       {/* Global Target Handle */}
@@ -132,6 +133,7 @@ const ConditionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
           const isElse = branch.label === 'Else';
           const isIf = branch.label === 'If';
           const keywordColor = isIf ? 'text-purple-400' : isElse ? 'text-orange-400' : 'text-blue-400';
+          const isConnected = edges.some(edge => edge.source === id && edge.sourceHandle === branch.id);
           
           return (
             <div 
@@ -172,7 +174,7 @@ const ConditionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
                     type="source"
                     position={Position.Right}
                     id={branch.id}
-                    className={`!w-3 !h-3 !right-[-8px] transition-all !border-zinc-400 bg-black hover:!w-3.5 hover:!h-3.5`}
+                    className={`!w-3 !h-3 !right-[-8px] transition-all hover:!w-3.5 hover:!h-3.5 ${isConnected ? "opacity-0" : "!border-zinc-400 bg-black "}`}
                 />
             </div>
           );

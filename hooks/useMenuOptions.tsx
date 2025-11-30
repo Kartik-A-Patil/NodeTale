@@ -2,10 +2,11 @@ import React, { useCallback } from 'react';
 import { 
     GitFork, ArrowRightCircle, Copy as CopyIcon, Trash2, PlusCircle, 
     MessageSquare, Layout, Info, ArrowUpLeft, ArrowUpRight, 
-    ArrowDownLeft, ArrowDownRight, Minus, CornerDownRight, Spline 
+    ArrowDownLeft, ArrowDownRight, Minus, CornerDownRight, Spline,
+    Image as ImageIcon, Play
 } from 'lucide-react';
 import { ContextMenuOption } from '../components/ContextMenu';
-import { AppNode } from '../types';
+import { AppNode, Asset } from '../types';
 import { Edge, ReactFlowInstance } from 'reactflow';
 import { MenuState } from './useContextMenu';
 
@@ -29,6 +30,7 @@ interface UseMenuOptionsProps {
     nodes: AppNode[];
     edges: Edge[];
     updateNodeData: (id: string, data: any) => void;
+    updateNode: (id: string, patch: Partial<AppNode>) => void;
     deleteNode: (id: string, deleteChildren?: boolean) => void;
     setJumpClipboard: (data: { id: string; label: string } | null) => void;
     jumpClipboard: { id: string; label: string } | null;
@@ -37,7 +39,11 @@ interface UseMenuOptionsProps {
     updateEdgeData: (id: string, data: any) => void;
     deleteEdge: (id: string) => void;
     addNode: (type: any, position?: { x: number, y: number }, extraData?: any) => void;
+    addAsset: (asset: Asset) => void;
+    setShowAssetSelectorModal: (show: boolean) => void;
+    setSelectedNodeForAsset: (id: string | null) => void;
     reactFlowInstance: ReactFlowInstance | null;
+    startPlayFromNode: (nodeId: string) => void;
 }
 
 export function useMenuOptions({
@@ -45,6 +51,7 @@ export function useMenuOptions({
     nodes,
     edges,
     updateNodeData,
+    updateNode,
     deleteNode,
     setJumpClipboard,
     jumpClipboard,
@@ -53,13 +60,64 @@ export function useMenuOptions({
     updateEdgeData,
     deleteEdge,
     addNode,
-    reactFlowInstance
+    addAsset,
+    setShowAssetSelectorModal,
+    setSelectedNodeForAsset,
+    reactFlowInstance,
+    startPlayFromNode
 }: UseMenuOptionsProps) {
 
   const getMenuOptions = useCallback((): ContextMenuOption[] => {
     if (!menu) return [];
 
     if (menu.type === 'node') {
+        // Check for multi-selection
+        if (menu.selectedNodeIds && menu.selectedNodeIds.length > 1) {
+            const selectedNodes = nodes.filter(n => menu.selectedNodeIds!.includes(n.id));
+            return [
+                {
+                    type: 'color-grid',
+                    colors: MENU_COLORS,
+                    onColorSelect: (color) => {
+                        selectedNodes.forEach(node => updateNodeData(node.id, { color }));
+                    }
+                },
+                { type: 'divider' } as ContextMenuOption,
+                {
+                    label: 'Create Section',
+                    icon: <Layout size={14} />,
+                    onClick: () => {
+                        if (!reactFlowInstance) return;
+                        // Calculate bounding box
+                        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                        selectedNodes.forEach(node => {
+                            minX = Math.min(minX, node.position.x);
+                            minY = Math.min(minY, node.position.y);
+                            maxX = Math.max(maxX, node.position.x + (node.width || 250));
+                            maxY = Math.max(maxY, node.position.y + (node.height || 150));
+                        });
+                        const padding = 40; // extra space around
+                        const width = maxX - minX + 2 * padding;
+                        const height = maxY - minY + 2 * padding;
+                        const position = { x: minX - padding, y: minY - padding };
+                        addNode('sectionNode', position, { 
+                            label: 'New Section',
+                            style: { width, height }
+                        });
+                    }
+                },
+                { type: 'divider' } as ContextMenuOption,
+                {
+                    label: 'Delete Selected',
+                    danger: true,
+                    icon: <Trash2 size={14} />,
+                    onClick: () => {
+                        selectedNodes.forEach(node => deleteNode(node.id));
+                    }
+                }
+            ];
+        }
+
         const node = nodes.find(n => n.id === menu.id);
         
         const options: ContextMenuOption[] = [];
@@ -150,12 +208,37 @@ export function useMenuOptions({
             );
         }
 
+        if (node && node.type === 'elementNode') {
+             options.push(
+                {
+                    label: 'Add Asset',
+                    icon: <ImageIcon size={14} />,
+                    onClick: () => {
+                        setSelectedNodeForAsset(menu.id!);
+                        setShowAssetSelectorModal(true);
+                    }
+                },
+                { type: 'divider' } as ContextMenuOption
+             );
+        }
+
         if (node && node.type !== 'jumpNode') {
             options.push(
                 {
                     label: 'Copy as Jump Target',
                     icon: <CopyIcon size={14} />,
                     onClick: () => setJumpClipboard({ id: menu.id!, label: menu.label || 'Untitled' })
+                },
+                { type: 'divider' } as ContextMenuOption
+            );
+        }
+
+        if (node && node.type === 'elementNode') {
+            options.push(
+                {
+                    label: 'Start Play from Here',
+                    icon: <Play size={14} />,
+                    onClick: () => startPlayFromNode(menu.id!)
                 },
                 { type: 'divider' } as ContextMenuOption
             );

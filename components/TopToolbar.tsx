@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Download, PlusCircle, GitFork, ArrowRightCircle, MessageSquare, Copy, X, LayoutGrid, Calendar, Undo, Redo, Layout } from 'lucide-react';
+import { Play, Download, PlusCircle, GitFork, ArrowRightCircle, MessageSquare, Copy, X, LayoutGrid, Calendar, Undo, Redo, Layout, AlertTriangle } from 'lucide-react';
 
 interface TopToolbarProps {
   onAddNode: (type: 'elementNode' | 'conditionNode' | 'jumpNode' | 'commentNode' | 'sectionNode') => void;
@@ -14,6 +14,7 @@ interface TopToolbarProps {
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  canPlay: boolean;
 }
 
 export const TopToolbar: React.FC<TopToolbarProps> = ({ 
@@ -28,7 +29,8 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
   onUndo,
   onRedo,
   canUndo,
-  canRedo
+  canRedo,
+  canPlay
 }) => {
   const onDragStart = (event: React.DragEvent, nodeType: string, label: string) => {
     event.dataTransfer.setData('application/reactflow/type', nodeType);
@@ -132,9 +134,10 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
                   <button onClick={() => setJumpClipboard(null)} className="hover:text-white ml-1"><X size={10}/></button>
               </div>
           )}
-          <button onClick={onPlay} className="flex items-center gap-2 px-4 py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded text-sm font-semibold transition-colors shadow-lg shadow-orange-900/20">
+          <button onClick={onPlay} className={`flex items-center gap-2 px-4 py-1.5 rounded text-sm font-semibold transition-colors shadow-lg ${canPlay ? 'bg-orange-600 hover:bg-orange-500 text-white shadow-orange-900/20' : 'bg-zinc-600 text-zinc-400 cursor-not-allowed'}`} disabled={!canPlay} title={canPlay ? undefined : "Add an element titled 'Start' for playing"}>
               <Play size={14} fill="currentColor" /> Play
           </button>
+          {!canPlay && <AlertTriangle size={14} className="text-red-500" title="No 'Start' node found" />}
           <button onClick={onExport} className="p-2 text-zinc-400 hover:text-white transition-colors">
               <Download size={18} />
           </button>

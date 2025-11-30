@@ -6,10 +6,11 @@ export type MenuState = {
   y: number; 
   type: 'node' | 'pane' | 'edge'; 
   id?: string; 
-  label?: string 
+  label?: string;
+  selectedNodeIds?: string[];
 } | null;
 
-export function useContextMenu() {
+export function useContextMenu(selectedNodes: Node[]) {
   const [menu, setMenu] = useState<MenuState>(null);
 
   const onPaneClick = useCallback(() => {
@@ -24,10 +25,11 @@ export function useContextMenu() {
         y: event.clientY,
         type: 'node',
         id: node.id,
-        label: node.data.label
+        label: node.data.label,
+        selectedNodeIds: selectedNodes.map(n => n.id)
       });
     },
-    []
+    [selectedNodes]
   );
 
   const onEdgeContextMenu = useCallback(

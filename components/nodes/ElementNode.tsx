@@ -3,8 +3,10 @@ import { Handle, Position, NodeProps, useReactFlow, useStore, NodeResizeControl 
 import {
   FileText,
   Image as ImageIcon,
+  FileAudio,
+  FileVideo,
 } from "lucide-react";
-import { NodeData, Variable } from "../../types";
+import { NodeData, Variable, Asset } from "../../types";
 import clsx from "clsx";
 import { DatePicker } from "@/components/DatePicker";
 import { RichTextEditor } from "../RichTextEditor";
@@ -60,6 +62,59 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
     );
   };
 
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const json = e.dataTransfer.getData('application/json');
+    if (!json) return;
+    
+    try {
+        const { type, id: assetId } = JSON.parse(json);
+        if (type === 'asset') {
+            const currentAssets = data.assets || [];
+            const projectAssets = data.projectAssets as Asset[] || [];
+            const nodeAssets = currentAssets.map(id => projectAssets.find(a => a.id === id)).filter(Boolean);
+            
+            // Check if asset already exists
+            if (currentAssets.includes(assetId)) return;
+            
+            // Find the asset
+            const asset = projectAssets.find(a => a.id === assetId);
+            if (!asset) return;
+            
+            // Check if adding a visual asset and there's already one
+            const isVisual = asset.type === 'image' || asset.type === 'video';
+            const hasVisual = nodeAssets.some(a => a.type === 'image' || a.type === 'video');
+            if (isVisual && hasVisual) return;
+            
+            // Update assets AND reset height to auto to fit new content
+            setNodes((nds) => nds.map(n => {
+                if (n.id === id) {
+                    return {
+                        ...n,
+                        style: { ...n.style, height: undefined },
+                        data: { ...n.data, assets: [...currentAssets, assetId] }
+                    };
+                }
+                return n;
+            }));
+        }
+    } catch (err) {
+        console.error("Failed to parse drop data", err);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+  };
+
+  const projectAssets = data.projectAssets as Asset[] || [];
+  const nodeAssets = (data.assets || []).map(assetId => projectAssets.find(a => a.id === assetId)).filter(Boolean) as Asset[];
+  
+  const visualAssets = nodeAssets.filter(a => a.type === 'image' || a.type === 'video');
+  const audioAssets = nodeAssets.filter(a => a.type === 'audio');
+
   return (
     <>
     {selected && (
@@ -94,8 +149,8 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
       {/* Border Overlay */}
       <div
         className={clsx(
-            "absolute inset-0 rounded-md pointer-events-none transition-colors z-10",
-            selected ? "" : "border-transparent",
+            "absolute inset-0 rounded-md pointer-events-none transition-colors z-10 border",
+            selected ? "border-blue-500" : "border-transparent",
             isTarget ? "hover:!border-blue-500" : ""
         )}
         // style={{
@@ -159,7 +214,31 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
       </div>
 
       {/* Body */}
-      <div className="p-3 bg-zinc-800/50 flex-1 relative min-h-[6rem] flex flex-col">
+      <div 
+        className="p-3 bg-zinc-800/50 flex-1 relative min-h-[6rem] flex flex-col"
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+      >
+        {/* Visual Assets (Images/Videos) */}
+        {visualAssets.length > 0 && (
+            <div className="mb-2 flex flex-col gap-2">
+                {visualAssets.map(asset => (
+                    <div key={asset.id} className="relative rounded overflow-hidden bg-black/20">
+                        {asset.type === 'image' ? (
+                            <img src={asset.url} alt={asset.name} className="w-full h-auto max-h-48 object-contain" />
+                        ) : (
+                            <div className="relative">
+                                <video src={asset.url} className="w-full h-auto max-h-48 pointer-events-none" />
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                                    <FileVideo size={24} className="text-white" />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+        )}
+
         <div
           className="flex-1 w-full h-full"
           onDoubleClick={(e) => {
@@ -185,6 +264,18 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
             />
           )}
         </div>
+
+        {/* Audio Assets */}
+        {audioAssets.length > 0 && (
+            <div className="mt-2 pt-2 border-t border-zinc-700/50 flex flex-col gap-1">
+                {audioAssets.map(asset => (
+                    <div key={asset.id} className="flex items-center gap-2 text-xs text-zinc-400 bg-zinc-900/50 p-1.5 rounded">
+                        <FileAudio size={12} className="text-purple-400 shrink-0" />
+                        <span className="truncate">{asset.name}</span>
+                    </div>
+                ))}
+            </div>
+        )}
       </div>
       {/* Source Handles - Centered and smaller for dragging out */}
       <Handle

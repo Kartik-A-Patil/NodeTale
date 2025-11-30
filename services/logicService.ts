@@ -43,6 +43,7 @@ export const evaluateCondition = (conditionStr: string | undefined, variables: V
 };
 
 export const replaceVariablesInText = (text: string, variables: Variable[]): string => {
+  if (!text) return '';
   let processed = text;
   variables.forEach(v => {
     const regex = new RegExp(`{{${v.name}}}`, 'g');

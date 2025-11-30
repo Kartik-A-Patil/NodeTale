@@ -13,14 +13,8 @@ import ReactFlow, {
 import { Hand, MousePointer2, Plus, Minus, Maximize } from 'lucide-react';
 import SidebarLeft from './components/SidebarLeft';
 import ContextMenu from './components/ContextMenu';
-import ElementNode from './components/nodes/ElementNode';
-import ConditionNode from './components/nodes/ConditionNode';
-import JumpNode from './components/nodes/JumpNode';
-import CommentNode from './components/nodes/CommentNode';
-import SectionNode from './components/nodes/SectionNode';
-import AnnotationNode from './components/nodes/AnnotationNode';
 import PlayMode from './components/PlayMode';
-import FloatingEdge from '@/components/edge/FloatingEdge';
+import { AssetSelectorModal } from './components/AssetSelectorModal';
 import { TopToolbar } from './components/TopToolbar';
 import { TimelineView } from './components/TimelineView';
 import { useFlowLogic } from './hooks/useFlowLogic';
@@ -28,6 +22,7 @@ import { useContextMenu } from './hooks/useContextMenu';
 import { useDragAndDrop } from './hooks/useDragAndDrop';
 import { useMenuOptions } from './hooks/useMenuOptions';
 import { exportProject } from './utils/projectUtils';
+import { nodeTypes as initialNodeTypes, edgeTypes as initialEdgeTypes } from './components/flowConfig';
 
 const CustomControls = ({ isPanMode, setIsPanMode }: { isPanMode: boolean, setIsPanMode: (v: boolean) => void }) => {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
@@ -68,11 +63,17 @@ const CustomControls = ({ isPanMode, setIsPanMode }: { isPanMode: boolean, setIs
 function FlowApp() {
   const [viewMode, setViewMode] = useState<'flow' | 'timeline'>('flow');
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playStartNodeId, setPlayStartNodeId] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isPanMode, setIsPanMode] = useState(false);
+  const [showAssetSelectorModal, setShowAssetSelectorModal] = useState(false);
+  const [selectedNodeForAsset, setSelectedNodeForAsset] = useState<string | null>(null);
   
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
+
+  const nodeTypes = useMemo(() => initialNodeTypes, []);
+  const edgeTypes = useMemo(() => initialEdgeTypes, []);
 
   const {
     nodes,
@@ -88,6 +89,7 @@ function FlowApp() {
     deleteNode,
     deleteEdge,
     updateNodeData,
+    updateNode,
     updateEdgeData,
     updateEdgeColor,
     updateEdgeLabel,
@@ -105,6 +107,8 @@ function FlowApp() {
     takeSnapshot
   } = useFlowLogic();
 
+  const selectedNodes = React.useMemo(() => nodes.filter(n => n.selected), [nodes]);
+
   const {
     menu,
     setMenu,
@@ -112,7 +116,7 @@ function FlowApp() {
     onEdgeContextMenu,
     onPaneContextMenu,
     onPaneClick
-  } = useContextMenu();
+  } = useContextMenu(selectedNodes);
 
   const { onDragOver, onNodeDragStop, onDrop } = useDragAndDrop(
       nodes,
@@ -122,37 +126,70 @@ function FlowApp() {
       takeSnapshot
   );
 
+  const addAsset = React.useCallback((asset: any) => {
+      setProject(prev => ({
+          ...prev,
+          assets: [...prev.assets, asset]
+      }));
+  }, [setProject]);
+
+  const startPlayFromNode = React.useCallback((nodeId: string) => {
+      setPlayStartNodeId(nodeId);
+      setIsPlaying(true);
+  }, []);
+
+  const canPlay = React.useMemo(() => {
+      const board = project.boards.find(b => b.id === project.activeBoardId) || project.boards[0];
+      return board && board.nodes.some(n => n.data.label.toLowerCase() === 'start');
+  }, [project.boards, project.activeBoardId]);
+
   // Keyboard shortcuts
   React.useEffect(() => {
       const handleKeyDown = (event: KeyboardEvent) => {
-          // Ignore if input or textarea is focused
-          if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
-              return;
-          }
+        // Ignore if input or textarea is focused
+        if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+          return;
+        }
 
-          if ((event.metaKey || event.ctrlKey) && event.key === 'z') {
-              if (event.shiftKey) {
-                  redo();
-              } else {
-                  undo();
-              }
-              event.preventDefault();
+        // Undo / Redo
+        if ((event.metaKey || event.ctrlKey) && event.key === 'z') {
+          if (event.shiftKey) {
+            redo();
+          } else {
+            undo();
           }
-          if ((event.metaKey || event.ctrlKey) && event.key === 'y') {
-              redo();
-              event.preventDefault();
+          event.preventDefault();
+          return;
+        }
+        if ((event.metaKey || event.ctrlKey) && event.key === 'y') {
+          redo();
+          event.preventDefault();
+          return;
+        }
+
+        // Delete / Backspace: remove selected node(s)
+        if (event.key === 'Delete') {
+          if (selectedNodes.length > 0) {
+            const idsToDelete = selectedNodes.map(n => n.id);
+            // Create a single snapshot for the batch delete and remove nodes + connected edges
+            takeSnapshot();
+            setNodes((nds) => nds.filter(n => !idsToDelete.includes(n.id)));
+            setEdges((eds) => eds.filter(e => !idsToDelete.includes(e.source) && !idsToDelete.includes(e.target)));
+            event.preventDefault();
           }
+        }
       };
 
       document.addEventListener('keydown', handleKeyDown);
       return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo]);
+    }, [undo, redo, selectedNodes, setNodes, setEdges, takeSnapshot]);
 
   const getMenuOptions = useMenuOptions({
       menu,
       nodes,
       edges,
       updateNodeData,
+      updateNode,
       deleteNode,
       setJumpClipboard,
       jumpClipboard,
@@ -161,22 +198,12 @@ function FlowApp() {
       updateEdgeData,
       deleteEdge,
       addNode,
-      reactFlowInstance
+      addAsset,
+      setShowAssetSelectorModal,
+      setSelectedNodeForAsset,
+      reactFlowInstance,
+      startPlayFromNode
   });
-
-  // Memoize nodeTypes and edgeTypes
-  const nodeTypes = useMemo(() => ({
-    elementNode: ElementNode,
-    conditionNode: ConditionNode,
-    jumpNode: JumpNode,
-    commentNode: CommentNode,
-    sectionNode: SectionNode,
-    annotationNode: AnnotationNode,
-  }), []);
-
-  const edgeTypes = useMemo(() => ({
-    floating: FloatingEdge,
-  }), []);
 
   const onConnectStart = React.useCallback(() => {
     setIsConnecting(true);
@@ -209,7 +236,7 @@ function FlowApp() {
         
         <TopToolbar 
             onAddNode={(type) => addNode(type)}
-            onPlay={() => setIsPlaying(true)}
+            onPlay={() => { setPlayStartNodeId(null); setIsPlaying(true); }}
             onExport={() => exportProject(project)}
             lastSaved={lastSaved}
             jumpClipboard={jumpClipboard}
@@ -220,6 +247,7 @@ function FlowApp() {
             onRedo={redo}
             canUndo={canUndo}
             canRedo={canRedo}
+            canPlay={canPlay}
         />
 
         <div className="flex-1 bg-[#0f0f11] relative" ref={reactFlowWrapper}>
@@ -276,7 +304,41 @@ function FlowApp() {
       </div>
 
       {isPlaying && (
-          <PlayMode project={project} onClose={() => setIsPlaying(false)} />
+          <PlayMode project={project} startNodeId={playStartNodeId} onClose={() => { setIsPlaying(false); setPlayStartNodeId(null); }} />
+      )}
+
+      {showAssetSelectorModal && selectedNodeForAsset && (
+          <AssetSelectorModal
+              project={project}
+              currentAssets={nodes.find(n => n.id === selectedNodeForAsset)?.data.assets || []}
+              onSelect={(asset) => {
+                  const node = nodes.find(n => n.id === selectedNodeForAsset);
+                  if (node) {
+                      const currentAssets = node.data.assets || [];
+                      const projectAssets = project.assets;
+                      const nodeAssets = currentAssets.map(id => projectAssets.find(a => a.id === id)).filter(Boolean);
+                      
+                      // Check if asset already exists
+                      if (currentAssets.includes(asset.id)) return;
+                      
+                      // Check if adding a visual asset and there's already one
+                      const isVisual = asset.type === 'image' || asset.type === 'video';
+                      const hasVisual = nodeAssets.some(a => a.type === 'image' || a.type === 'video');
+                      if (isVisual && hasVisual) return;
+                      
+                      updateNode(selectedNodeForAsset, {
+                          style: { ...node.style, height: undefined },
+                          data: { ...node.data, assets: [...currentAssets, asset.id] }
+                      });
+                  }
+                  setShowAssetSelectorModal(false);
+                  setSelectedNodeForAsset(null);
+              }}
+              onClose={() => {
+                  setShowAssetSelectorModal(false);
+                  setSelectedNodeForAsset(null);
+              }}
+          />
       )}
       <style>{`
         .is-connecting .react-flow__handle-source {
@@ -288,6 +350,9 @@ function FlowApp() {
             background-color: #3b82f6 !important;
             transition: all 0.2s ease;
             z-index: 100 !important;
+        }
+        .react-flow__nodesselection-rect {
+            display: none !important;
         }
       `}</style>
     </div>
