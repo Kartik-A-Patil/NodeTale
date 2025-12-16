@@ -9,52 +9,6 @@ import {
 } from "lucide-react";
 import { Variable } from "../types";
 
-// Helper: Save cursor position relative to text content
-const saveCaretPosition = (context: HTMLElement) => {
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) return null;
-  const range = selection.getRangeAt(0);
-  const preSelectionRange = range.cloneRange();
-  preSelectionRange.selectNodeContents(context);
-  preSelectionRange.setEnd(range.startContainer, range.startOffset);
-  return preSelectionRange.toString().length;
-};
-
-// Helper: Restore cursor position
-const restoreCaretPosition = (context: HTMLElement, pos: number) => {
-  const selection = window.getSelection();
-  if (!selection) return;
-  const range = document.createRange();
-  range.setStart(context, 0);
-  range.collapse(true);
-
-  const nodeStack: Node[] = [context];
-  let node: Node | undefined;
-  let foundStart = false;
-  let stop = false;
-  let charIndex = 0;
-
-  while (!stop && (node = nodeStack.pop())) {
-    if (node.nodeType === 3) {
-      const nextCharIndex = charIndex + (node.nodeValue?.length || 0);
-      if (!foundStart && pos >= charIndex && pos <= nextCharIndex) {
-        range.setStart(node, pos - charIndex);
-        range.collapse(true);
-        stop = true;
-      }
-      charIndex = nextCharIndex;
-    } else {
-      let i = node.childNodes.length;
-      while (i--) {
-        nodeStack.push(node.childNodes[i]);
-      }
-    }
-  }
-
-  selection.removeAllRanges();
-  selection.addRange(range);
-};
-
 const ToolbarButton = ({
   icon,
   onClick,
@@ -71,6 +25,7 @@ const ToolbarButton = ({
         : "text-zinc-400 hover:text-white hover:bg-zinc-700"
     }`}
     onClick={onClick}
+    onMouseDown={(e) => e.preventDefault()}
   >
     {icon}
   </button>
@@ -90,65 +45,6 @@ export const RichTextEditor = ({
   const editorRef = useRef<HTMLDivElement>(null);
   const [activeFormats, setActiveFormats] = useState<string[]>([]);
   const [isFocused, setIsFocused] = useState(false);
-  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (editorRef.current) {
-      editorRef.current.innerHTML = initialValue;
-      // Initial Highlight
-      const highlighted = processSyntaxHighlighting(initialValue);
-      if (highlighted !== initialValue) {
-        editorRef.current.innerHTML = highlighted;
-      }
-      // Focus automatically when mounted if it's intended to be editing immediately
-      editorRef.current.focus();
-      setIsFocused(true);
-    }
-  }, []);
-
-  const checkFormats = () => {
-    const formats: string[] = [];
-    if (document.queryCommandState("bold")) formats.push("bold");
-    if (document.queryCommandState("italic")) formats.push("italic");
-    if (document.queryCommandState("underline")) formats.push("underline");
-    if (document.queryCommandState("insertUnorderedList")) formats.push("list");
-
-    const block = document.queryCommandValue("formatBlock");
-    if (block === "blockquote") formats.push("blockquote");
-    if (block === "pre") formats.push("pre");
-
-    setActiveFormats(formats);
-  };
-
-  const handleInput = () => {
-    if (editorRef.current) {
-      const content = editorRef.current.innerHTML;
-      onChange(content);
-      checkFormats();
-
-      // Real-time highlighting debounce
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-
-      typingTimeoutRef.current = setTimeout(() => {
-        if (!editorRef.current) return;
-
-        // Only attempt to highlight if we have a code block to avoid unnecessary DOM thrashing
-        if (content.includes("<pre")) {
-          const caretPos = saveCaretPosition(editorRef.current);
-          const highlighted = processSyntaxHighlighting(
-            editorRef.current.innerHTML
-          );
-
-          if (highlighted !== editorRef.current.innerHTML) {
-            editorRef.current.innerHTML = highlighted;
-            if (caretPos !== null) {
-              restoreCaretPosition(editorRef.current, caretPos);
-            }
-          }
-        }
-      }, 600); // 600ms debounce for "while writing" feel without breaking cursor constantly
-    }
-  };
 
   const processSyntaxHighlighting = (html: string) => {
     const div = document.createElement("div");
@@ -200,6 +96,52 @@ export const RichTextEditor = ({
     return div.innerHTML;
   };
 
+  useEffect(() => {
+    if (editorRef.current) {
+      // Initial Highlight
+      const highlighted = processSyntaxHighlighting(initialValue);
+      editorRef.current.innerHTML = highlighted;
+      
+      // Focus automatically when mounted
+      editorRef.current.focus();
+      setIsFocused(true);
+      
+      // Move cursor to end
+      try {
+        const range = document.createRange();
+        range.selectNodeContents(editorRef.current);
+        range.collapse(false);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      } catch (e) {
+        console.error("Failed to set cursor position", e);
+      }
+    }
+  }, []);
+
+  const checkFormats = () => {
+    const formats: string[] = [];
+    if (document.queryCommandState("bold")) formats.push("bold");
+    if (document.queryCommandState("italic")) formats.push("italic");
+    if (document.queryCommandState("underline")) formats.push("underline");
+    if (document.queryCommandState("insertUnorderedList")) formats.push("list");
+
+    const block = document.queryCommandValue("formatBlock");
+    if (block === "blockquote") formats.push("blockquote");
+    if (block === "pre") formats.push("pre");
+
+    setActiveFormats(formats);
+  };
+
+  const handleInput = () => {
+    if (editorRef.current) {
+      const content = editorRef.current.innerHTML;
+      onChange(content);
+      checkFormats();
+    }
+  };
+
   const exec = (command: string, value: any = null) => {
     editorRef.current?.focus();
 
@@ -221,7 +163,7 @@ export const RichTextEditor = ({
     <div className="relative w-full h-full flex flex-col group">
       {/* Floating Context Menu Toolbar */}
       <div
-        className={`nodrag absolute -top-[100px] left-1/2 -translate-x-1/2 flex items-center gap-1 bg-[#1e1e20] border border-[#27272a] rounded-lg shadow-2xl p-1.5 z-100 transition-opacity duration-200 ${
+        className={`nodrag absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-[#1e1e20] border border-[#27272a] rounded-lg shadow-2xl p-1.5 z-50 transition-opacity duration-200 ${
           isFocused ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
         }`}
         onMouseDown={(e) => e.preventDefault()}

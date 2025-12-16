@@ -1,15 +1,17 @@
-import React, { memo, useState, useRef, useEffect, useCallback } from "react";
+import React, { memo, useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Handle, Position, NodeProps, useReactFlow, useStore, NodeResizeControl } from "reactflow";
 import {
   FileText,
   Image as ImageIcon,
   FileAudio,
   FileVideo,
+  AlertCircle,
 } from "lucide-react";
 import { NodeData, Variable, Asset } from "../../types";
 import clsx from "clsx";
 import { DatePicker } from "@/components/DatePicker";
 import { RichTextEditor } from "../RichTextEditor";
+import JumpTargetBadge from "./JumpTargetBadge";
 
 
 const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
@@ -109,11 +111,24 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
       e.dataTransfer.dropEffect = 'copy';
   };
 
+  // Only store asset IDs in node data
   const projectAssets = data.projectAssets as Asset[] || [];
-  const nodeAssets = (data.assets || []).map(assetId => projectAssets.find(a => a.id === assetId)).filter(Boolean) as Asset[];
-  
+  const nodeAssetIds = data.assets || [];
+  const nodeAssets = nodeAssetIds.map(assetId => projectAssets.find(a => a.id === assetId)).filter(Boolean) as Asset[];
   const visualAssets = nodeAssets.filter(a => a.type === 'image' || a.type === 'video');
   const audioAssets = nodeAssets.filter(a => a.type === 'audio');
+
+  const hasError = useMemo(() => {
+    if (!data.content) return false;
+    // Check for {{variable}} pattern
+    const regex = /\{\{([^}]+)\}\}/g;
+    let match;
+    while ((match = regex.exec(data.content)) !== null) {
+        const varName = match[1].trim();
+        if (!data.variables?.some(v => v.name === varName)) return true;
+    }
+    return false;
+  }, [data.content, data.variables]);
 
   return (
     <>
@@ -169,7 +184,7 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
         }}
       />
       <div
-        className="p-2 rounded-t-md flex items-center justify-between"
+        className="p-2 pr-10 rounded-t-md flex items-center justify-between relative"
         style={{
           backgroundColor: data.color ? `${data.color}60` : "#18181b",
         }}
@@ -211,6 +226,7 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
                 <ImageIcon size={14} className="text-zinc-500 shrink-0" />
             )}
         </div>
+        <JumpTargetBadge nodeId={id} />
       </div>
 
       {/* Body */}
@@ -386,6 +402,13 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
         .markdown-content .text-zinc-400 { color: #a1a1aa; }
         .markdown-content .text-purple-400 { color: #a78bfa; }
       `}</style>
+
+      {/* Error Badge */}
+      {hasError && (
+        <div className="absolute -bottom-2 -right-2 bg-red-500 text-white rounded-full p-0.5 shadow-lg z-50" title="Missing variable in content">
+            <AlertCircle size={12} />
+        </div>
+      )}
     </div>
     </>
   );

@@ -6,7 +6,7 @@ Keep this short and focused — the goal is to make an AI coding agent immediate
 - **Start / Build:** `bun install` then `bun run dev` (Vite dev server). Production build: `bun run build` and `bun run preview`.
 
 - **Key directories:**
-  - `components/` — UI building blocks; main app pieces are `TopToolbar.tsx`, `SidebarLeft.tsx`, `TimelineView.tsx`, `RichTextEditor.tsx`.
+  - `components/` — UI building blocks; main app pieces are `TopToolbar.tsx`, `SidebarLeft.tsx`, `RichTextEditor.tsx`.
   - `components/nodes/` — React Flow custom nodes (e.g. `AnnotationNode.tsx`, `CommentNode.tsx`, `JumpNode.tsx`). These use `NodeProps<NodeData>` and `useReactFlow`.
   - `edge/` — custom edge components (e.g. `FloatingEdge.tsx`).
   - `hooks/` — project hooks that encapsulate behavior (e.g. `useProjectState.ts`, `useFlowLogic.ts`, `useDragAndDrop.ts`, `useContextMenu.ts`). Prefer adding behavior here rather than scattering global state.

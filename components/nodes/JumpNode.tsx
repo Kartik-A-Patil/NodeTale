@@ -14,6 +14,10 @@ const JumpNode = ({ id, data, selected }: NodeProps<NodeData>) => {
   const handleTargetChange = (targetId: string) => {
       const allNodes = getNodes();
       const target = allNodes.find(n => n.id === targetId);
+      if (!target || target.type === 'jumpNode') {
+        setIsEditing(false);
+        return;
+      }
       
       setNodes((nds) =>
         nds.map((node) => {
@@ -33,11 +37,19 @@ const JumpNode = ({ id, data, selected }: NodeProps<NodeData>) => {
       setIsEditing(false);
   };
 
-  const availableTargets = isEditing ? getNodes().filter(n => n.id !== id && n.type !== 'jumpNode') : [];
+  // Exclude Jump/Comment/Section nodes from being targets
+  const blockedTypes = ['jump', 'comment', 'section'];
+  const availableTargets = isEditing
+    ? getNodes().filter((n) => {
+        if (n.id === id) return false;
+        const type = String(n.type || '').toLowerCase();
+        return !blockedTypes.some((blocked) => type.includes(blocked));
+      })
+    : [];
 
   return (
     <div
-      className={`px-3 py-2 bg-[#18181b] border-2 rounded-lg flex items-center gap-3 min-w-[160px] transition-all relative ${
+      className={`px-3 py-2 bg-[#18181b] border rounded-lg flex items-center gap-3 min-w-[160px] transition-all relative ${
         selected ? 'shadow-lg' : ''
       } ${isTarget ? "hover:!border-blue-500 hover:bg-blue-500/5 hover:shadow-[0_0_20px_rgba(59,130,246,0.3)]" : ""}`}
       style={{ 

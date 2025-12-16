@@ -12,7 +12,7 @@ import {
 import { AppNode } from '../types';
 import { useProjectState } from './useProjectState';
 
-export function useFlowLogic() {
+export function useFlowLogic(projectIdOrName?: string) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   
@@ -54,7 +54,58 @@ export function useFlowLogic() {
       setEdges(next.edges);
   }, [future, nodes, edges, setNodes, setEdges]);
 
-  const { project, setProject, isInitializing, lastSaved } = useProjectState(nodes, edges, setNodes, setEdges);
+    const { project, setProject, isInitializing, lastSaved, saveNow } = useProjectState(nodes, edges, setNodes, setEdges, projectIdOrName);
+
+    // Clipboard for copy/paste (stores nodes + edges snapshot)
+    const clipboardRef = useRef<{ nodes: AppNode[]; edges: Edge[] } | null>(null);
+
+    const copySelected = useCallback(() => {
+        const selected = nodes.filter(n => n.selected) as AppNode[];
+        if (selected.length === 0) return;
+
+        const selectedIds = new Set(selected.map(n => n.id));
+        const relatedEdges = edges.filter(e => selectedIds.has(e.source) && selectedIds.has(e.target));
+
+        // Deep clone to avoid referencing original objects
+        const clonedNodes = selected.map(n => ({ ...n, data: { ...n.data } }));
+        const clonedEdges = relatedEdges.map(e => ({ ...e, data: { ...e.data } }));
+
+        clipboardRef.current = { nodes: clonedNodes, edges: clonedEdges };
+    }, [nodes, edges]);
+
+    const pasteClipboard = useCallback(() => {
+        if (!clipboardRef.current) return;
+        const { nodes: copiedNodes, edges: copiedEdges } = clipboardRef.current;
+
+        takeSnapshot();
+
+        // Map old ids to new ids
+        const idMap: Record<string, string> = {};
+        const newNodes: AppNode[] = copiedNodes.map(n => {
+            const newId = `node-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+            idMap[n.id] = newId;
+            return {
+                ...n,
+                id: newId,
+                position: { x: (n.position?.x || 0) + 20, y: (n.position?.y || 0) + 20 },
+                selected: true
+            } as AppNode;
+        });
+
+        const newEdges: Edge[] = copiedEdges.map(e => {
+            const newId = `e-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+            return {
+                ...e,
+                id: newId,
+                source: idMap[e.source] || e.source,
+                target: idMap[e.target] || e.target
+            } as Edge;
+        });
+
+        // Deselect existing nodes and append new ones
+        setNodes(nds => nds.map(n => ({ ...n, selected: false })).concat(newNodes));
+        setEdges(eds => eds.concat(newEdges));
+    }, [takeSnapshot, setNodes, setEdges]);
 
   // Migration for edge design
   useEffect(() => {
@@ -205,7 +256,7 @@ export function useFlowLogic() {
           text: '',
           ...extraData
       },
-      zIndex: type === 'sectionNode' ? -1 : undefined,
+      zIndex: type === 'sectionNode' ? -1 : type === 'commentNode' ? -10 : undefined,
       style: type === 'sectionNode' ? { width: 400, height: 300, ...extraData?.style } : extraData?.style,
     };
     setNodes(nds => [...nds, newNode]);
@@ -289,6 +340,9 @@ export function useFlowLogic() {
     setProject,
     isInitializing,
     lastSaved,
+    saveNow,
+    copySelected,
+    pasteClipboard,
     jumpClipboard,
     setJumpClipboard,
     undo,

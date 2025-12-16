@@ -1,6 +1,7 @@
 import React, { memo, useState } from 'react';
 import { NodeProps, NodeResizeControl, useReactFlow } from 'reactflow';
 import { NodeData } from '../../types';
+import JumpTargetBadge from './JumpTargetBadge';
 
 const SectionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
   const { setNodes } = useReactFlow();
@@ -47,6 +48,7 @@ const SectionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
           boxShadow: selected ? `0 0 20px ${primaryColor}20` : 'none'
         }}
       >
+        <JumpTargetBadge nodeId={id} />
         {/* Title - Outside Top Left */}
         <div className="absolute -top-8 left-0 h-6 flex items-center">
             {isEditingTitle ? (

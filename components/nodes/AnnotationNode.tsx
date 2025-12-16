@@ -1,6 +1,7 @@
 import React, { memo, useState } from "react";
 import { NodeProps, useReactFlow } from "reactflow";
 import { NodeData } from "../../types";
+import JumpTargetBadge from "./JumpTargetBadge";
 
 const AnnotationNode = ({ id, data }: NodeProps<NodeData>) => {
   const { setNodes } = useReactFlow();
@@ -8,10 +9,18 @@ const AnnotationNode = ({ id, data }: NodeProps<NodeData>) => {
     null
   );
 
+  // Only store asset IDs in node data
   const handleChange = (field: string, value: string) => {
     setNodes((nds) =>
       nds.map((node) => {
         if (node.id === id) {
+          // If updating assets, ensure only IDs are stored
+          if (field === 'assets') {
+            return {
+              ...node,
+              data: { ...node.data, assets: value }
+            };
+          }
           return {
             ...node,
             data: { ...node.data, [field]: value }
@@ -60,6 +69,7 @@ const AnnotationNode = ({ id, data }: NodeProps<NodeData>) => {
       className="relative flex flex-col max-w-[250px] select-none group"
       style={{ color: color }}
     >
+      <JumpTargetBadge nodeId={id} />
       <div className="flex items-center gap-2 mb-1">
         {editingField === "label" ? (
           <input

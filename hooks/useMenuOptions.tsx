@@ -191,7 +191,10 @@ export function useMenuOptions({
                     label: 'Add Condition Case',
                     icon: <GitFork size={14} />,
                     onClick: () => {
-                         const branches = node.data.branches || [];
+                         const branches = node.data.branches || [
+                            { id: 'true', label: 'If', condition: 'true' },
+                            { id: 'false', label: 'Else', condition: '' }
+                         ];
                          const elseIdx = branches.findIndex((b: any) => b.label === 'Else');
                          const newBranch = { id: `branch-${Date.now()}`, label: 'Else If', condition: 'var == true' };
                          const newBranches = [...branches];

@@ -36,7 +36,7 @@ export interface Branch {
 export interface NodeData {
   label: string;
   content: string; // HTML/Rich text content
-  assets?: string[]; // Asset IDs
+  assets?: string[]; // Asset IDs only, not objects
   variables?: Variable[]; // Inject global variables for highlighting context
   
   // Logic
@@ -73,4 +73,5 @@ export interface Project {
   variables: Variable[];
   assets: Asset[];
   folders: Folder[];
+  coverImage?: string; // Base64 or URL
 }

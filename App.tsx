@@ -1,4 +1,5 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
+import { BrowserRouter, Routes, Route, useParams, useNavigate } from 'react-router-dom';
 import ReactFlow, { 
   Background, 
   Controls, 
@@ -16,13 +17,14 @@ import ContextMenu from './components/ContextMenu';
 import PlayMode from './components/PlayMode';
 import { AssetSelectorModal } from './components/AssetSelectorModal';
 import { TopToolbar } from './components/TopToolbar';
-import { TimelineView } from './components/TimelineView';
+import { TimelineView } from './components/timeline/TimelineView';
 import { useFlowLogic } from './hooks/useFlowLogic';
 import { useContextMenu } from './hooks/useContextMenu';
 import { useDragAndDrop } from './hooks/useDragAndDrop';
 import { useMenuOptions } from './hooks/useMenuOptions';
 import { exportProject } from './utils/projectUtils';
 import { nodeTypes as initialNodeTypes, edgeTypes as initialEdgeTypes } from './components/flowConfig';
+import { Dashboard } from './components/Dashboard';
 
 const CustomControls = ({ isPanMode, setIsPanMode }: { isPanMode: boolean, setIsPanMode: (v: boolean) => void }) => {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
@@ -60,7 +62,9 @@ const CustomControls = ({ isPanMode, setIsPanMode }: { isPanMode: boolean, setIs
   );
 };
 
-function FlowApp() {
+function ProjectEditor() {
+  const { projectId } = useParams();
+  const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<'flow' | 'timeline'>('flow');
   const [isPlaying, setIsPlaying] = useState(false);
   const [playStartNodeId, setPlayStartNodeId] = useState<string | null>(null);
@@ -97,6 +101,9 @@ function FlowApp() {
     setProject,
     isInitializing,
     lastSaved,
+    saveNow,
+    copySelected,
+    pasteClipboard,
     jumpClipboard,
     setJumpClipboard,
     undo,
@@ -105,32 +112,37 @@ function FlowApp() {
     canRedo,
     onNodeDragStart,
     takeSnapshot
-  } = useFlowLogic();
+  } = useFlowLogic(projectId);
 
-  const selectedNodes = React.useMemo(() => nodes.filter(n => n.selected), [nodes]);
+  const selectedNodes = useMemo(() => nodes.filter(n => n.selected), [nodes]);
 
-  const {
-    menu,
-    setMenu,
-    onNodeContextMenu,
-    onEdgeContextMenu,
-    onPaneContextMenu,
-    onPaneClick
-  } = useContextMenu(selectedNodes);
+  // Memoize context menu handlers to avoid rerendering
+  const contextMenu = useContextMenu(selectedNodes);
+  const menu = contextMenu.menu;
+  const setMenu = contextMenu.setMenu;
+  const onNodeContextMenu = useCallback(contextMenu.onNodeContextMenu, [contextMenu]);
+  const onEdgeContextMenu = useCallback(contextMenu.onEdgeContextMenu, [contextMenu]);
+  const onPaneContextMenu = useCallback(contextMenu.onPaneContextMenu, [contextMenu]);
+  const onPaneClick = useCallback(contextMenu.onPaneClick, [contextMenu]);
 
-  const { onDragOver, onNodeDragStop, onDrop } = useDragAndDrop(
-      nodes,
-      setNodes,
-      reactFlowInstance,
-      reactFlowWrapper,
-      takeSnapshot
+  // Memoize drag and drop handlers
+  const dragDropHandlers = useDragAndDrop(
+    nodes,
+    setNodes,
+    reactFlowInstance,
+    reactFlowWrapper,
+    takeSnapshot
   );
+  const onDragOver = useCallback(dragDropHandlers.onDragOver, [dragDropHandlers]);
+  const onNodeDragStop = useCallback(dragDropHandlers.onNodeDragStop, [dragDropHandlers]);
+  const onDrop = useCallback(dragDropHandlers.onDrop, [dragDropHandlers]);
 
-  const addAsset = React.useCallback((asset: any) => {
-      setProject(prev => ({
-          ...prev,
-          assets: [...prev.assets, asset]
-      }));
+  // Memoize addAsset callback
+  const addAsset = useCallback((asset: any) => {
+    setProject(prev => ({
+      ...prev,
+      assets: [...prev.assets, asset]
+    }));
   }, [setProject]);
 
   const startPlayFromNode = React.useCallback((nodeId: string) => {
@@ -178,11 +190,37 @@ function FlowApp() {
             event.preventDefault();
           }
         }
+        // Save: Ctrl+S / Cmd+S
+        if ((event.metaKey || event.ctrlKey) && (event.key === 's' || event.key === 'S')) {
+          if (typeof saveNow === 'function') {
+            saveNow();
+            event.preventDefault();
+          }
+          return;
+        }
+
+        // Copy nodes: Ctrl+C / Cmd+C
+        if ((event.metaKey || event.ctrlKey) && (event.key === 'c' || event.key === 'C')) {
+          if (typeof copySelected === 'function') {
+            copySelected();
+            event.preventDefault();
+          }
+          return;
+        }
+
+        // Paste nodes: Ctrl+V / Cmd+V
+        if ((event.metaKey || event.ctrlKey) && (event.key === 'v' || event.key === 'V')) {
+          if (typeof pasteClipboard === 'function') {
+            pasteClipboard();
+            event.preventDefault();
+          }
+          return;
+        }
       };
 
       document.addEventListener('keydown', handleKeyDown);
       return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [undo, redo, selectedNodes, setNodes, setEdges, takeSnapshot]);
+    }, [undo, redo, selectedNodes, setNodes, setEdges, takeSnapshot, saveNow, copySelected, pasteClipboard]);
 
   const getMenuOptions = useMenuOptions({
       menu,
@@ -239,6 +277,7 @@ function FlowApp() {
             onPlay={() => { setPlayStartNodeId(null); setIsPlaying(true); }}
             onExport={() => exportProject(project)}
             lastSaved={lastSaved}
+          onSave={saveNow}
             jumpClipboard={jumpClipboard}
             setJumpClipboard={setJumpClipboard}
             viewMode={viewMode}
@@ -289,7 +328,30 @@ function FlowApp() {
             <CustomControls isPanMode={isPanMode} setIsPanMode={setIsPanMode} />
           </ReactFlow>
           ) : (
-            <TimelineView nodes={nodesWithContext} />
+            <TimelineView 
+              nodes={nodesWithContext} 
+              onNodeClick={(nodeId) => {
+                setViewMode('flow');
+                setTimeout(() => {
+                  // Select the node
+                  setNodes(nds => nds.map(n => ({
+                    ...n,
+                    selected: n.id === nodeId
+                  })));
+                  
+                  // Find the node and center/zoom to it
+                  const targetNode = nodes.find(n => n.id === nodeId);
+                  if (targetNode && reactFlowInstance) {
+                    reactFlowInstance.fitView({
+                      nodes: [{ id: nodeId }],
+                      duration: 500,
+                      padding: 0.5,
+                      maxZoom: 1.5
+                    });
+                  }
+                }, 150);
+              }}
+            />
           )}
 
           {menu && viewMode === 'flow' && (
@@ -361,8 +423,15 @@ function FlowApp() {
 
 export default function App() {
   return (
-    <ReactFlowProvider>
-      <FlowApp />
-    </ReactFlowProvider>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/:projectId" element={
+          <ReactFlowProvider>
+            <ProjectEditor />
+          </ReactFlowProvider>
+        } />
+      </Routes>
+    </BrowserRouter>
   );
 }

@@ -2,10 +2,23 @@ import React, { memo, useState } from 'react';
 import { NodeProps, useReactFlow, NodeResizeControl } from 'reactflow';
 import { NodeData } from '../../types';
 import { RichTextEditor } from '../RichTextEditor';
+import JumpTargetBadge from './JumpTargetBadge';
 
 const CommentNode = ({ id, data, selected }: NodeProps<NodeData>) => {
   const { setNodes } = useReactFlow();
   const [isEditing, setIsEditing] = useState(false);
+
+  // Ensure CommentNode is always at the bottom (z-index -10)
+  React.useEffect(() => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === id && node.zIndex !== -10) {
+          return { ...node, zIndex: -10 };
+        }
+        return node;
+      })
+    );
+  }, [id, setNodes]);
 
   const handleChange = (val: string) => {
     setNodes((nds) =>
@@ -27,7 +40,7 @@ const CommentNode = ({ id, data, selected }: NodeProps<NodeData>) => {
   return (
     <>
       <div
-        className={`h-full w-full min-w-[250px] min-h-[200px] rounded-sm shadow-sm transition-all flex flex-col group backdrop-blur-sm`}
+        className={`h-full w-full min-w-[250px] min-h-[200px] rounded-sm shadow-sm transition-all flex flex-col group relative backdrop-blur-sm`}
         style={{
           // Append 80 for approx 50% opacity hex code
           backgroundColor: `${baseColor}40`, 
@@ -35,7 +48,7 @@ const CommentNode = ({ id, data, selected }: NodeProps<NodeData>) => {
         }}
         onDoubleClick={() => setIsEditing(true)}
       >
-        
+        <JumpTargetBadge nodeId={id} />
         <div className="flex-1 relative min-h-0 p-4">
           {isEditing ? (
               <div className="nodrag h-full w-full cursor-text">

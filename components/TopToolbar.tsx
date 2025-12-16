@@ -15,6 +15,7 @@ interface TopToolbarProps {
   canUndo: boolean;
   canRedo: boolean;
   canPlay: boolean;
+    onSave?: () => void;
 }
 
 export const TopToolbar: React.FC<TopToolbarProps> = ({ 
@@ -30,7 +31,8 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
   onRedo,
   canUndo,
   canRedo,
-  canPlay
+  canPlay,
+  onSave
 }) => {
   const onDragStart = (event: React.DragEvent, nodeType: string, label: string) => {
     event.dataTransfer.setData('application/reactflow/type', nodeType);
@@ -138,8 +140,11 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
               <Play size={14} fill="currentColor" /> Play
           </button>
           {!canPlay && <AlertTriangle size={14} className="text-red-500" title="No 'Start' node found" />}
-          <button onClick={onExport} className="p-2 text-zinc-400 hover:text-white transition-colors">
+         <button onClick={onExport} className="p-2 text-zinc-400 hover:text-white transition-colors">
               <Download size={18} />
+          </button>
+         <button onClick={onSave} className="p-2 text-zinc-400 hover:text-white transition-colors" title="Save (Ctrl+S)">
+              Save
           </button>
       </div>
     </div>

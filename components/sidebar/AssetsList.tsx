@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { saveAsset } from '../../services/storageService';
 import { Project, Asset, Folder } from '../../types';
 import { 
   Folder as FolderIcon,
@@ -72,7 +73,7 @@ export const AssetsList: React.FC<AssetsListProps> = ({ project, setProject }) =
       if (!file) return;
 
       const reader = new FileReader();
-      reader.onload = (event) => {
+      reader.onload = async (event) => {
           if (event.target?.result) {
               let type: 'image' | 'audio' | 'video' = 'image';
               if (file.type.startsWith('audio/')) type = 'audio';
@@ -85,6 +86,7 @@ export const AssetsList: React.FC<AssetsListProps> = ({ project, setProject }) =
                   url: event.target.result as string,
                   parentId: null // Upload to root by default
               };
+              await saveAsset(newAsset);
               setProject(prev => ({
                   ...prev,
                   assets: [...prev.assets, newAsset]
