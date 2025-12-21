@@ -11,6 +11,13 @@ export const DatePicker = ({ date, onChange }: DatePickerProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const containerRef = useRef<HTMLDivElement>(null);
+  const parsedDate = date ? new Date(date) : null;
+  const dateLabel = parsedDate
+    ? parsedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
+    : '';
+  const timeLabel = parsedDate
+    ? parsedDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+    : '';
 
   // Initialize current month from prop
   useEffect(() => {
@@ -103,21 +110,29 @@ export const DatePicker = ({ date, onChange }: DatePickerProps) => {
   };
 
   return (
-    <div className="relative" ref={containerRef}>
-      <div 
+    <div className="relative group" ref={containerRef}>
+      <button
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="group/date flex items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-zinc-700/50 transition-colors cursor-pointer"
+        className="flex items-center gap-1 px-1.5 py-0.5 rounded-md hover:bg-zinc-800/60 transition-colors cursor-pointer border border-transparent hover:border-zinc-700"
+        title={date ? `${dateLabel} • ${timeLabel || 'No time'}` : 'Add date'}
       >
-        <CalendarIcon 
-            size={14} 
-            className={`shrink-0 transition-colors ${date ? 'text-blue-400' : 'text-zinc-500 group-hover/date:text-zinc-300'}`} 
+        <CalendarIcon
+          size={14}
+          className={`shrink-0 transition-colors ${date ? 'text-blue-300' : 'text-zinc-500 group-hover:text-zinc-200'}`}
         />
-        {date && (
-            <span className="text-[10px] text-gray-400 font-mono font-medium pt-0.5">
-                {new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
-            </span>
-        )}
-      </div>
+      </button>
+
+      {date && (
+        <div
+          className={`pointer-events-none absolute left-1/2 -translate-x-1/2 -bottom-9 rounded-md bg-black/80 border border-white/5 px-2 py-1 shadow-lg transition-opacity duration-150 ${
+            isOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          }`}
+        >
+          <div className="text-[10px] text-zinc-200 font-medium text-center leading-tight">{dateLabel}</div>
+          {timeLabel && <div className="text-[10px] text-zinc-400 font-mono text-center">{timeLabel}</div>}
+        </div>
+      )}
 
       {isOpen && (
         <div className="absolute top-full right-0 mt-2 bg-[#18181b] border border-zinc-700 rounded-lg shadow-xl p-3 z-50 w-56 nodrag cursor-default" onClick={e => e.stopPropagation()}>

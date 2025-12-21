@@ -218,15 +218,7 @@ const ConditionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
       <div
         className={clsx(
             getBorderClass(
-                // Check if any handle connected to 'target' or generic connection exists
-                // Since we don't have a specific ID for this handle, we might need to check generic connectivity
-                // For now, let's rely on data.connectedHandles if it contains 'target' or similar, 
-                // but since I don't know the exact ID logic for default handles, I'll check if the array is non-empty and contains a null/undefined match or just rely on hover for now if unsure.
-                // Actually, let's assume the parent passes 'target' or the node ID. 
-                // If I look at ElementNode, it checks for 'target-left'.
-                // I'll check for 'target' or just use hover for now to be safe, or check if data.connectedHandles has anything.
-                // Better: check if data.connectedHandles includes the handle id. The handle id is null here.
-                // Let's try to match ElementNode's style.
+               
                 data.connectedHandles?.includes('target') || false 
             ),
             "top-[4px] -left-2 bottom-[4px] w-[8px] rounded-l-lg"
@@ -245,7 +237,7 @@ const ConditionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
           return (
             <div 
                 key={branch.id} 
-                className="relative flex items-center h-10 pr-3 border-b border-zinc-700/50 last:border-0 group hover:bg-zinc-900/30 transition-colors"
+                className="relative flex items-center h-10 pr-3 border-b border-zinc-700/50 last:border-0 group transition-colors"
             >
                 {/* Keyword */}
                 <span 
@@ -283,7 +275,7 @@ const ConditionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
                     type="source"
                     position={Position.Right}
                     id={branch.id}
-                    className={`!w-3 !h-3 !right-[-5px] transition-all hover:!w-3.5 hover:!h-3.5 ${isConnected ? "opacity-0" : "!border-zinc-400 bg-black "}`}
+                    className={`!w-3 !h-3 !right-[-5px] z-100 transition-all hover:!w-3.5 hover:!h-3.5 ${isConnected ? "opacity-0" : "!border-zinc-400 bg-black "}`}
                 />
             </div>
           );

@@ -48,6 +48,52 @@ export const usePlayModeLogic = (
   const currentNode = currentNodeContext?.node;
   const currentBoard = currentNodeContext?.board;
 
+  const toJSValue = (variable: Variable) => {
+    if (variable.type === VariableType.ARRAY) {
+      const val = variable.value as any;
+      return Array.isArray(val?.elements) ? [...val.elements] : [];
+    }
+
+    if (variable.type === VariableType.OBJECT) {
+      const obj = variable.value as any;
+      if (obj && typeof obj === "object" && obj.keys) {
+        return Object.fromEntries(
+          Object.entries(obj.keys).map(([k, v]: any) => [k, v.value])
+        );
+      }
+      return {};
+    }
+
+    return variable.value;
+  };
+
+  const toArrayValue = (jsValue: any, prev: Variable): any => {
+    const prevVal: any = prev.value;
+    const elementType = prevVal?.elementType || VariableType.STRING;
+    if (!Array.isArray(jsValue)) {
+      return prevVal?.elements ? { elementType, elements: [...prevVal.elements] } : { elementType, elements: [] };
+    }
+    return { elementType, elements: [...jsValue] };
+  };
+
+  const toObjectValue = (jsValue: any, prev: Variable): any => {
+    const prevVal: any = prev.value;
+    const entries =
+      jsValue && typeof jsValue === "object" && !Array.isArray(jsValue)
+        ? Object.entries(jsValue)
+        : [];
+
+    const keys = entries.reduce((acc: any, [k, v]) => {
+      let type = VariableType.STRING;
+      if (typeof v === "boolean") type = VariableType.BOOLEAN;
+      else if (typeof v === "number") type = VariableType.NUMBER;
+      acc[k] = { type, value: v };
+      return acc;
+    }, {} as Record<string, any>);
+
+    return { keys: Object.keys(keys).length ? keys : prevVal?.keys || {} };
+  };
+
   const executeNodeScript = useCallback(
     (content: string) => {
       const parser = new DOMParser();
@@ -56,50 +102,46 @@ export const usePlayModeLogic = (
 
       if (preBlocks.length === 0) return;
 
-      const newRuntimeVars = [...runtimeVars];
-      let hasUpdates = false;
+      // Collect the combined code from all <pre> blocks
+      const code = Array.from(preBlocks)
+        .map((block) => block.textContent || block.innerText || "")
+        .join("\n");
 
-      preBlocks.forEach((block) => {
-        const text = block.innerText;
-        const lines = text.split("\n");
-
-        lines.forEach((line) => {
-          const trimmed = line.trim();
-          if (!trimmed) return;
-
-          let operator = "";
-          if (trimmed.includes("=")) operator = "=";
-
-          if (!operator) return;
-
-          const [left, right] = trimmed.split("=").map((s) => s.trim());
-          const targetVarIndex = newRuntimeVars.findIndex(
-            (v) => v.name === left
-          );
-
-          if (targetVarIndex !== -1) {
-            const targetVar = newRuntimeVars[targetVarIndex];
-            let newValue: any = right;
-
-            if (targetVar.type === VariableType.NUMBER) {
-              newValue = Number(right);
-            } else if (targetVar.type === VariableType.BOOLEAN) {
-              newValue = right === "true";
-            } else {
-              newValue = right.replace(/['"]/g, "");
-            }
-
-            if (!isNaN(newValue) || targetVar.type !== VariableType.NUMBER) {
-              newRuntimeVars[targetVarIndex] = {
-                ...targetVar,
-                value: newValue,
-              };
-              hasUpdates = true;
-            }
-          }
-        });
+      // Build an execution scope from runtime variables
+      const scope: Record<string, any> = {};
+      runtimeVars.forEach((variable) => {
+        scope[variable.name] = toJSValue(variable);
       });
 
+      const runner = new Function(
+        "vars",
+        "console",
+        `try { with (vars) { ${code} } return { vars }; } catch (err) { console.warn('[PlayMode] Script error', err); return { vars, error: err?.message }; }`
+      );
+
+      const result = runner(scope, console);
+
+      if (result?.error) {
+        console.warn("[PlayMode] Script runtime error:", result.error);
+      }
+
+      const newRuntimeVars = runtimeVars.map((v) => {
+        if (!(v.name in result.vars)) return v;
+        const updated = result.vars[v.name];
+
+        if (v.type === VariableType.ARRAY) {
+          return { ...v, value: toArrayValue(updated, v) };
+        }
+
+        if (v.type === VariableType.OBJECT) {
+          return { ...v, value: toObjectValue(updated, v) };
+        }
+
+        return { ...v, value: updated };
+      });
+
+      // Detect any change by shallow compare
+      const hasUpdates = newRuntimeVars.some((v, idx) => v.value !== runtimeVars[idx].value);
       if (hasUpdates) {
         setRuntimeVars(newRuntimeVars);
       }

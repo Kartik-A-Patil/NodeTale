@@ -2,8 +2,7 @@ import React, { useCallback } from 'react';
 import { 
     GitFork, ArrowRightCircle, Copy as CopyIcon, Trash2, PlusCircle, 
     MessageSquare, Layout, Info, ArrowUpLeft, ArrowUpRight, 
-    ArrowDownLeft, ArrowDownRight, Minus, CornerDownRight, Spline,
-    Image as ImageIcon, Play
+    ArrowDownLeft, ArrowDownRight, MoveUpLeft, CornerDownRight, Spline, Image as ImageIcon, Play
 } from 'lucide-react';
 import { ContextMenuOption } from '../components/ContextMenu';
 import { AppNode, Asset } from '../types';
@@ -295,15 +294,15 @@ export function useMenuOptions({
                 items: [
                     { 
                         label: 'Straight', 
-                        icon: <Minus size={18} />, 
+                        icon: <MoveUpLeft size={18} />, 
                         onClick: () => updateEdgeData(menu.id!, { pathType: 'straight' }),
                         active: edge?.data?.pathType === 'straight'
                     },
                     { 
-                        label: 'Step', 
+                        label: 'Smooth Stepper', 
                         icon: <CornerDownRight size={18} />, 
-                        onClick: () => updateEdgeData(menu.id!, { pathType: 'step' }),
-                        active: edge?.data?.pathType === 'step' || edge?.data?.pathType === 'smoothstep'
+                        onClick: () => updateEdgeData(menu.id!, { pathType: 'smoothstep' }),
+                        active: edge?.data?.pathType === 'smoothstep'
                     },
                     { 
                         label: 'Bezier', 

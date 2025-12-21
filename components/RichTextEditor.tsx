@@ -7,7 +7,11 @@ import {
   List,
   Quote
 } from "lucide-react";
+import Prism from "prismjs";
+import "prismjs/components/prism-javascript";
 import { Variable } from "../types";
+// Note: syntax highlighting in the editor was removed to avoid duplicated markup glitches
+// when switching between edit/view states. Highlighting now happens only in the read-only view.
 
 const ToolbarButton = ({
   icon,
@@ -31,6 +35,107 @@ const ToolbarButton = ({
   </button>
 );
 
+const sanitizeHtmlContent = (html: string) => {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html || "", "text/html");
+
+  doc.querySelectorAll("script, style").forEach((el) => el.remove());
+  doc.body.querySelectorAll("*").forEach((el) => {
+    Array.from(el.attributes).forEach((attr) => {
+      if (attr.name.toLowerCase().startsWith("on")) {
+        el.removeAttribute(attr.name);
+      }
+    });
+  });
+
+  return doc.body.innerHTML;
+};
+
+// Remove previous variable highlight spans so we don't nest them
+const stripHighlightSpans = (html: string) => {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html || "", "text/html");
+  doc.querySelectorAll('span[data-variable]').forEach((span) => {
+    const textNode = doc.createTextNode(span.textContent || "");
+    span.replaceWith(textNode);
+  });
+  return doc.body.innerHTML;
+};
+
+const highlightVariables = (html: string) => {
+  return html.replace(/\{\{([^}]+)\}\}/g, (match, varName) => {
+    const name = (varName || "").trim();
+    return `<span data-variable="${name}" style="color: #8c8c8c;">${match}</span>`;
+  });
+};
+
+const highlightVariablesSafe = (html: string) => {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html || "", "text/html");
+
+  const walker = doc.createTreeWalker(
+    doc.body,
+    NodeFilter.SHOW_TEXT,
+    {
+      acceptNode(node) {
+        let parent = node.parentElement;
+        while (parent) {
+          if (parent.tagName.toLowerCase() === "pre") {
+            return NodeFilter.FILTER_REJECT;
+          }
+          parent = parent.parentElement;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    }
+  );
+
+  const replacements: { node: Text; frag: DocumentFragment }[] = [];
+
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text;
+    const text = node.nodeValue || "";
+    const parts = text.split(/(\{\{[^}]+\}\})/);
+
+    if (parts.length > 1) {
+      const frag = doc.createDocumentFragment();
+      parts.forEach((part) => {
+        if (/\{\{[^}]+\}\}/.test(part)) {
+          const name = part.slice(2, -2).trim();
+          const span = doc.createElement("span");
+          span.setAttribute("data-variable", name);
+          span.setAttribute("style", "color: #8c8c8c;");
+          span.textContent = part;
+          frag.appendChild(span);
+        } else {
+          frag.appendChild(doc.createTextNode(part));
+        }
+      });
+      replacements.push({ node, frag });
+    }
+  }
+
+  replacements.forEach(({ node, frag }) => {
+    node.parentNode?.replaceChild(frag, node);
+  });
+
+  return doc.body.innerHTML;
+};
+
+const highlightCodeBlocks = (html: string) => {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html || "", "text/html");
+
+  doc.querySelectorAll("pre").forEach((pre) => {
+    const codeText = pre.textContent || "";
+    const highlighted = Prism.highlight(codeText, Prism.languages.javascript, "javascript");
+    pre.classList.add("language-javascript");
+    pre.innerHTML = highlighted;
+  });
+
+  return doc.body.innerHTML;
+};
+
 export const RichTextEditor = ({
   initialValue,
   onChange,
@@ -45,61 +150,22 @@ export const RichTextEditor = ({
   const editorRef = useRef<HTMLDivElement>(null);
   const [activeFormats, setActiveFormats] = useState<string[]>([]);
   const [isFocused, setIsFocused] = useState(false);
+  const isUpdatingRef = useRef(false);
+  const highlightTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
-  const processSyntaxHighlighting = (html: string) => {
-    const div = document.createElement("div");
-    div.innerHTML = html;
-
-    const pres = div.querySelectorAll("pre");
-    if (pres.length === 0) return html;
-
-    pres.forEach((pre) => {
-      const rawText = pre.innerText;
-
-      let safeText = rawText
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-
-      // Highlight Operators
-      safeText = safeText.replace(
-        /([=+\-*/%&|<>!])/g,
-        '<span class="text-white" style="color: #ffffff;">$1</span>'
-      );
-
-      // Highlight Numbers
-      safeText = safeText.replace(
-        /\b(\d+)\b/g,
-        '<span class="text-purple-400" style="color: #a78bfa;">$1</span>'
-      );
-
-      // Highlight Variables
-      if (variables && variables.length > 0) {
-        const varNames = variables
-          .map((v) => v.name)
-          .sort((a, b) => b.length - a.length);
-        const pattern = new RegExp(`\\b(${varNames.join("|")})\\b`, "g");
-
-        safeText = safeText.replace(
-          pattern,
-          '<span class="text-blue-400 font-bold" style="color: #60a5fa;">$1</span>'
-        );
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
       }
-
-      pre.className = "text-zinc-400";
-      pre.style.color = "#a1a1aa";
-      pre.innerHTML = safeText;
-    });
-
-    return div.innerHTML;
-  };
+    };
+  }, []);
 
   useEffect(() => {
     if (editorRef.current) {
-      // Initial Highlight
-      const highlighted = processSyntaxHighlighting(initialValue);
+      const cleanValue = sanitizeHtmlContent(initialValue);
+      const withCode = highlightCodeBlocks(cleanValue);
+      const highlighted = highlightVariablesSafe(withCode);
       editorRef.current.innerHTML = highlighted;
       
       // Focus automatically when mounted
@@ -135,10 +201,20 @@ export const RichTextEditor = ({
   };
 
   const handleInput = () => {
-    if (editorRef.current) {
-      const content = editorRef.current.innerHTML;
-      onChange(content);
+    if (editorRef.current && !isUpdatingRef.current) {
+      const rawContent = editorRef.current.innerHTML;
+      const cleanContent = sanitizeHtmlContent(stripHighlightSpans(rawContent));
+
+      onChange(cleanContent);
       checkFormats();
+
+      // Debounce highlighting to avoid cursor jumps while typing
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+      }
+      highlightTimeoutRef.current = setTimeout(() => {
+        applyHighlighting();
+      }, 150);
     }
   };
 
@@ -156,7 +232,129 @@ export const RichTextEditor = ({
       document.execCommand(command, false, value);
     }
 
-    checkFormats();
+    // ExecCommand does not always trigger an input event, so sync manually
+    handleInput();
+  };
+
+  const saveCursorPosition = () => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !editorRef.current) return null;
+
+    const range = sel.getRangeAt(0);
+    const preCaretRange = range.cloneRange();
+    preCaretRange.selectNodeContents(editorRef.current);
+    preCaretRange.setEnd(range.endContainer, range.endOffset);
+
+    return preCaretRange.toString().length;
+  };
+
+  const restoreCursorPosition = (position: number) => {
+    if (!editorRef.current) return;
+
+    const sel = window.getSelection();
+    if (!sel) return;
+
+    let charCount = 0;
+    const nodeStack: Node[] = [editorRef.current];
+    let foundNode: Node | null = null;
+    let foundOffset = 0;
+
+    while (nodeStack.length > 0 && !foundNode) {
+      const node = nodeStack.pop()!;
+
+      if (node.nodeType === Node.TEXT_NODE) {
+        const textLength = node.textContent?.length || 0;
+        if (charCount + textLength >= position) {
+          foundNode = node;
+          foundOffset = position - charCount;
+        } else {
+          charCount += textLength;
+        }
+      } else {
+        const children = Array.from(node.childNodes);
+        for (let i = children.length - 1; i >= 0; i--) {
+          nodeStack.push(children[i]);
+        }
+      }
+    }
+
+    if (foundNode) {
+      try {
+        const range = document.createRange();
+        range.setStart(foundNode, foundOffset);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } catch (e) {
+        // Ignore cursor restoration errors
+      }
+    }
+  };
+
+  const applyHighlighting = () => {
+    if (editorRef.current && !isUpdatingRef.current) {
+      const cursorPos = saveCursorPosition();
+
+      const rawContent = editorRef.current.innerHTML;
+      const cleanContent = sanitizeHtmlContent(stripHighlightSpans(rawContent));
+      const withCode = highlightCodeBlocks(cleanContent);
+      const highlighted = highlightVariablesSafe(withCode);
+
+      if (editorRef.current.innerHTML !== highlighted) {
+        isUpdatingRef.current = true;
+        editorRef.current.innerHTML = highlighted;
+
+        if (cursorPos !== null) {
+          restoreCursorPosition(cursorPos);
+        }
+
+        isUpdatingRef.current = false;
+      }
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Check if we're inside a <pre> block
+    const sel = window.getSelection();
+    if (e.key === "Enter" && sel && sel.rangeCount > 0) {
+      const range = sel.getRangeAt(0);
+      let node = range.commonAncestorContainer;
+      
+      // Traverse up to find if we're in a <pre> element
+      while (node && node.nodeType !== Node.ELEMENT_NODE) {
+        node = node.parentNode!;
+      }
+      
+      let inPre = false;
+      let preElement: Element | null = null;
+      let parent = node as Element | null;
+      while (parent) {
+        if (parent.tagName?.toLowerCase() === "pre") {
+          inPre = true;
+          preElement = parent;
+          break;
+        }
+        parent = parent.parentElement;
+      }
+      
+      // If inside <pre>, exit code block and start normal text
+      if (inPre && preElement) {
+        e.preventDefault();
+        // Insert a new paragraph after the <pre> block
+        const newPara = document.createElement("div");
+        newPara.innerHTML = "<br>";
+        preElement.parentNode?.insertBefore(newPara, preElement.nextSibling);
+        
+        // Move cursor to the new paragraph
+        const range = document.createRange();
+        range.setStart(newPara, 0);
+        range.collapse(true);
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+        
+        handleInput();
+      }
+    }
   };
 
   return (
@@ -203,9 +401,10 @@ export const RichTextEditor = ({
 
       <div
         ref={editorRef}
-        className="nodrag markdown-content w-full h-full bg-transparent border-none outline-none text-zinc-300 text-xs whitespace-pre-wrap overflow-y-auto cursor-text p-1"
+        className="nodrag markdown-content w-full h-full bg-transparent border-none outline-none text-zinc-300 text-xs whitespace-pre-wrap overflow-y-auto cursor-text"
         contentEditable
         onInput={handleInput}
+        onKeyDown={handleKeyDown}
         onFocus={() => setIsFocused(true)}
         onBlur={() => {
             setIsFocused(false);
@@ -213,8 +412,16 @@ export const RichTextEditor = ({
         }}
         onMouseUp={checkFormats}
         onKeyUp={checkFormats}
-        style={{ minHeight: "6rem" }}
+        style={{ minHeight: "5rem" }}
       />
+      <style>{`
+   
+        .markdown-content pre:empty::before {
+          content: '';
+          white-space: pre-wrap;
+          display: block;
+        }
+      `}</style>
     </div>
   );
 };

@@ -12,6 +12,25 @@ import clsx from "clsx";
 import { DatePicker } from "@/components/DatePicker";
 import { RichTextEditor } from "../RichTextEditor";
 import JumpTargetBadge from "./JumpTargetBadge";
+import { validateCodeSyntax, validateVariableReferences, validateTypeAssignments } from "../../services/logicService";
+import Prism from "prismjs";
+import "prismjs/components/prism-javascript";
+
+const sanitizeContent = (html: string) => {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html || "", "text/html");
+
+  doc.querySelectorAll("script, style").forEach((el) => el.remove());
+  doc.body.querySelectorAll("*").forEach((el) => {
+    Array.from(el.attributes).forEach((attr) => {
+      if (attr.name.toLowerCase().startsWith("on")) {
+        el.removeAttribute(attr.name);
+      }
+    });
+  });
+
+  return doc.body.innerHTML;
+};
 
 
 const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
@@ -27,6 +46,22 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
   const [hoveredSide, setHoveredSide] = useState<
     "top" | "right" | "bottom" | "left" | null
   >(null);
+  const contentDisplayRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!contentDisplayRef.current || editingField === "content") return;
+
+    const target = contentDisplayRef.current;
+
+    if (!data.content) {
+      target.innerHTML = "";
+      return;
+    }
+
+    const sanitized = sanitizeContent(data.content);
+    target.innerHTML = sanitized;
+    Prism.highlightAllUnder(target);
+  }, [data.content, editingField]);
 
   const getBorderClass = (
     side: "top" | "right" | "bottom" | "left",
@@ -119,14 +154,35 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
   const audioAssets = nodeAssets.filter(a => a.type === 'audio');
 
   const hasError = useMemo(() => {
-    if (!data.content) return false;
-    // Check for {{variable}} pattern
-    const regex = /\{\{([^}]+)\}\}/g;
-    let match;
-    while ((match = regex.exec(data.content)) !== null) {
-        const varName = match[1].trim();
-        if (!data.variables?.some(v => v.name === varName)) return true;
+    // Only check for code syntax errors and type mismatches in <pre> blocks
+    // Don't validate variable references in normal text (they're fine as {{var}})
+    const parser = new DOMParser();
+    try {
+      const doc = parser.parseFromString(data.content || '', 'text/html');
+      const preBlocks = doc.querySelectorAll('pre');
+      for (let block of preBlocks) {
+        // Use textContent to get clean text without HTML tags
+        const codeText = block.textContent || block.innerText || '';
+        
+        // Check syntax errors
+        const syntaxResult = validateCodeSyntax(codeText);
+        if (!syntaxResult.valid) {
+          console.log('Syntax error:', syntaxResult.errors);
+          return true;
+        }
+        
+        // Check type assignments
+        const typeResult = validateTypeAssignments(codeText, data.variables || []);
+        if (!typeResult.valid) {
+          console.log('Type error:', typeResult.errors, 'Variables:', data.variables);
+          return true;
+        }
+      }
+    } catch (err) {
+      // Parser error - not critical for display
+      console.error('Parser error:', err);
     }
+
     return false;
   }, [data.content, data.variables]);
 
@@ -216,8 +272,8 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
             )}
           </div>
         </div>
-        
-        <div className="flex items-center gap-2 ml-2">
+          <JumpTargetBadge nodeId={id} />
+        <div className="flex items-center gap-2">
             <DatePicker 
                 date={data.date || null} 
                 onChange={(date) => handleChange('date', date)} 
@@ -226,7 +282,6 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
                 <ImageIcon size={14} className="text-zinc-500 shrink-0" />
             )}
         </div>
-        <JumpTargetBadge nodeId={id} />
       </div>
 
       {/* Body */}
@@ -270,14 +325,17 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
               variables={data.variables}
             />
           ) : (
-            <div
-              className="text-xs text-zinc-300 whitespace-pre-wrap cursor-text markdown-content h-full"
-              dangerouslySetInnerHTML={{
-                __html:
-                  data.content ||
-                  '<span class="italic opacity-30 select-none">Double click to add content...</span>'
-              }}
-            />
+            <div className="relative h-full">
+              {!data.content && (
+                <span className="absolute inset-0 text-xs text-zinc-500 italic opacity-60 select-none">
+                  Double click to add content...
+                </span>
+              )}
+              <div
+                ref={contentDisplayRef}
+                className="text-xs text-zinc-300 whitespace-pre-wrap cursor-text markdown-content h-full"
+              />
+            </div>
           )}
         </div>
 
@@ -383,13 +441,14 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
         }
         .markdown-content pre { 
             background: #18181b; 
-            padding: 8px; 
+            padding: 4px; 
             border-radius: 4px; 
             font-family: 'JetBrains Mono', monospace; 
-            border: 1px solid #27272a; 
+            border: 0px solid #27272a; 
             color: #a1a1aa; 
             margin: 6px 0; 
             white-space: pre-wrap; 
+            min-height: 1rem; 
         }
         .markdown-content ul { 
             list-style-type: disc; 
@@ -401,6 +460,9 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
         .markdown-content .text-white { color: #ffffff; }
         .markdown-content .text-zinc-400 { color: #a1a1aa; }
         .markdown-content .text-purple-400 { color: #a78bfa; }
+        pre[class*="language-"]{
+            box-shadow: none;
+        }
       `}</style>
 
       {/* Error Badge */}

@@ -3,14 +3,28 @@ import { Edge, Node } from 'reactflow';
 export enum VariableType {
   STRING = 'string',
   NUMBER = 'number',
-  BOOLEAN = 'boolean'
+  BOOLEAN = 'boolean',
+  ARRAY = 'array',
+  OBJECT = 'object'
+}
+
+export interface ArrayValue {
+  elementType: VariableType.STRING | VariableType.NUMBER | VariableType.BOOLEAN;
+  elements: (string | number | boolean)[];
+}
+
+export interface ObjectValue {
+  keys: Record<string, {
+    type: VariableType.STRING | VariableType.NUMBER | VariableType.BOOLEAN;
+    value: string | number | boolean;
+  }>;
 }
 
 export interface Variable {
   id: string;
   name: string;
   type: VariableType;
-  value: string | number | boolean;
+  value: string | number | boolean | ArrayValue | ObjectValue;
 }
 
 export interface Folder {

@@ -108,7 +108,7 @@ export function useProjectState(
 
   }, [project.activeBoardId, isInitializing, setNodes, setEdges]); 
 
-  // Sync Local State to Project (Debounced Save)
+  // Sync Local State to Project (Debounced Save for Nodes/Edges)
   useEffect(() => {
     if (isInitializing) return;
     
@@ -148,6 +148,24 @@ export function useProjectState(
 
     return () => clearTimeout(timeoutId);
   }, [nodes, edges, isInitializing]);
+
+  // Auto-save when project-level data changes (variables, metadata, etc)
+  useEffect(() => {
+    if (isInitializing) return;
+    if (!hasLoadedInitialDataRef.current) return;
+
+    const timeoutId = setTimeout(async () => {
+      console.log('[useProjectState] Auto-saving project state (variables/metadata):', project.name);
+      saveProject(project).then(() => {
+        console.log('[useProjectState] ✓ Auto-save complete');
+        setLastSaved(new Date());
+      }).catch((err) => {
+        console.error('[useProjectState] ✗ Auto-save failed:', err);
+      });
+    }, 1000);
+
+    return () => clearTimeout(timeoutId);
+  }, [project.variables, isInitializing]);
 
   // Immediate save function exposed to callers
   const saveNow = async () => {
