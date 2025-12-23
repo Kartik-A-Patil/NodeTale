@@ -1,17 +1,18 @@
-import React, { useEffect, useRef } from 'react';
-import { Trash2, Palette } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Trash2, Palette, ChevronRight } from 'lucide-react';
 
 export interface ContextMenuOption {
   label?: string;
   onClick?: () => void;
   danger?: boolean;
-  type?: 'action' | 'color-picker' | 'divider' | 'color-grid' | 'icon-row';
+  type?: 'action' | 'color-picker' | 'divider' | 'color-grid' | 'icon-row' | 'submenu';
   icon?: React.ReactNode;
   color?: string; // For preset indicators or initial value
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   colors?: string[];
   onColorSelect?: (color: string) => void;
   items?: { icon: React.ReactNode; onClick: () => void; label: string; active?: boolean }[];
+  submenu?: ContextMenuOption[];
 }
 
 interface ContextMenuProps {
@@ -23,6 +24,8 @@ interface ContextMenuProps {
 
 const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [hoveredSubmenuIndex, setHoveredSubmenuIndex] = useState<number | null>(null);
+  const [submenuPosition, setSubmenuPosition] = useState<{ top: number; left: number } | null>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -30,8 +33,29 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => 
         onClose();
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+
+    const handleScroll = () => {
+      onClose();
+    };
+
+    const handleWheel = () => {
+      onClose();
+    };
+
+    // Use capture phase for click to ensure we catch all clicks
+    document.addEventListener('mousedown', handleClickOutside, true);
+    // Listen to scroll on document and window
+    document.addEventListener('scroll', handleScroll, true);
+    window.addEventListener('scroll', handleScroll, true);
+    // Also listen to wheel events for scroll
+    document.addEventListener('wheel', handleWheel, true);
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside, true);
+      document.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('scroll', handleScroll, true);
+      document.removeEventListener('wheel', handleWheel, true);
+    };
   }, [onClose]);
 
   return (
@@ -105,6 +129,62 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => 
                     </div>
                 </label>
              );
+        }
+
+        if (opt.type === 'submenu') {
+            return (
+                <div
+                    key={i}
+                    className="relative"
+                    onMouseEnter={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setHoveredSubmenuIndex(i);
+                        setSubmenuPosition({
+                            top: rect.top,
+                            left: rect.right
+                        });
+                    }}
+                    onMouseLeave={() => {
+                        setHoveredSubmenuIndex(null);
+                        setSubmenuPosition(null);
+                    }}
+                >
+                    <button
+                        className="w-full text-left px-3 py-2 text-xs font-medium hover:bg-[#27272a] transition-colors flex items-center justify-between group text-zinc-300 hover:text-white"
+                    >
+                        <div className="flex items-center gap-2">
+                            {opt.icon && <span className="text-zinc-500 group-hover:text-zinc-300">{opt.icon}</span>}
+                            <span>{opt.label}</span>
+                        </div>
+                        <ChevronRight size={14} className="text-zinc-500" />
+                    </button>
+                    {hoveredSubmenuIndex === i && submenuPosition && opt.submenu && (
+                        <div
+                            className="fixed z-[60] bg-[#1e1e20] border border-[#27272a] rounded-lg shadow-2xl py-1.5 min-w-[180px] animate-in fade-in slide-in-from-left-1 duration-100"
+                            style={{
+                                top: submenuPosition.top,
+                                left: submenuPosition.left + 4
+                            }}
+                        >
+                            {opt.submenu.map((subOpt, subIdx) => (
+                                <button
+                                    key={subIdx}
+                                    className={`w-full text-left px-3 py-2 text-xs font-medium hover:bg-[#27272a] transition-colors flex items-center gap-2 ${
+                                        subOpt.danger ? 'text-red-400 hover:text-red-300 hover:bg-red-900/10' : 'text-zinc-300 hover:text-white'
+                                    }`}
+                                    onClick={() => {
+                                        if (subOpt.onClick) subOpt.onClick();
+                                        onClose();
+                                    }}
+                                >
+                                    {subOpt.icon && <span className={subOpt.danger ? 'text-red-400' : 'text-zinc-500'}>{subOpt.icon}</span>}
+                                    <span>{subOpt.label}</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
         }
 
         return (

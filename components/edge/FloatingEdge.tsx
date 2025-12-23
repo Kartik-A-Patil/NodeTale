@@ -1,10 +1,12 @@
-import { useCallback } from 'react';
-import { useStore, getBezierPath, getStraightPath, getSmoothStepPath, EdgeProps, Node, Position, EdgeLabelRenderer } from 'reactflow';
+import { useCallback, useMemo } from 'react';
+import { useStore, getBezierPath, getStraightPath, getSmoothStepPath, EdgeProps, Node, Position, EdgeLabelRenderer, useReactFlow } from 'reactflow';
+import { X } from 'lucide-react';
 import { getEdgeParams } from '../../utils/EdgeUtils';
 
 function FloatingEdge({ id, source, target, sourceHandleId, targetHandleId, markerEnd, style, selected, data, label, labelStyle }: EdgeProps) {
   const sourceNode = useStore(useCallback((store) => store.nodeInternals.get(source), [source]));
   const targetNode = useStore(useCallback((store) => store.nodeInternals.get(target), [target]));
+  const { setEdges } = useReactFlow();
 
   if (!sourceNode || !targetNode) {
     return null;
@@ -78,6 +80,9 @@ function FloatingEdge({ id, source, target, sourceHandleId, targetHandleId, mark
 
   const pathType = data?.pathType || 'bezier';
 
+  // Ensure label used in textarea is a string to satisfy its value prop typing
+  const labelText = typeof label === 'string' ? label : '';
+
   let edgePath = '';
   let labelX = 0;
   let labelY = 0;
@@ -100,6 +105,30 @@ function FloatingEdge({ id, source, target, sourceHandleId, targetHandleId, mark
   } else {
       [edgePath, labelX, labelY] = getBezierPath(params);
   }
+
+  const updateLabel = (newLabel: string) => {
+    setEdges((eds) => eds.map((e) => (e.id === id ? { ...e, label: newLabel } : e)));
+  };
+
+  const removeLabel = () => {
+    setEdges((eds) => eds.map((e) => (
+      e.id === id
+        ? { ...e, label: '', data: { ...(e.data || {}), labelEnabled: false } }
+        : e
+    )));
+  };
+
+  const measuredWidth = useMemo(() => {
+    const text = (labelText || 'Type label..').toString();
+    const lines = text.split(/\r?\n/);
+    const longest = Math.max(...lines.map((l) => l.length), 0);
+    const charPx = 7; // approximate width per character at text-xs
+    const paddingPx = 16; // horizontal padding inside the container
+    const minPx = 80; // roughly placeholder size
+    const maxPx = 400; // cap to avoid overly wide labels
+    const width = Math.max(minPx, Math.min(maxPx, longest * charPx + paddingPx));
+    return width;
+  }, [labelText]);
 
   return (
     <>
@@ -136,27 +165,42 @@ function FloatingEdge({ id, source, target, sourceHandleId, targetHandleId, mark
           className="nodrag nopan"
         />
       </EdgeLabelRenderer>
-      {label && (
+      {data?.labelEnabled && (
         <EdgeLabelRenderer>
-            <div
-                style={{
-                    position: 'absolute',
-                    transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-                    background: '#18181b',
-                    padding: '4px 8px',
-                    borderRadius: 4,
-                    fontSize: 12,
-                    fontWeight: 500,
-                    color: '#a1a1aa',
-                    pointerEvents: 'all',
-                    border: '1px solid #27272a',
-                    zIndex: 10,
-                    ...labelStyle,
-                }}
-                className="nodrag nopan"
-            >
-                {label}
-            </div>
+          <div
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+              background: '#18181b',
+              borderRadius: 4,
+              fontSize: 12,
+              color: '#a1a1aa',
+              pointerEvents: 'all',
+              border: '1px solid #27272a',
+              zIndex: 10,
+              width: measuredWidth,
+              ...labelStyle,
+            }}
+            className="nodrag nopan relative"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <input
+              className="nodrag bg-transparent border-none outline-none px-2 py-1.5 w-full text-xs text-zinc-300 placeholder-zinc-500"
+              value={labelText}
+              onChange={(e) => updateLabel(e.target.value.slice(0, 100))}
+              placeholder="Type label.."
+              onMouseDown={(e) => e.stopPropagation()}
+            />
+            {selected && (
+              <button
+                title="Clear label"
+                onClick={(e) => { e.stopPropagation(); removeLabel(); }}
+                className="absolute -top-2 -right-2 p-0.5 rounded-full bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+              >
+                <X size={10} />
+              </button>
+            )}
+          </div>
         </EdgeLabelRenderer>
       )}
     </>

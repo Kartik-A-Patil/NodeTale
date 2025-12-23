@@ -2,7 +2,8 @@ import React, { useCallback } from 'react';
 import { 
     GitFork, ArrowRightCircle, Copy as CopyIcon, Trash2, PlusCircle, 
     MessageSquare, Layout, Info, ArrowUpLeft, ArrowUpRight, 
-    ArrowDownLeft, ArrowDownRight, MoveUpLeft, CornerDownRight, Spline, Image as ImageIcon, Play
+    ArrowDownLeft, ArrowDownRight, MoveUpLeft, CornerDownRight, Spline, Image as ImageIcon, Play,
+    FileAudio, FileVideo, X
 } from 'lucide-react';
 import { ContextMenuOption } from '../components/ContextMenu';
 import { AppNode, Asset } from '../types';
@@ -10,7 +11,7 @@ import { Edge, ReactFlowInstance } from 'reactflow';
 import { MenuState } from './useContextMenu';
 
 const MENU_COLORS = [
-    '#27272a', // Zinc 300
+    '#18181b', // Zinc 300
     '#f87171', // Red 400
     '#fb923c', // Orange 400
     '#fbbf24', // Amber 400
@@ -211,14 +212,52 @@ export function useMenuOptions({
         }
 
         if (node && node.type === 'elementNode') {
-             options.push(
+             const projectAssets = (node.data.projectAssets as Asset[]) || [];
+             const nodeAssetIds = node.data.assets || [];
+             const nodeAssets = nodeAssetIds
+               .map((assetId: string) => projectAssets.find((a) => a.id === assetId))
+               .filter(Boolean) as Asset[];
+
+             const submenuItems: ContextMenuOption[] = [
                 {
                     label: 'Add Asset',
-                    icon: <ImageIcon size={14} />,
+                    icon: <PlusCircle size={14} className="text-green-400" />,
                     onClick: () => {
                         setSelectedNodeForAsset(menu.id!);
                         setShowAssetSelectorModal(true);
                     }
+                }
+             ];
+
+             // Add remove options for each asset
+             if (nodeAssets.length > 0) {
+                nodeAssets.forEach((asset) => {
+                    const getAssetIcon = () => {
+                        if (asset.type === 'image') return <ImageIcon size={14} />;
+                        if (asset.type === 'video') return <FileVideo size={14} />;
+                        if (asset.type === 'audio') return <FileAudio size={14} />;
+                        return <ImageIcon size={14} />;
+                    };
+
+                    submenuItems.push({
+                        label: `Remove ${asset.name}`,
+                        icon: <X size={14} />,
+                        danger: true,
+                        onClick: () => {
+                            const currentAssets = node.data.assets || [];
+                            const updatedAssets = currentAssets.filter((id: string) => id !== asset.id);
+                            updateNodeData(menu.id!, { assets: updatedAssets });
+                        }
+                    });
+                });
+             }
+
+             options.push(
+                {
+                    label: 'Assets',
+                    type: 'submenu',
+                    icon: <ImageIcon size={14} />,
+                    submenu: submenuItems
                 },
                 { type: 'divider' } as ContextMenuOption
              );
@@ -265,22 +304,19 @@ export function useMenuOptions({
 
     if (menu.type === 'edge') {
         const edge = edges.find(e => e.id === menu.id);
-        const hasLabel = edge?.label;
+        const labelEnabled = !!edge?.data?.labelEnabled;
 
         return [
-            { 
-                label: hasLabel ? 'Remove label' : 'Add label', 
-                // icon: <Type size={14} />,
+            {
+                label: labelEnabled ? 'Remove label' : 'Add label',
                 onClick: () => {
-                    if (hasLabel) {
+                    if (labelEnabled) {
+                        updateEdgeData(menu.id!, { labelEnabled: false });
                         updateEdgeLabel(menu.id!, '');
                     } else {
-                        const newLabel = window.prompt('Enter edge label:', '');
-                        if (newLabel !== null) {
-                            updateEdgeLabel(menu.id!, newLabel);
-                        }
+                        updateEdgeData(menu.id!, { labelEnabled: true });
                     }
-                } 
+                }
             },
             { type: 'divider' } as ContextMenuOption,
             {

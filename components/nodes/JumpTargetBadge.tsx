@@ -30,7 +30,7 @@ const JumpTargetBadge = ({ nodeId, className = '' }: JumpTargetBadgeProps) => {
   return (
     <button
       type="button"
-      className={`nodrag absolute top-1.5 right-1.5 h-6 w-6 rounded-full border border-white/5 bg-black/20 text-zinc-400/70 hover:text-purple-200 hover:border-purple-500/30 hover:bg-purple-950/30 transition-colors duration-150 shadow-none backdrop-blur ${className}`}
+      className={`nodrag  h-6 w-6 rounded-full border border-white/5 bg-black/20 text-white-400/70 hover:text-purple-200 hover:border-purple-500/30 hover:bg-purple-950/30 transition-colors duration-150 shadow-none backdrop-blur ${className}`}
       onClick={handleClick}
       title={`Linked from "${jumpLabel}"`}
     >

@@ -401,7 +401,7 @@ export const RichTextEditor = ({
 
       <div
         ref={editorRef}
-        className="nodrag markdown-content w-full h-full bg-transparent border-none outline-none text-zinc-300 text-xs whitespace-pre-wrap overflow-y-auto cursor-text"
+        className="nodrag markdown-content w-full h-full bg-transparent border-none outline-none text-zinc-300 text-xs whitespace-pre-wrap overflow-auto cursor-text"
         contentEditable
         onInput={handleInput}
         onKeyDown={handleKeyDown}
@@ -412,7 +412,6 @@ export const RichTextEditor = ({
         }}
         onMouseUp={checkFormats}
         onKeyUp={checkFormats}
-        style={{ minHeight: "5rem" }}
       />
       <style>{`
    

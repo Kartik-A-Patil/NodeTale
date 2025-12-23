@@ -33,7 +33,6 @@ const CustomControls = ({ isPanMode, setIsPanMode }: { isPanMode: boolean, setIs
   return (
     <Controls 
       position="bottom-left" 
-      orientation="horizontal" 
       showZoom={false} 
       showFitView={false} 
       showInteractive={false}
@@ -251,10 +250,10 @@ function ProjectEditor() {
     setIsConnecting(false);
   }, []);
 
-  const onEdgeDoubleClick = React.useCallback((event: React.MouseEvent, edge: any) => {
-      event.stopPropagation();
-      deleteEdge(edge.id);
-  }, [deleteEdge]);
+  // Disable double-click deletion on edges per new UX
+  const onEdgeDoubleClick = React.useCallback((_event: React.MouseEvent, _edge: any) => {
+    // Intentionally empty
+  }, []);
 
   if (isInitializing) {
     return (
