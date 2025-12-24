@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Upload, Sparkles } from 'lucide-react';
+import JSZip from 'jszip';
 import { getAllProjects, saveProject, deleteProject, checkProjectNameExists } from '../services/storageService';
 import { Project } from '../types';
 import { INITIAL_PROJECT } from '../constants';
@@ -155,40 +156,31 @@ export const Dashboard = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const importedProject = JSON.parse(event.target?.result as string) as Project;
-        
-        // Validate basic structure
-        if (!importedProject.boards || !importedProject.name) {
-            throw new Error("Invalid project format");
-        }
+    const isZip = file.name.toLowerCase().endsWith('.zip');
 
-        // Ensure unique name
-        let newName = importedProject.name;
-        if (await checkProjectNameExists(newName)) {
-            newName = `${newName} (Imported)`;
-            let counter = 1;
-            while (await checkProjectNameExists(newName)) {
-                counter++;
-                newName = `${importedProject.name} (Imported ${counter})`;
-            }
-        }
-
-        const newProject = {
-            ...importedProject,
-            id: crypto.randomUUID(), // Always give a new ID to avoid conflicts
-            name: newName
-        };
-
-        await saveProject(newProject);
-        loadProjects();
-      } catch (err) {
+    if (isZip) {
+      importZipProject(file)
+        .then(() => loadProjects())
+        .catch((err) => {
+        console.error('[Dashboard] Zip import failed', err);
         alert('Failed to import project: ' + err);
-      }
-    };
-    reader.readAsText(file);
+        });
+    } else {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          const importedProject = JSON.parse(event.target?.result as string) as Project;
+          await finalizeAndSaveImportedProject(importedProject);
+          await loadProjects();
+        } catch (err) {
+          alert('Failed to import project: ' + err);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    // Allow re-importing the same file after this run
+    e.target.value = '';
   };
 
   const handleCoverImageUpdate = async (projectId: string, file: File) => {
@@ -220,7 +212,7 @@ export const Dashboard = () => {
               <label className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg cursor-pointer transition-colors text-sm font-medium text-zinc-200">
                 <Upload size={16} />
                 Import
-                <input type="file" accept=".json" onChange={handleImport} className="hidden" />
+                <input type="file" accept=".json,.zip" onChange={handleImport} className="hidden" />
               </label>
               <button 
                 onClick={() => setIsCreating(true)}
@@ -308,6 +300,117 @@ export const Dashboard = () => {
       </div>
     </div>
   );
+};
+
+// -------- Helpers for imports --------
+
+const EXTENSION_MIME: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  svg: 'image/svg+xml',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
+  webm: 'video/webm',
+  mp4: 'video/mp4',
+  mov: 'video/quicktime',
+  m4a: 'audio/mp4',
+};
+
+const getMimeFromPath = (path: string) => {
+  const ext = path.split('.').pop()?.toLowerCase() || '';
+  return EXTENSION_MIME[ext] || 'application/octet-stream';
+};
+
+const readZipEntryAsDataUrl = async (zip: JSZip, path: string): Promise<string | null> => {
+  const normalized = path.startsWith('/') ? path.slice(1) : path;
+  const file = zip.file(normalized);
+  if (!file) return null;
+  const base64 = await file.async('base64');
+  const mime = getMimeFromPath(normalized);
+  return `data:${mime};base64,${base64}`;
+};
+
+const rehydrateAssetsFromZip = async (project: Project, zip: JSZip) => {
+  for (const asset of project.assets) {
+    if (asset.url && !asset.url.startsWith('data:')) {
+      const dataUrl = await readZipEntryAsDataUrl(zip, asset.url);
+      asset.url = dataUrl || '';
+    }
+  }
+};
+
+const rehydrateCoverFromZip = async (project: Project, zip: JSZip) => {
+  if (project.coverImage && !project.coverImage.startsWith('data:')) {
+    const coverUrl = await readZipEntryAsDataUrl(zip, project.coverImage);
+    project.coverImage = coverUrl || '';
+  }
+};
+
+const rehydrateEmbeddedImages = async (project: Project, zip: JSZip) => {
+  const embeddedRegex = /src=["'](embedded\/[^"']+)["']/g;
+
+  for (const board of project.boards) {
+    for (const node of board.nodes) {
+      const content = node.data?.content;
+      if (typeof content !== 'string') continue;
+
+      let newContent = content;
+      let match: RegExpExecArray | null;
+      while ((match = embeddedRegex.exec(content)) !== null) {
+        const relPath = match[1];
+        const dataUrl = await readZipEntryAsDataUrl(zip, relPath);
+        if (dataUrl) {
+          newContent = newContent.replace(match[0], `src="${dataUrl}"`);
+        }
+      }
+      node.data.content = newContent;
+    }
+  }
+};
+
+const importZipProject = async (file: File) => {
+  const zip = await JSZip.loadAsync(file);
+  const projectFile = zip.file('Project.json');
+  if (!projectFile) throw new Error('Project.json not found in ZIP');
+
+  const projectJson = await projectFile.async('string');
+  const importedProject = JSON.parse(projectJson) as Project;
+
+  if (!importedProject.boards || !importedProject.name) {
+    throw new Error('Invalid project format');
+  }
+
+  await rehydrateAssetsFromZip(importedProject, zip);
+  await rehydrateCoverFromZip(importedProject, zip);
+  await rehydrateEmbeddedImages(importedProject, zip);
+
+  await finalizeAndSaveImportedProject(importedProject);
+};
+
+const finalizeAndSaveImportedProject = async (importedProject: Project) => {
+  // Ensure unique name without losing board/node references
+  let newName = importedProject.name;
+  if (await checkProjectNameExists(newName)) {
+    newName = `${newName} (Imported)`;
+    let counter = 1;
+    while (await checkProjectNameExists(newName)) {
+      counter++;
+      newName = `${importedProject.name} (Imported ${counter})`;
+    }
+  }
+
+  const newProject: Project = {
+    ...importedProject,
+    id: crypto.randomUUID(),
+    name: newName,
+  };
+
+  await saveProject(newProject);
+  return newProject;
 };
 
 

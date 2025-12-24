@@ -4,6 +4,24 @@ import { INITIAL_PROJECT } from '../constants';
 import { saveProject, loadProject } from '../services/storageService';
 import { Node, Edge } from 'reactflow';
 
+// Ensure width/height persist visually by mirroring onto node.style
+const normalizeNodeDimensions = (node: Node): Node => {
+  const style: Record<string, any> = { ...(node as any).style };
+  const hasWidth = typeof (node as any).width === 'number';
+  const hasHeight = typeof (node as any).height === 'number';
+  const styleHasWidth = typeof style.width === 'number';
+  const styleHasHeight = typeof style.height === 'number';
+
+  if (hasWidth && !styleHasWidth) style.width = (node as any).width;
+  if (hasHeight && !styleHasHeight) style.height = (node as any).height;
+
+  // Keep zIndex if present so layering is stable
+  const z = (node as any).zIndex ?? style.zIndex;
+  if (typeof z === 'number') style.zIndex = z;
+
+  return { ...node, ...(Object.keys(style).length ? { style } : {}) };
+};
+
 export function useProjectState(
     nodes: Node[], 
     edges: Edge[], 
@@ -44,7 +62,8 @@ export function useProjectState(
           const activeBoard = savedProject.boards.find(b => b.id === savedProject.activeBoardId) || savedProject.boards[0];
           if (activeBoard) {
             console.log('[useProjectState] Setting nodes/edges from loaded board:', activeBoard.nodes.length, 'nodes');
-            setNodes(activeBoard.nodes as any);
+            const normalizedNodes = activeBoard.nodes.map(n => normalizeNodeDimensions(n as any));
+            setNodes(normalizedNodes as any);
             setEdges(activeBoard.edges);
             // Mark that we've loaded initial data
             hasLoadedInitialDataRef.current = true;
@@ -97,9 +116,10 @@ export function useProjectState(
         // 2. Load NEW board state
         const activeBoard = project.boards.find(b => b.id === project.activeBoardId) || project.boards[0];
         if (activeBoard) {
-            console.log('[useProjectState] Loading new board:', project.activeBoardId, 'Nodes:', activeBoard.nodes.length);
-            setNodes(activeBoard.nodes as any);
-            setEdges(activeBoard.edges);
+          console.log('[useProjectState] Loading new board:', project.activeBoardId, 'Nodes:', activeBoard.nodes.length);
+          const normalizedNodes = activeBoard.nodes.map(n => normalizeNodeDimensions(n as any));
+          setNodes(normalizedNodes as any);
+          setEdges(activeBoard.edges);
         }
 
         // 3. Update ref

@@ -78,6 +78,8 @@ function ProjectEditor() {
   const nodeTypes = useMemo(() => initialNodeTypes, []);
   const edgeTypes = useMemo(() => initialEdgeTypes, []);
 
+  const sizeRefreshDone = React.useRef(false);
+
   const {
     nodes,
     edges,
@@ -254,6 +256,40 @@ function ProjectEditor() {
   const onEdgeDoubleClick = React.useCallback((_event: React.MouseEvent, _edge: any) => {
     // Intentionally empty
   }, []);
+
+  // Force React Flow to apply persisted dimensions on load without needing a manual nudge
+  React.useEffect(() => {
+    if (!reactFlowInstance) return;
+    const updater = (reactFlowInstance as any).updateNodeInternals;
+    if (typeof updater !== 'function') return;
+    nodes.forEach((n) => {
+      const hasSize = typeof n.width === 'number' || typeof n.height === 'number' || typeof (n as any)?.style?.width === 'number' || typeof (n as any)?.style?.height === 'number';
+      if (hasSize) updater(n.id);
+    });
+  }, [nodes, reactFlowInstance]);
+
+  // One-time size refresh right after a project/board load to avoid user interaction requirement
+  React.useEffect(() => {
+    if (!reactFlowInstance || isInitializing || sizeRefreshDone.current) return;
+    const updater = (reactFlowInstance as any).updateNodeInternals;
+    if (typeof updater !== 'function') return;
+
+    // Defer to next frame so React Flow has mounted DOM nodes
+    const id = requestAnimationFrame(() => {
+      nodes.forEach((n) => {
+        const hasSize = typeof n.width === 'number' || typeof n.height === 'number' || typeof (n as any)?.style?.width === 'number' || typeof (n as any)?.style?.height === 'number';
+        if (hasSize) updater(n.id);
+      });
+      sizeRefreshDone.current = true;
+    });
+
+    return () => cancelAnimationFrame(id);
+  }, [reactFlowInstance, isInitializing, nodes]);
+
+  // Reset the one-time refresh when switching boards/projects
+  React.useEffect(() => {
+    sizeRefreshDone.current = false;
+  }, [project.activeBoardId, project.id]);
 
   if (isInitializing) {
     return (

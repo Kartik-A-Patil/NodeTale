@@ -17,12 +17,10 @@ export const initDB = (): Promise<IDBDatabase> => {
     };
 
     request.onsuccess = (event) => {
-      // console.log('IndexedDB opened successfully');
       resolve((event.target as IDBOpenDBRequest).result);
     };
 
     request.onupgradeneeded = (event) => {
-      console.log('IndexedDB upgrade needed');
       const db = (event.target as IDBOpenDBRequest).result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
@@ -44,7 +42,6 @@ export const saveAsset = async (asset: any): Promise<void> => {
     const request = store.put(asset);
     return new Promise<void>((resolve, reject) => {
       request.onsuccess = () => {
-        // console.log('Asset saved to IndexedDB');
         resolve();
       };
       request.onerror = () => {
@@ -99,7 +96,6 @@ export const loadAllAssets = async (): Promise<any[]> => {
 
 export const saveProject = async (project: Project): Promise<void> => {
   try {
-    console.log('[StorageService] Saving project:', project.id, project.name, 'Boards:', project.boards.length, 'Active Board Nodes:', project.boards.find(b => b.id === project.activeBoardId)?.nodes.length);
     const db = await initDB();
     const transaction = db.transaction([STORE_NAME], 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
@@ -107,7 +103,6 @@ export const saveProject = async (project: Project): Promise<void> => {
 
     return new Promise((resolve, reject) => {
       request.onsuccess = () => {
-        console.log('[StorageService] ✓ Project saved successfully to IndexedDB:', project.name);
         resolve();
       };
       request.onerror = () => {
@@ -123,7 +118,6 @@ export const saveProject = async (project: Project): Promise<void> => {
 
 export const loadProject = async (projectIdOrName: string): Promise<Project | null> => {
   try {
-    console.log('[StorageService] Loading project by ID/Name:', projectIdOrName);
     const db = await initDB();
     const transaction = db.transaction([STORE_NAME], 'readonly');
     const store = transaction.objectStore(STORE_NAME);
@@ -135,20 +129,13 @@ export const loadProject = async (projectIdOrName: string): Promise<Project | nu
       request.onsuccess = () => {
         if (request.result) {
             const project = request.result as Project;
-            console.log('[StorageService] ✓ Project loaded by ID:', project.name, 'Nodes:', project.boards.find(b => b.id === project.activeBoardId)?.nodes.length);
             resolve(project);
         } else {
             // If not found by ID, try finding by name
-            console.log('[StorageService] Not found by ID, trying by name...');
             const index = store.index('name');
             const nameRequest = index.get(projectIdOrName);
             nameRequest.onsuccess = () => {
                 const project = nameRequest.result as Project;
-                if (project) {
-                  console.log('[StorageService] ✓ Project loaded by name:', project.name, 'Nodes:', project.boards.find(b => b.id === project.activeBoardId)?.nodes.length);
-                } else {
-                  console.log('[StorageService] ✗ Project not found:', projectIdOrName);
-                }
                 resolve(project || null);
             };
             nameRequest.onerror = () => {

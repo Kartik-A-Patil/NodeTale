@@ -200,7 +200,7 @@ export const VariablesList: React.FC<VariablesListProps> = ({ project, setProjec
             <div key={v.id} className="group flex flex-col gap-2 px-4 py-3 border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors last:border-0">
                 <div className="flex items-center justify-between gap-2">
                     <input 
-                        className="bg-transparent border-none text-zinc-200 font-medium text-xs w-full focus:outline-none placeholder-zinc-600"
+                        className="bg-transparent border-none text-zinc-200 font-medium text-xs flex-1 min-w-0 focus:outline-none placeholder-zinc-600"
                         value={v.name}
                         placeholder="variable_name"
                         onChange={(e) => updateVariable(idx, 'name', e.target.value)}
@@ -244,7 +244,7 @@ export const VariablesList: React.FC<VariablesListProps> = ({ project, setProjec
                          </button>
                      ) : (
                          <input 
-                            className="flex-1 bg-zinc-900/50 text-zinc-300 text-xs font-mono px-2 py-1 rounded border border-transparent focus:border-zinc-700 focus:outline-none transition-colors placeholder-zinc-700"
+                            className="flex-1 min-w-0 bg-zinc-900/50 text-zinc-300 text-xs font-mono px-2 py-1 rounded border border-transparent focus:border-zinc-700 focus:outline-none transition-colors placeholder-zinc-700"
                             value={String(v.value)}
                             placeholder="Value..."
                             type={v.type === VariableType.NUMBER ? 'number' : 'text'}
