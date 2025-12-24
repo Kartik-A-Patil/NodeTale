@@ -37,13 +37,12 @@ const JumpNode = ({ id, data, selected }: NodeProps<NodeData>) => {
       setIsEditing(false);
   };
 
-  // Exclude Jump/Comment/Section nodes from being targets
-  const blockedTypes = ['jump', 'comment', 'section'];
+  // Only allow element-type nodes as jump targets
   const availableTargets = isEditing
     ? getNodes().filter((n) => {
         if (n.id === id) return false;
         const type = String(n.type || '').toLowerCase();
-        return !blockedTypes.some((blocked) => type.includes(blocked));
+        return type.includes('element');
       })
     : [];
 
@@ -54,7 +53,6 @@ const JumpNode = ({ id, data, selected }: NodeProps<NodeData>) => {
       } ${isTarget ? "hover:!border-blue-500 hover:bg-blue-500/5 hover:shadow-[0_0_20px_rgba(59,130,246,0.3)]" : ""}`}
       style={{ 
         borderColor: selected ? primaryColor : data.color || '#581c87',
-        boxShadow: selected ? `0 0 10px ${primaryColor}33` : 'none',
         backgroundColor: data.color ? `${data.color}05` : '#18181b'
       }}
       onDoubleClick={() => setIsEditing(true)}

@@ -68,32 +68,53 @@ export const AssetsList: React.FC<AssetsListProps> = ({ project, setProject }) =
     setEditingId(null); // Cancel editing if deleting
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
 
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-          if (event.target?.result) {
+      const newAssets: Asset[] = [];
+
+      for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          
+          try {
+              const result = await new Promise<string>((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onload = (event) => resolve(event.target?.result as string);
+                  reader.onerror = (error) => reject(error);
+                  reader.readAsDataURL(file);
+              });
+
               let type: 'image' | 'audio' | 'video' = 'image';
               if (file.type.startsWith('audio/')) type = 'audio';
               if (file.type.startsWith('video/')) type = 'video';
 
               const newAsset: Asset = {
-                  id: `asset-${Date.now()}`,
+                  id: `asset-${Date.now()}-${i}`,
                   name: file.name,
                   type,
-                  url: event.target.result as string,
+                  url: result,
                   parentId: null // Upload to root by default
               };
+              
               await saveAsset(newAsset);
-              setProject(prev => ({
-                  ...prev,
-                  assets: [...prev.assets, newAsset]
-              }));
+              newAssets.push(newAsset);
+          } catch (error) {
+              console.error(`Failed to process file ${file.name}`, error);
           }
-      };
-      reader.readAsDataURL(file);
+      }
+
+      if (newAssets.length > 0) {
+          setProject(prev => ({
+              ...prev,
+              assets: [...prev.assets, ...newAssets]
+          }));
+      }
+      
+      // Reset input
+      if (e.target) {
+          e.target.value = '';
+      }
   };
 
   const addFolder = () => {
@@ -265,6 +286,7 @@ export const AssetsList: React.FC<AssetsListProps> = ({ project, setProject }) =
           onChange={handleFileUpload} 
           className="hidden" 
           accept="image/*,audio/*,video/*"
+          multiple
         />
 
         <div 

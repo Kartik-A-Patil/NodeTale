@@ -189,22 +189,22 @@ export const DatePicker = ({ date, onChange, nodeId }: DatePickerProps) => {
   return (
     <>
       {/* Trigger */}
-      <button
-        onClick={() => setIsOpen(true)}
-        className={clsx(
-          "flex items-center gap-2 px-2.5 py-1.5 rounded-md transition-all border text-xs font-medium",
-          date 
-            ? "bg-orange-500/10 border-orange-500/30 text-orange-400 hover:bg-orange-500/20" 
-            : "bg-zinc-900/50 border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700"
-        )}
-      >
-        <CalendarIcon size={14} />
-        {date ? (
-          <span>{formatDate(new Date(date))} <span className="opacity-50 ml-1">{formatTime(new Date(date))}</span></span>
-        ) : (
-          <span>Set Date</span>
-        )}
-      </button>
+      <div className="relative group ml-2">
+        <button
+          onClick={() => setIsOpen(true)}
+          className={clsx(
+            "flex items-center gap-2 px-2.5 py-1.5 rounded-md transition-all border text-xs font-medium",
+            date 
+              ? "bg-orange-500/10 border-orange-500/30 text-orange-400 hover:bg-orange-500/20" 
+              : "border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700"
+          )}
+        >
+          <CalendarIcon size={14} />
+        </button>
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-white text-black text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+          {date ? `${formatDate(new Date(date))} ${formatTime(new Date(date))}` : "Set Date"}
+        </div>
+      </div>
 
       {/* Modal */}
       {isOpen && createPortal(

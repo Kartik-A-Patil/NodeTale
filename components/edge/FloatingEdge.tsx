@@ -45,8 +45,8 @@ function FloatingEdge({ id, source, target, sourceHandleId, targetHandleId, mark
                if (Array.isArray(branches)) {
                    const branchIndex = branches.findIndex((b: any) => b.id === handleId);
                    if (branchIndex !== -1) {
-                       const headerHeight = 38; // Header (~33px) + py-1 (4px) + border (1px)
-                       const rowHeight = 40; // h-10 is 40px
+                       const headerHeight = 5; // Header (~33px) + py-1 (4px) + border (1px)
+                       const rowHeight = 47; // h-10 is 40px
                        const yOffset = headerHeight + (branchIndex * rowHeight) + (rowHeight / 2);
                        return {
                            x: (node.positionAbsolute?.x ?? 0) + ((node.width && node.width > 0) ? node.width : 240),

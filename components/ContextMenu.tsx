@@ -85,6 +85,21 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => 
                             title={c}
                         />
                     ))}
+                    <label
+                        className="relative w-5 h-5 rounded-sm border border-white/10 bg-[#27272a] hover:scale-110 transition-transform cursor-pointer flex items-center justify-center"
+                        title="Custom color"
+                    >
+                        <Palette size={12} className="text-zinc-300" />
+                        <input
+                            type="color"
+                            className="absolute inset-0 opacity-0 cursor-pointer"
+                            defaultValue={opt.color || '#ffffff'}
+                            onChange={(e) => {
+                                opt.onColorSelect?.(e.target.value);
+                            }}
+                            style={{ colorScheme: 'dark' }}
+                        />
+                    </label>
                 </div>
             );
         }

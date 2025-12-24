@@ -314,6 +314,7 @@ export const RichTextEditor = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    e.stopPropagation();
     // Check if we're inside a <pre> block
     const sel = window.getSelection();
     if (e.key === "Enter" && sel && sel.rangeCount > 0) {
@@ -405,6 +406,9 @@ export const RichTextEditor = ({
         contentEditable
         onInput={handleInput}
         onKeyDown={handleKeyDown}
+        onPaste={(e) => e.stopPropagation()}
+        onCopy={(e) => e.stopPropagation()}
+        onCut={(e) => e.stopPropagation()}
         onFocus={() => setIsFocused(true)}
         onBlur={() => {
             setIsFocused(false);

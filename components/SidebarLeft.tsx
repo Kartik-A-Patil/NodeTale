@@ -16,7 +16,6 @@ import { VariablesList } from './sidebar/VariablesList';
 import { AssetsList } from './sidebar/AssetsList';
 import { HelpModal } from './sidebar/HelpModal';
 import { exportProject } from '../utils/projectUtils';
-
 interface SidebarLeftProps {
   project: Project;
   setProject: React.Dispatch<React.SetStateAction<Project>>;
@@ -27,6 +26,13 @@ const SidebarLeft: React.FC<SidebarLeftProps> = ({ project, setProject }) => {
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const navigate = useNavigate();
+
+  const getInitials = (name: string) => {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return '?';
+    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+    return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
+  };
 
   return (
     <div className="w-64 bg-[#18181b] border-r border-zinc-800 flex flex-col h-full select-none relative">
@@ -39,11 +45,11 @@ const SidebarLeft: React.FC<SidebarLeftProps> = ({ project, setProject }) => {
         >
             <ArrowLeft size={18} />
         </button>
-        <div className="w-8 h-8 bg-orange-600 rounded-md flex items-center justify-center font-bold text-white overflow-hidden shrink-0">
+        <div className="w-10 h-8 bg-zinc-700 border border-zinc-600 rounded-md flex items-center justify-center font-medium text-zinc-100 overflow-hidden shrink-0">
           {project.coverImage ? (
               <img src={project.coverImage} alt="Cover" className="w-full h-full object-cover" />
           ) : (
-              "A"
+              <span>{getInitials(project.name)}</span>
           )}
         </div>
         <div className="flex flex-col overflow-hidden">

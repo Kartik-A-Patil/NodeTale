@@ -1,9 +1,8 @@
 import React, { memo, useState } from "react";
 import { NodeProps, useReactFlow } from "reactflow";
 import { NodeData } from "../../types";
-import JumpTargetBadge from "./JumpTargetBadge";
 
-const AnnotationNode = ({ id, data }: NodeProps<NodeData>) => {
+const AnnotationNode = ({ id, data,selected }: NodeProps<NodeData>) => {
   const { setNodes } = useReactFlow();
   const [editingField, setEditingField] = useState<"label" | "content" | null>(
     null
@@ -38,27 +37,27 @@ const AnnotationNode = ({ id, data }: NodeProps<NodeData>) => {
     switch (arrowDirection) {
       case 'top-right':
         return { 
-            top: -50, 
-            right: -50, 
+            top: -45, 
+            right: -45, 
             transform: 'scaleY(-1)' 
         };
       case 'bottom-left':
         return { 
-            bottom: -50, 
-            left: -50, 
+            bottom: -45, 
+            left: -45, 
             transform: 'scaleX(-1)' 
         };
       case 'bottom-right':
         return { 
-            bottom: -50, 
-            right: -50, 
+            bottom: -45, 
+            right: -45, 
             transform: 'none' 
         };
       case 'top-left':
       default:
         return { 
-            top: -50, 
-            left: -50, 
+            top: -45, 
+            left: -45, 
             transform: 'rotate(180deg)' 
         };
     }
@@ -66,10 +65,9 @@ const AnnotationNode = ({ id, data }: NodeProps<NodeData>) => {
 
   return (
     <div
-      className="relative flex flex-col max-w-[250px] select-none group"
+      className={`relative flex flex-col max-w-[250px] p-3 select-none group${selected ? " border border-blue-500" : ""}`}
       style={{ color: color }}
     >
-      <JumpTargetBadge nodeId={id} />
       <div className="flex items-center gap-2 mb-1">
         {editingField === "label" ? (
           <input

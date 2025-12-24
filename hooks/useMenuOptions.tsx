@@ -21,8 +21,7 @@ const MENU_COLORS = [
     '#60a5fa', // Blue 400
     '#818cf8', // Indigo 400
     '#a78bfa', // Violet 400
-    '#e879f9', // Fuchsia 400
-    '#fb7185'  // Rose 400
+    '#e879f9'  // Fuchsia 400
 ];
 
 interface UseMenuOptionsProps {
@@ -149,24 +148,33 @@ export function useMenuOptions({
         if (node && node.type === 'annotationNode') {
             options.push(
                 {
-                    label: 'Top Left',
-                    icon: <ArrowUpLeft size={14} />,
-                    onClick: () => updateNodeData(menu.id!, { arrowDirection: 'top-left' })
-                },
-                {
-                    label: 'Top Right',
-                    icon: <ArrowUpRight size={14} />,
-                    onClick: () => updateNodeData(menu.id!, { arrowDirection: 'top-right' })
-                },
-                {
-                    label: 'Bottom Left',
-                    icon: <ArrowDownLeft size={14} />,
-                    onClick: () => updateNodeData(menu.id!, { arrowDirection: 'bottom-left' })
-                },
-                {
-                    label: 'Bottom Right',
-                    icon: <ArrowDownRight size={14} />,
-                    onClick: () => updateNodeData(menu.id!, { arrowDirection: 'bottom-right' })
+                    type: 'icon-row',
+                    items: [
+                        {
+                            label: 'Top Left',
+                            icon: <ArrowUpLeft size={16} />,
+                            onClick: () => updateNodeData(menu.id!, { arrowDirection: 'top-left' }),
+                            active: node.data.arrowDirection === 'top-left'
+                        },
+                        {
+                            label: 'Top Right',
+                            icon: <ArrowUpRight size={16} />,
+                            onClick: () => updateNodeData(menu.id!, { arrowDirection: 'top-right' }),
+                            active: node.data.arrowDirection === 'top-right'
+                        },
+                        {
+                            label: 'Bottom Left',
+                            icon: <ArrowDownLeft size={16} />,
+                            onClick: () => updateNodeData(menu.id!, { arrowDirection: 'bottom-left' }),
+                            active: node.data.arrowDirection === 'bottom-left'
+                        },
+                        {
+                            label: 'Bottom Right',
+                            icon: <ArrowDownRight size={16} />,
+                            onClick: () => updateNodeData(menu.id!, { arrowDirection: 'bottom-right' }),
+                            active: node.data.arrowDirection === 'bottom-right'
+                        }
+                    ]
                 },
                 { type: 'divider' } as ContextMenuOption,
                 {
@@ -254,35 +262,25 @@ export function useMenuOptions({
 
              options.push(
                 {
+                    label: 'Copy as Jump Target',
+                    icon: <CopyIcon size={14} />,
+                    onClick: () => setJumpClipboard({ id: menu.id!, label: node.data.label || menu.label || 'Untitled' })
+                },
+                { type: 'divider' } as ContextMenuOption,
+                {
                     label: 'Assets',
                     type: 'submenu',
                     icon: <ImageIcon size={14} />,
                     submenu: submenuItems
                 },
-                { type: 'divider' } as ContextMenuOption
-             );
-        }
-
-        if (node && node.type !== 'jumpNode') {
-            options.push(
-                {
-                    label: 'Copy as Jump Target',
-                    icon: <CopyIcon size={14} />,
-                    onClick: () => setJumpClipboard({ id: menu.id!, label: menu.label || 'Untitled' })
-                },
-                { type: 'divider' } as ContextMenuOption
-            );
-        }
-
-        if (node && node.type === 'elementNode') {
-            options.push(
+                { type: 'divider' } as ContextMenuOption,
                 {
                     label: 'Start Play from Here',
                     icon: <Play size={14} />,
                     onClick: () => startPlayFromNode(menu.id!)
                 },
                 { type: 'divider' } as ContextMenuOption
-            );
+             );
         }
 
         options.push(
@@ -416,7 +414,7 @@ export function useMenuOptions({
     }
 
     return [];
-  }, [menu, nodes, edges, updateNodeData, deleteNode, setJumpClipboard, jumpClipboard, updateEdgeLabel, updateEdgeColor, updateEdgeData, deleteEdge, addNode, reactFlowInstance]);
+    }, [menu, nodes, edges, updateNodeData, deleteNode, setJumpClipboard, jumpClipboard, updateEdgeLabel, updateEdgeColor, updateEdgeData, deleteEdge, addNode, reactFlowInstance, setShowAssetSelectorModal, setSelectedNodeForAsset, startPlayFromNode]);
 
   return getMenuOptions;
 }

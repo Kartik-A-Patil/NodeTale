@@ -197,7 +197,7 @@ export const VariablesList: React.FC<VariablesListProps> = ({ project, setProjec
           <button onClick={addVariable} className="hover:text-orange-500 transition-colors"><Plus size={14} /></button>
         </div>
         {project.variables.map((v, idx) => (
-            <div key={v.id} className="group flex flex-col gap-2 px-4 py-3 border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+            <div key={v.id} className="group flex flex-col gap-2 px-4 py-3 border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors last:border-0">
                 <div className="flex items-center justify-between gap-2">
                     <input 
                         className="bg-transparent border-none text-zinc-200 font-medium text-xs w-full focus:outline-none placeholder-zinc-600"

@@ -326,7 +326,7 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
 
         {/* Body */}
         <div
-          className="p-3 bg-zinc-800/50 flex-1 relative min-h-[6rem] flex flex-col overflow-hidden"
+          className="p-3 bg-zinc-800/50 flex-1 relative min-h-[6rem] flex flex-col"
           onDrop={handleDrop}
           onDragOver={handleDragOver}
         >
@@ -361,7 +361,9 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
           )}
 
           <div
-            className="flex-1 w-full h-full overflow-auto"
+            className={`flex-1 w-full h-full ${
+              editingField === "content" ? "overflow-visible" : "overflow-auto"
+            }`}
             onDoubleClick={(e) => {
               e.stopPropagation();
               setEditingField("content");

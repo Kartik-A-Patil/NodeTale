@@ -25,6 +25,8 @@ const PlayMode: React.FC<PlayModeProps> = ({
     handleOptionClick,
     restart,
     projectAssets,
+    goBack,
+    canGoBack,
   } = usePlayModeLogic(project, startNodeId);
 
   const [muted, setMuted] = useState(false);
@@ -81,6 +83,8 @@ const PlayMode: React.FC<PlayModeProps> = ({
         muted={muted}
         onToggleMute={() => setMuted(!muted)}
         hasAudio={!!audioAsset}
+        onBack={goBack}
+        canGoBack={canGoBack}
       />
       
       <DebugOverlay variables={runtimeVars} />
@@ -138,13 +142,13 @@ const PlayMode: React.FC<PlayModeProps> = ({
         }
         .play-content pre { 
             background: #18181b; 
-            padding: 12px; 
+            padding: 8px; 
             border-radius: 4px; 
             font-family: 'JetBrains Mono', monospace; 
             border: 1px solid #27272a; 
             color: #a1a1aa; 
-            margin: 12px 0; 
-            font-size: 0.8em;
+            margin: 8px 0; 
+            font-size: 0.7em;
             white-space: pre-wrap;
         }
         .play-content ul { 

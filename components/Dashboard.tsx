@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Upload, FolderOpen, Sparkles } from 'lucide-react';
+import { Plus, Upload, Sparkles } from 'lucide-react';
 import { getAllProjects, saveProject, deleteProject, checkProjectNameExists } from '../services/storageService';
 import { Project } from '../types';
 import { INITIAL_PROJECT } from '../constants';
@@ -8,6 +8,8 @@ import { DashboardBackground } from './dashboard/DashboardBackground';
 import { ProjectCard } from './dashboard/ProjectCard';
 import { CreateProjectModal } from './dashboard/CreateProjectModal';
 import { DeleteProjectModal } from './dashboard/DeleteProjectModal';
+import { RenameProjectModal } from './dashboard/RenameProjectModal';
+import nodetaleLogo from '@/assets/logo.png';
 
 export const Dashboard = () => {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -19,6 +21,10 @@ export const Dashboard = () => {
   const navigate = useNavigate();
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [projectToRename, setProjectToRename] = useState<Project | null>(null);
+  const [renameProjectName, setRenameProjectName] = useState('');
+  const [renameError, setRenameError] = useState('');
 
   useEffect(() => {
     loadProjects();
@@ -102,6 +108,49 @@ export const Dashboard = () => {
     loadProjects();
   };
 
+  const handleRename = (project: Project, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setProjectToRename(project);
+    setRenameProjectName(project.name);
+    setRenameError('');
+    setShowRenameModal(true);
+    setActiveMenu(null);
+  };
+
+  const submitRename = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!projectToRename) return;
+    setRenameError('');
+
+    const trimmedName = renameProjectName.trim();
+    if (!trimmedName) {
+      setRenameError('Project name is required');
+      return;
+    }
+
+    if (trimmedName !== projectToRename.name) {
+      const exists = await checkProjectNameExists(trimmedName);
+      if (exists) {
+        setRenameError('Project name already exists');
+        return;
+      }
+    }
+
+    const updatedProject: Project = { ...projectToRename, name: trimmedName };
+    await saveProject(updatedProject);
+    await loadProjects();
+    setShowRenameModal(false);
+    setProjectToRename(null);
+    setRenameProjectName('');
+  };
+
+  const closeRenameModal = () => {
+    setShowRenameModal(false);
+    setProjectToRename(null);
+    setRenameProjectName('');
+    setRenameError('');
+  };
+
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -157,35 +206,39 @@ export const Dashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#121212] text-zinc-100 p-8 relative overflow-hidden">
+    <div className="min-h-screen bg-[#0c0c0f] text-zinc-100 px-6 py-10 relative overflow-hidden">
       <DashboardBackground />
       
       <div className="max-w-6xl mx-auto relative z-10">
-        <div className="flex justify-between items-center mb-12">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-orange-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-900/20">
-                <FolderOpen className="text-white" size={24} />
-            </div>
-            <div>
-                <h1 className="text-3xl font-bold text-white tracking-tight">My Projects</h1>
-                <p className="text-zinc-400 text-sm mt-1">Manage your interactive stories and flows</p>
+        <header
+          className="flex flex-col gap-4 mb-10 rounded-2xl border border-white/15 bg-gradient-to-br from-white/12 via-white/8 to-white/4 backdrop-blur-xl shadow-[0_18px_60px_rgba(0,0,0,0.45)] ring-1 ring-white/10 px-5 py-6 sm:px-6"
+          style={{ boxShadow: '0 18px 60px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -1px 0 rgba(255,255,255,0.04)' }}
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <img src={nodetaleLogo} alt="Nodetale" className="h-12 w-auto drop-shadow-[0_6px_20px_rgba(0,0,0,0.35)]" />
+            <div className="flex gap-2 sm:gap-3">
+              <label className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg cursor-pointer transition-colors text-sm font-medium text-zinc-200">
+                <Upload size={16} />
+                Import
+                <input type="file" accept=".json" onChange={handleImport} className="hidden" />
+              </label>
+              <button 
+                onClick={() => setIsCreating(true)}
+                className="flex items-center gap-2 px-5 py-2 bg-orange-500 hover:bg-orange-400 text-black font-semibold rounded-lg transition-colors shadow-sm"
+              >
+                <Plus size={18} />
+                New Project
+              </button>
             </div>
           </div>
-          
-          <div className="flex gap-3">
-            <label className="flex items-center gap-2 px-4 py-2.5 bg-zinc-800/80 hover:bg-zinc-700 backdrop-blur-sm border border-zinc-700/50 rounded-lg cursor-pointer transition-all hover:scale-105 active:scale-95 text-sm font-medium">
-              <Upload size={16} />
-              Import
-              <input type="file" accept=".json" onChange={handleImport} className="hidden" />
-            </label>
-            <button 
-              onClick={() => setIsCreating(true)}
-              className="flex items-center gap-2 px-5 py-2.5 bg-orange-600 hover:bg-orange-500 rounded-lg transition-all hover:scale-105 active:scale-95 shadow-lg shadow-orange-900/20 text-sm font-medium"
-            >
-              <Plus size={18} />
-              New Project
-            </button>
+        </header>
+
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 px-1">
+          <div>
+            <h1 className="text-2xl font-semibold text-white tracking-tight">My Projects</h1>
+            <p className="text-zinc-500 text-sm mt-1">Clean, aligned overview of your interactive stories.</p>
           </div>
+          <span className="text-xs text-zinc-500 bg-white/5 px-3 py-1 rounded-full border border-white/10 self-start sm:self-auto">{projects.length} project{projects.length === 1 ? '' : 's'}</span>
         </div>
 
         <CreateProjectModal 
@@ -200,7 +253,7 @@ export const Dashboard = () => {
             setError={setError}
         />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {projects.map((project) => (
             <ProjectCard 
                 key={project.id}
@@ -208,6 +261,7 @@ export const Dashboard = () => {
                 onClick={() => navigate(`/${project.name}`)}
                 onDelete={(e) => handleDelete(project.id, e)}
                 onDuplicate={(e) => handleDuplicate(project, e)}
+              onRename={(e) => handleRename(project, e)}
                 onCoverImageUpdate={(file) => handleCoverImageUpdate(project.id, file)}
                 isMenuOpen={activeMenu === project.id}
                 onToggleMenu={(e) => {
@@ -218,19 +272,19 @@ export const Dashboard = () => {
           ))}
           
           {projects.length === 0 && (
-            <div className="col-span-full flex flex-col items-center justify-center py-32 text-zinc-500 border-2 border-dashed border-zinc-800/50 rounded-2xl bg-zinc-900/20 backdrop-blur-sm">
-              <div className="w-20 h-20 bg-zinc-800/50 rounded-full flex items-center justify-center mb-6 animate-pulse">
-                  <Sparkles size={32} className="text-orange-500/50" />
+            <div className="col-span-full flex flex-col items-center justify-center py-28 text-zinc-500 border border-dashed border-white/10 rounded-2xl bg-white/5 backdrop-blur-sm">
+              <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-5">
+                  <Sparkles size={28} className="text-orange-400/70" />
               </div>
-              <h3 className="text-xl font-semibold text-zinc-300 mb-2">No projects yet</h3>
+              <h3 className="text-xl font-semibold text-zinc-200 mb-2">No projects yet</h3>
               <p className="text-zinc-500 mb-8 max-w-md text-center">
-                  Start creating your interactive story by clicking the "New Project" button above, or import an existing one.
+                  Start a fresh board or import an existing narrative to see it here.
               </p>
               <button 
                   onClick={() => setIsCreating(true)}
-                  className="px-6 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg transition-colors font-medium flex items-center gap-2"
+                  className="px-5 py-2.5 bg-orange-500 hover:bg-orange-400 text-black font-semibold rounded-lg transition-colors flex items-center gap-2"
               >
-                  <Plus size={18} /> Create First Project
+                  <Plus size={18} /> Create first project
               </button>
             </div>
           )}
@@ -240,6 +294,16 @@ export const Dashboard = () => {
             isOpen={showDeleteModal}
             onClose={() => setShowDeleteModal(false)}
             onConfirm={confirmDelete}
+        />
+
+        <RenameProjectModal 
+            isOpen={showRenameModal}
+            onClose={closeRenameModal}
+            onSubmit={submitRename}
+            projectName={renameProjectName}
+            setProjectName={setRenameProjectName}
+            error={renameError}
+            setError={setRenameError}
         />
       </div>
     </div>

@@ -1,19 +1,26 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Project, Variable, VariableType, AppNode } from "../types";
 import { evaluateCondition } from "../services/logicService";
+
+interface HistoryItem {
+  nodeId: string;
+  variables: Variable[];
+}
 
 export const usePlayModeLogic = (
   project: Project,
   startNodeId?: string | null
 ) => {
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
-  const [history, setHistory] = useState<string[]>([]);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
   const [runtimeVars, setRuntimeVars] = useState<Variable[]>(
     JSON.parse(JSON.stringify(project.variables))
   );
   const [initialStartNodeId, setInitialStartNodeId] = useState<string | null>(
     null
   );
+
+  const executedNodeIdRef = useRef<string | null>(null);
 
   // Initialize start node
   useEffect(() => {
@@ -152,13 +159,17 @@ export const usePlayModeLogic = (
   useEffect(() => {
     if (!currentNode || !currentBoard) return;
 
+    // Prevent re-execution on the same node
+    if (executedNodeIdRef.current === currentNode.id) return;
+    executedNodeIdRef.current = currentNode.id;
+
     if (currentNode.type === "elementNode") {
       executeNodeScript(currentNode.data.content);
     }
 
     if (currentNode.type === "jumpNode") {
       if (currentNode.data.jumpTargetId) {
-        setHistory((h) => [...h, currentNodeId!]);
+        setHistory((h) => [...h, { nodeId: currentNodeId!, variables: JSON.parse(JSON.stringify(runtimeVars)) }]);
         setCurrentNodeId(currentNode.data.jumpTargetId);
       }
     } else if (currentNode.type === "conditionNode") {
@@ -181,7 +192,7 @@ export const usePlayModeLogic = (
       );
 
       if (edge) {
-        setHistory((h) => [...h, currentNodeId!]);
+        setHistory((h) => [...h, { nodeId: currentNodeId!, variables: JSON.parse(JSON.stringify(runtimeVars)) }]);
         setCurrentNodeId(edge.target);
       }
     }
@@ -205,11 +216,36 @@ export const usePlayModeLogic = (
   };
 
   const handleOptionClick = (targetId: string) => {
-    setHistory([...history, currentNodeId!]);
+    setHistory([...history, { nodeId: currentNodeId!, variables: JSON.parse(JSON.stringify(runtimeVars)) }]);
     setCurrentNodeId(targetId);
   };
 
+  const goBack = () => {
+    if (history.length === 0) return;
+
+    const newHistory = [...history];
+    let prevItem = newHistory.pop();
+
+    // Skip logic nodes to find the last interactive node
+    while (prevItem) {
+       const nodeContext = findNode(prevItem.nodeId);
+       if (nodeContext && nodeContext.node.type === 'elementNode') {
+           break;
+       }
+       if (newHistory.length === 0) break;
+       prevItem = newHistory.pop();
+    }
+
+    if (prevItem) {
+        setHistory(newHistory);
+        setCurrentNodeId(prevItem.nodeId);
+        setRuntimeVars(prevItem.variables);
+        executedNodeIdRef.current = prevItem.nodeId;
+    }
+  };
+
   const restart = () => {
+    executedNodeIdRef.current = null;
     setCurrentNodeId(initialStartNodeId);
     setRuntimeVars(JSON.parse(JSON.stringify(project.variables)));
     setHistory([]);
@@ -221,6 +257,8 @@ export const usePlayModeLogic = (
     getOptions,
     handleOptionClick,
     restart,
+    goBack,
+    canGoBack: history.length > 0,
     projectAssets: project.assets,
   };
 };
