@@ -11,8 +11,9 @@ export interface ContextMenuOption {
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   colors?: string[];
   onColorSelect?: (color: string) => void;
-  items?: { icon: React.ReactNode; onClick: () => void; label: string; active?: boolean }[];
+  items?: { icon: React.ReactNode; onClick: () => void; label: string; active?: boolean; preventClose?: boolean }[];
   submenu?: ContextMenuOption[];
+  preventClose?: boolean;
 }
 
 interface ContextMenuProps {
@@ -61,7 +62,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => 
   return (
     <div
       ref={menuRef}
-      className="fixed z-50 bg-[#1e1e20] border border-[#27272a] rounded-lg shadow-2xl py-1.5 min-w-[200px] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-100"
+      className="fixed z-50 bg-[#1e1e20] border border-[#27272a] rounded-lg shadow-2xl py-1.5 min-w-[200px] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 ease-out"
       style={{ top: y, left: x }}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -80,7 +81,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => 
                             style={{ backgroundColor: c }}
                             onClick={() => {
                                 opt.onColorSelect?.(c);
-                                onClose();
+                                if (!opt.preventClose) onClose();
                             }}
                             title={c}
                         />
@@ -94,7 +95,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => 
                             type="color"
                             className="absolute inset-0 opacity-0 cursor-pointer"
                             defaultValue={opt.color || '#ffffff'}
-                            onChange={(e) => {
+                            onBlur={(e) => {
                                 opt.onColorSelect?.(e.target.value);
                             }}
                             style={{ colorScheme: 'dark' }}
@@ -113,7 +114,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => 
                             className={`p-1.5 rounded hover:bg-[#27272a] text-zinc-400 hover:text-zinc-100 transition-colors ${item.active ? 'bg-[#27272a] text-zinc-100' : ''}`}
                             onClick={() => {
                                 item.onClick();
-                                onClose();
+                                if (!item.preventClose) onClose();
                             }}
                             title={item.label}
                         >
@@ -136,9 +137,9 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => 
                             type="color" 
                             className="absolute -top-1/2 -left-1/2 w-[200%] h-[200%] cursor-pointer p-0 border-0"
                             value={opt.color || '#ffffff'}
-                            onChange={(e) => {
+                            onBlur={(e) => {
                                 opt.onChange?.(e);
-                                onClose();
+                                if (!opt.preventClose) onClose();
                             }}
                         />
                     </div>
@@ -189,7 +190,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => 
                                     }`}
                                     onClick={() => {
                                         if (subOpt.onClick) subOpt.onClick();
-                                        onClose();
+                                        if (!subOpt.preventClose) onClose();
                                     }}
                                 >
                                     {subOpt.icon && <span className={subOpt.danger ? 'text-red-400' : 'text-zinc-500'}>{subOpt.icon}</span>}
@@ -210,7 +211,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => 
             }`}
             onClick={() => {
               if (opt.onClick) opt.onClick();
-              onClose();
+              if (!opt.preventClose) onClose();
             }}
           >
             <div className="flex items-center gap-2">

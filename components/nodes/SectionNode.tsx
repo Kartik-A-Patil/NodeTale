@@ -37,7 +37,7 @@ const SectionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
   return (
     <>
       <div
-        className={`group relative flex flex-col rounded-lg border-2 transition-all`}
+        className={`group relative flex flex-col rounded-lg border-2 transition-all duration-300 ease-in-out`}
         style={{
           minWidth: 400,
           minHeight: 300,
@@ -45,7 +45,7 @@ const SectionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
           width: '100%',
           borderColor: selected ? primaryColor : `${primaryColor}80`, // 50% opacity when not selected
           backgroundColor: `${primaryColor}10`, // 10% opacity background
-          boxShadow: selected ? `0 0 20px ${primaryColor}20` : 'none'
+          boxShadow: selected ? `0 0 30px ${primaryColor}40` : 'none'
         }}
       >
         <JumpTargetBadge nodeId={id} />

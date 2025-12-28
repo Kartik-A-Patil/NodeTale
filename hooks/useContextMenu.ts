@@ -35,7 +35,6 @@ export function useContextMenu(selectedNodes: Node[]) {
   const onEdgeContextMenu = useCallback(
     (event: React.MouseEvent, edge: Edge) => {
       event.preventDefault();
-      if (!edge.selected) return;
       setMenu({
         x: event.clientX,
         y: event.clientY,

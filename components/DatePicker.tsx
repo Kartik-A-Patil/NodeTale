@@ -193,10 +193,10 @@ export const DatePicker = ({ date, onChange, nodeId }: DatePickerProps) => {
         <button
           onClick={() => setIsOpen(true)}
           className={clsx(
-            "flex items-center gap-2 px-2.5 py-1.5 rounded-md transition-all border text-xs font-medium",
+            "flex items-center gap-2 px-2.5 py-1.5 rounded-md transition-all border-[0.5px] text-xs font-medium",
             date 
               ? "bg-orange-500/10 border-orange-500/30 text-orange-400 hover:bg-orange-500/20" 
-              : "border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700"
+              : "border-white/20 text-white hover:text-zinc-300 hover:border-zinc-700"
           )}
         >
           <CalendarIcon size={14} />

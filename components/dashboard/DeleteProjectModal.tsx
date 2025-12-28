@@ -10,8 +10,8 @@ export const DeleteProjectModal: React.FC<DeleteProjectModalProps> = ({ isOpen, 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-zinc-900 p-6 rounded-lg w-96 border border-zinc-800 shadow-xl animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose}>
+      <div className="bg-zinc-900 p-6 rounded-lg w-96 border border-zinc-800 shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 ease-out" onClick={e => e.stopPropagation()}>
         <h2 className="text-xl font-semibold mb-2 text-zinc-100">Delete Project?</h2>
         <p className="text-zinc-400 mb-6 text-sm">
           Are you sure you want to delete this project? This action cannot be undone.

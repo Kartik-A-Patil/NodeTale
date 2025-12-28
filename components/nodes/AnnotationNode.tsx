@@ -65,7 +65,7 @@ const AnnotationNode = ({ id, data,selected }: NodeProps<NodeData>) => {
 
   return (
     <div
-      className={`relative flex flex-col max-w-[250px] p-3 select-none group${selected ? " border border-blue-500" : ""}`}
+      className={`relative flex flex-col max-w-[250px] p-3 select-none group transition-all duration-300 ease-in-out ${selected ? " border border-orange-500 ring-4 ring-orange-500/20 rounded-lg" : ""}`}
       style={{ color: color }}
     >
       <div className="flex items-center gap-2 mb-1">

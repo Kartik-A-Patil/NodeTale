@@ -48,9 +48,9 @@ const JumpNode = ({ id, data, selected }: NodeProps<NodeData>) => {
 
   return (
     <div
-      className={`px-3 py-2 bg-[#18181b] border rounded-lg flex items-center gap-3 min-w-[160px] transition-all relative ${
-        selected ? 'shadow-lg' : ''
-      } ${isTarget ? "hover:!border-blue-500 hover:bg-blue-500/5 hover:shadow-[0_0_20px_rgba(59,130,246,0.3)]" : ""}`}
+      className={`px-3 py-2 bg-[#18181b] border rounded-lg flex items-center gap-3 min-w-[160px] transition-all duration-300 ease-in-out relative ${
+        selected ? 'shadow-lg ring-4 ring-orange-500/20' : ''
+      } ${isTarget ? "hover:!border-orange-500 hover:bg-orange-500/5 hover:shadow-[0_0_20px_rgba(245,158,11,0.3)]" : ""}`}
       style={{ 
         borderColor: selected ? primaryColor : data.color || '#581c87',
         backgroundColor: data.color ? `${data.color}05` : '#18181b'

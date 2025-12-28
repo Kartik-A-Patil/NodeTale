@@ -23,6 +23,19 @@ const MENU_COLORS = [
     '#a78bfa', // Violet 400
     '#e879f9'  // Fuchsia 400
 ];
+const EdgeColors = [
+    '#71717a', // Zinc 300
+    '#f87171', // Red 400
+    '#fb923c', // Orange 400
+    '#fbbf24', // Amber 400
+    '#4ade80', // Green 400
+    '#34d399', // Emerald 400
+    '#22d3ee', // Cyan 400
+    '#60a5fa', // Blue 400
+    '#818cf8', // Indigo 400
+    '#a78bfa', // Violet 400
+    '#e879f9'  // Fuchsia 400
+];
 
 interface UseMenuOptionsProps {
     menu: MenuState;
@@ -76,6 +89,7 @@ export function useMenuOptions({
             return [
                 {
                     type: 'color-grid',
+                    preventClose: true,
                     colors: MENU_COLORS,
                     onColorSelect: (color) => {
                         selectedNodes.forEach(node => updateNodeData(node.id, { color }));
@@ -125,6 +139,7 @@ export function useMenuOptions({
              options.push(
                 {
                     type: 'color-grid',
+                    preventClose: true,
                     colors: MENU_COLORS,
                     onColorSelect: (color) => updateNodeData(menu.id!, { color })
                 },
@@ -154,31 +169,36 @@ export function useMenuOptions({
                             label: 'Top Left',
                             icon: <ArrowUpLeft size={16} />,
                             onClick: () => updateNodeData(menu.id!, { arrowDirection: 'top-left' }),
-                            active: node.data.arrowDirection === 'top-left'
+                            active: node.data.arrowDirection === 'top-left',
+                            preventClose: true
                         },
                         {
                             label: 'Top Right',
                             icon: <ArrowUpRight size={16} />,
                             onClick: () => updateNodeData(menu.id!, { arrowDirection: 'top-right' }),
-                            active: node.data.arrowDirection === 'top-right'
+                            active: node.data.arrowDirection === 'top-right',
+                            preventClose: true
                         },
                         {
                             label: 'Bottom Left',
                             icon: <ArrowDownLeft size={16} />,
                             onClick: () => updateNodeData(menu.id!, { arrowDirection: 'bottom-left' }),
-                            active: node.data.arrowDirection === 'bottom-left'
+                            active: node.data.arrowDirection === 'bottom-left',
+                            preventClose: true
                         },
                         {
                             label: 'Bottom Right',
                             icon: <ArrowDownRight size={16} />,
                             onClick: () => updateNodeData(menu.id!, { arrowDirection: 'bottom-right' }),
-                            active: node.data.arrowDirection === 'bottom-right'
+                            active: node.data.arrowDirection === 'bottom-right',
+                            preventClose: true
                         }
                     ]
                 },
                 { type: 'divider' } as ContextMenuOption,
                 {
                     type: 'color-grid',
+                    preventClose: true,
                     colors: MENU_COLORS,
                     onColorSelect: (color) => updateNodeData(menu.id!, { color })
                 },
@@ -198,6 +218,7 @@ export function useMenuOptions({
                 {
                     label: 'Add Condition Case',
                     icon: <GitFork size={14} />,
+                    preventClose: true,
                     onClick: () => {
                          const branches = node.data.branches || [
                             { id: 'true', label: 'If', condition: 'true' },
@@ -286,6 +307,7 @@ export function useMenuOptions({
         options.push(
             {
                 type: 'color-grid',
+                preventClose: true,
                 colors: MENU_COLORS,
                 onColorSelect: (color) => updateNodeData(menu.id!, { color })
             },
@@ -307,6 +329,7 @@ export function useMenuOptions({
         return [
             {
                 label: labelEnabled ? 'Remove label' : 'Add label',
+                preventClose: true,
                 onClick: () => {
                     if (labelEnabled) {
                         updateEdgeData(menu.id!, { labelEnabled: false });
@@ -319,7 +342,8 @@ export function useMenuOptions({
             { type: 'divider' } as ContextMenuOption,
             {
                 type: 'color-grid',
-                colors: MENU_COLORS,
+                preventClose: true,
+                colors: EdgeColors,
                 onColorSelect: (color) => updateEdgeColor(menu.id!, color)
             },
             { type: 'divider' } as ContextMenuOption,
@@ -330,19 +354,22 @@ export function useMenuOptions({
                         label: 'Straight', 
                         icon: <MoveUpLeft size={18} />, 
                         onClick: () => updateEdgeData(menu.id!, { pathType: 'straight' }),
-                        active: edge?.data?.pathType === 'straight'
+                        active: edge?.data?.pathType === 'straight',
+                        preventClose: true
                     },
                     { 
                         label: 'Smooth Stepper', 
                         icon: <CornerDownRight size={18} />, 
                         onClick: () => updateEdgeData(menu.id!, { pathType: 'smoothstep' }),
-                        active: edge?.data?.pathType === 'smoothstep'
+                        active: edge?.data?.pathType === 'smoothstep',
+                        preventClose: true
                     },
                     { 
                         label: 'Bezier', 
                         icon: <Spline size={18} />, 
                         onClick: () => updateEdgeData(menu.id!, { pathType: 'bezier' }),
-                        active: !edge?.data?.pathType || edge?.data?.pathType === 'bezier'
+                        active: !edge?.data?.pathType || edge?.data?.pathType === 'bezier',
+                        preventClose: true
                     }
                 ]
             },

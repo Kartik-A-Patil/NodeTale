@@ -86,7 +86,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
           </button>
           
           {isMenuOpen && (
-              <div className="absolute right-0 top-9 w-48 bg-[#0f0f13] border border-white/10 rounded-lg shadow-2xl z-30 py-1.5 animate-in fade-in zoom-in-95 duration-100 origin-top-right">
+              <div className="absolute right-0 top-9 w-48 bg-[#0f0f13] border border-white/10 rounded-lg shadow-2xl z-30 py-1.5 animate-in fade-in zoom-in-95 duration-200 ease-out origin-top-right">
                   <button 
                       onClick={triggerImageUpload}
                       className="w-full text-left px-4 py-2.5 text-sm text-zinc-300 hover:bg-white/5 hover:text-white flex items-center gap-2.5 transition-colors"

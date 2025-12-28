@@ -47,8 +47,8 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm" onClick={handleClose}>
-      <div className="bg-zinc-900 p-6 rounded-xl w-96 border border-zinc-800 shadow-2xl animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm animate-in fade-in duration-300" onClick={handleClose}>
+      <div className="bg-zinc-900 p-6 rounded-xl w-96 border border-zinc-800 shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 ease-out" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold text-zinc-100">Create New Project</h2>
             <button onClick={handleClose} className="text-zinc-500 hover:text-zinc-300 transition-colors">

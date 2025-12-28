@@ -40,7 +40,7 @@ const CommentNode = ({ id, data, selected }: NodeProps<NodeData>) => {
   return (
     <>
       <div
-        className={`h-full w-full min-w-[250px] min-h-[200px] rounded-md shadow-sm transition-all flex flex-col group relative backdrop-blur-sm`}
+        className={`h-full w-full min-w-[250px] min-h-[200px] rounded-md shadow-sm transition-all duration-300 ease-in-out flex flex-col group relative backdrop-blur-sm ${selected ? 'ring-4 ring-blue-500/20 border border-blue-500' : ''}`}
         style={{
           // Append 80 for approx 50% opacity hex code
           backgroundColor: `${baseColor}40`, 

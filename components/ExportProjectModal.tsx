@@ -29,8 +29,8 @@ export const ExportProjectModal: React.FC<ExportProjectModalProps> = ({ isOpen, 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl w-full max-w-md overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 ease-out">
         <div className="flex items-center justify-between p-4 border-b border-zinc-800">
           <h2 className="text-lg font-semibold text-zinc-100 flex items-center gap-2">
             <Download size={20} /> Export Project

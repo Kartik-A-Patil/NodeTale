@@ -138,6 +138,7 @@ function FloatingEdge({ id, source, target, sourceHandleId, targetHandleId, mark
         strokeOpacity={0}
         strokeWidth={20}
         className="react-flow__edge-interaction"
+        style={{ transition: 'd 0.02s ease-out' }}
       />
       <path
         id={id}
@@ -146,8 +147,9 @@ function FloatingEdge({ id, source, target, sourceHandleId, targetHandleId, mark
         markerEnd={markerEnd}
         style={{
           ...style,
-          strokeWidth: selected ? 2 : 1,
-          stroke: style?.stroke || '#71717a'
+          strokeWidth: 2,
+          stroke: selected ? '#F97316' : (style?.stroke || '#94a3b8'),
+          transition: 'stroke 0.1s ease, stroke-width 0.1s ease, d 0.05s ease-out',
         }}
       />
       <EdgeLabelRenderer>

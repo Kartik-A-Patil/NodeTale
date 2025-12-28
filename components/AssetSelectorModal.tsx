@@ -87,8 +87,8 @@ export const AssetSelectorModal: React.FC<AssetSelectorModalProps> = ({ project,
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-[#18181b] border border-zinc-800 rounded-lg w-96 max-h-[80vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-300">
+      <div className="bg-[#18181b] border border-zinc-800 rounded-lg w-96 max-h-[80vh] flex flex-col shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 ease-out">
         <div className="flex items-center justify-between p-4 border-b border-zinc-800">
           <h3 className="text-sm font-semibold text-zinc-200">Select Asset</h3>
           <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300">

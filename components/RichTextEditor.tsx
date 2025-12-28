@@ -62,12 +62,6 @@ const stripHighlightSpans = (html: string) => {
   return doc.body.innerHTML;
 };
 
-const highlightVariables = (html: string) => {
-  return html.replace(/\{\{([^}]+)\}\}/g, (match, varName) => {
-    const name = (varName || "").trim();
-    return `<span data-variable="${name}" style="color: #8c8c8c;">${match}</span>`;
-  });
-};
 
 const highlightVariablesSafe = (html: string) => {
   const parser = new DOMParser();

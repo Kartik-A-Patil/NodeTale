@@ -122,7 +122,10 @@ function ProjectEditor() {
   const menu = contextMenu.menu;
   const setMenu = contextMenu.setMenu;
   const onNodeContextMenu = useCallback(contextMenu.onNodeContextMenu, [contextMenu]);
-  const onEdgeContextMenu = useCallback(contextMenu.onEdgeContextMenu, [contextMenu]);
+  const onEdgeContextMenu = useCallback((event: React.MouseEvent, edge: any) => {
+    contextMenu.onEdgeContextMenu(event, edge);
+    setEdges((eds) => eds.map((e) => e.id === edge.id ? { ...e, selected: false } : e));
+  }, [contextMenu, setEdges]);
   const onPaneContextMenu = useCallback(contextMenu.onPaneContextMenu, [contextMenu]);
   const onPaneClick = useCallback(contextMenu.onPaneClick, [contextMenu]);
 
@@ -356,7 +359,7 @@ function ProjectEditor() {
             panOnDrag={isPanMode ? [0, 1, 2] : [1, 2]}
             panOnScroll={true}
             panOnScrollMode={PanOnScrollMode.Free}
-            connectionRadius={30}
+            connectionRadius={40}
             elevateNodesOnSelect={false}
           >
             <Background color="#52525b" gap={20} size={1} variant={BackgroundVariant.Dots} />
@@ -450,6 +453,19 @@ function ProjectEditor() {
         }
         .react-flow__nodesselection-rect {
             display: none !important;
+        }
+       
+        .react-flow__node.selected {
+            z-index: 1000 !important;
+        }
+        .react-flow__edge-path {
+            transition: stroke 0.3s ease, stroke-width 0.3s ease, d 0.15s ease-out;
+        }
+        .react-flow__controls-button {
+            transition: all 0.2s ease !important;
+        }
+        .react-flow__background {
+            transition: opacity 0.3s ease;
         }
       `}</style>
     </div>

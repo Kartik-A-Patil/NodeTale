@@ -187,14 +187,14 @@ const ConditionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
 
   return (
     <div
-      className={`min-w-[180px] w-fit bg-zinc-800 rounded-md transition-all flex flex-col relative `}
+      className={`min-w-[180px] w-fit bg-zinc-800 rounded-md transition-all duration-300 ease-in-out flex flex-col relative `}
     >
       {/* Border Overlay */}
       <div
         className={clsx(
-          "absolute inset-0 rounded-md pointer-events-none transition-colors z-10 border",
-          selected ? "border-blue-500" : "border-transparent",
-          isTarget ? "hover:!border-blue-500" : ""
+          "absolute inset-0 rounded-md pointer-events-none transition-all duration-300 ease-in-out z-10 border",
+          selected ? "border-orange-500 ring-4 ring-orange-500/20" : "border-transparent",
+          isTarget ? "hover:!border-orange-500" : ""
         )}
       />
 

@@ -103,7 +103,10 @@ export function useFlowLogic(projectIdOrName?: string) {
         });
 
         // Deselect existing nodes and append new ones
-        setNodes(nds => nds.map(n => ({ ...n, selected: false })).concat(newNodes));
+        setNodes(nds => [
+            ...nds.map(n => ({ ...n, selected: false })),
+            ...newNodes
+        ]);
         setEdges(eds => eds.concat(newEdges));
     }, [takeSnapshot, setNodes, setEdges]);
 
