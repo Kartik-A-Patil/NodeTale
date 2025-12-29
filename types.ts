@@ -41,6 +41,11 @@ export interface Asset {
   parentId: string | null;
 }
 
+export interface AudioSettings {
+  loop: boolean;
+  delay: number;
+}
+
 export interface Branch {
   id: string;
   label: string;
@@ -51,6 +56,7 @@ export interface NodeData {
   label: string;
   content: string; // HTML/Rich text content
   assets?: string[]; // Asset IDs only, not objects
+  audioSettings?: Record<string, AudioSettings>; // assetId -> settings
   variables?: Variable[]; // Inject global variables for highlighting context
   
   // Logic

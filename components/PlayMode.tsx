@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Project } from "../types";
 import { replaceVariablesInText } from "../services/logicService";
 import { usePlayModeLogic } from "../hooks/usePlayMode";
@@ -12,6 +12,29 @@ interface PlayModeProps {
   onClose: () => void;
   startNodeId?: string | null;
 }
+
+const AudioPlayer: React.FC<{
+  src: string;
+  loop: boolean;
+  delay: number;
+  muted: boolean;
+}> = ({ src, loop, delay, muted }) => {
+  const [shouldPlay, setShouldPlay] = useState(delay === 0);
+
+  useEffect(() => {
+    setShouldPlay(delay === 0);
+    if (delay > 0) {
+      const timer = setTimeout(() => {
+        setShouldPlay(true);
+      }, delay);
+      return () => clearTimeout(timer);
+    }
+  }, [delay, src]);
+
+  if (!shouldPlay) return null;
+
+  return <audio src={src} autoPlay loop={loop} muted={muted} />;
+};
 
 const PlayMode: React.FC<PlayModeProps> = ({
   project,
@@ -66,7 +89,7 @@ const PlayMode: React.FC<PlayModeProps> = ({
   const visualAsset = assets.find(
     (a) => a.type === "image" || a.type === "video"
   );
-  const audioAsset = assets.find((a) => a.type === "audio");
+  const audioAssets = assets.filter((a) => a.type === "audio");
 
   // Content processing
   const processedContent = replaceVariablesInText(
@@ -82,7 +105,7 @@ const PlayMode: React.FC<PlayModeProps> = ({
         onRestart={restart} 
         muted={muted}
         onToggleMute={() => setMuted(!muted)}
-        hasAudio={!!audioAsset}
+        hasAudio={audioAssets.length > 0}
         onBack={goBack}
         canGoBack={canGoBack}
       />
@@ -120,14 +143,21 @@ const PlayMode: React.FC<PlayModeProps> = ({
       </div>
 
       {/* Background Audio */}
-      {audioAsset && (
-        <audio 
-          src={audioAsset.url} 
-          autoPlay 
-          loop 
-          muted={muted} 
-        />
-      )}
+      {audioAssets.map((asset) => {
+        const settings = currentNode.data.audioSettings?.[asset.id] || {
+          loop: false,
+          delay: 0
+        };
+        return (
+          <AudioPlayer
+            key={asset.id}
+            src={asset.url}
+            loop={settings.loop}
+            delay={settings.delay}
+            muted={muted}
+          />
+        );
+      })}
 
       {/* Global Styles for dynamic content */}
       <style>{`

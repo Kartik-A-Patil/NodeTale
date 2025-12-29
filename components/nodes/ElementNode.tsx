@@ -19,13 +19,16 @@ import {
   Image as ImageIcon,
   FileAudio,
   FileVideo,
-  AlertCircle
+  AlertCircle,
+  RotateCcw,
+  Clock
 } from "lucide-react";
-import { NodeData, Variable, Asset } from "../../types";
+import { NodeData, Variable, Asset, AudioSettings } from "../../types";
 import clsx from "clsx";
 import { DatePicker } from "@/components/DatePicker";
 import { RichTextEditor } from "../RichTextEditor";
 import JumpTargetBadge from "./JumpTargetBadge";
+import { AudioSettingsModal } from "./AudioSettingsModal";
 import {
   validateCodeSyntax,
   validateVariableReferences,
@@ -56,6 +59,9 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
   const isTarget = connectionNodeId && connectionNodeId !== id;
 
   const [editingField, setEditingField] = useState<"label" | "content" | null>(
+    null
+  );
+  const [selectedAudioForConfig, setSelectedAudioForConfig] = useState<Asset | null>(
     null
   );
   const primaryColor = data.color || "#f97316";
@@ -326,7 +332,7 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
 
         {/* Body */}
         <div
-          className="p-3 bg-zinc-800/50 flex-1 relative min-h-[6rem] flex flex-col"
+          className="p-3 bg-zinc-900/50 flex-1 relative min-h-[6rem] flex flex-col"
           onDrop={handleDrop}
           onDragOver={handleDragOver}
         >
@@ -394,15 +400,40 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
           {/* Audio Assets */}
           {audioAssets.length > 0 && (
             <div className="mt-2 pt-2 border-t border-zinc-700/50 flex flex-col gap-1">
-              {audioAssets.map((asset) => (
-                <div
-                  key={asset.id}
-                  className="flex items-center gap-2 text-xs text-zinc-400 bg-zinc-900/50 p-1.5 rounded"
-                >
-                  <FileAudio size={12} className="text-purple-400 shrink-0" />
-                  <span className="truncate">{asset.name}</span>
-                </div>
-              ))}
+              {audioAssets.map((asset) => {
+                const settings = data.audioSettings?.[asset.id] || {
+                  loop: false,
+                  delay: 0
+                };
+                return (
+                  <div
+                    key={asset.id}
+                    className="flex items-center gap-2 text-xs text-zinc-400 p-1.5 roundedcursor-pointer group"
+                    onClick={() => setSelectedAudioForConfig(asset)}
+                  >
+                    <div className="relative">
+                      <FileAudio
+                        size={14}
+                        className="text-white shrink-0"
+                      />
+                      {settings.loop && (
+                        <RotateCcw
+                          size={10}
+                          className="absolute -top-1 -right-1 text-white bg-zinc-900 rounded-full"
+                        />
+                      )}
+                      {settings.delay > 0 && (
+                        <Clock
+                          size={10}
+                          className="absolute -bottom-1 -right-1 text-white bg-zinc-900 rounded-full"
+                        />
+                      )}
+                    </div>
+                    <span className="truncate flex-1 hover:text-white">{asset.name}</span>
+                    
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -530,6 +561,33 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
           </div>
         )}
       </div>
+
+      {selectedAudioForConfig && (
+        <AudioSettingsModal
+          asset={selectedAudioForConfig}
+          settings={data.audioSettings?.[selectedAudioForConfig.id] || { loop: false, delay: 0 }}
+          onSave={(settings) => {
+            setNodes((nds) =>
+              nds.map((node) => {
+                if (node.id === id) {
+                  return {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      audioSettings: {
+                        ...(node.data.audioSettings || {}),
+                        [selectedAudioForConfig.id]: settings
+                      }
+                    }
+                  };
+                }
+                return node;
+              })
+            );
+          }}
+          onClose={() => setSelectedAudioForConfig(null)}
+        />
+      )}
     </>
   );
 };
