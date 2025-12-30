@@ -1,392 +1,298 @@
-import React, { useState, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
+import { BrowserRouter, Routes, Route, useParams, useNavigate } from 'react-router-dom';
 import ReactFlow, { 
-  addEdge, 
   Background, 
   Controls, 
-  Connection, 
-  Edge, 
+  ControlButton,
   ReactFlowProvider,
   BackgroundVariant,
   ReactFlowInstance,
-  Node,
-  reconnectEdge,
   PanOnScrollMode,
-  useNodesState,
-  useEdgesState
+  useReactFlow,
+  useViewport,
 } from 'reactflow';
+import { Hand, MousePointer2, Plus, Minus, Maximize } from 'lucide-react';
 import SidebarLeft from './components/SidebarLeft';
-import ContextMenu, { ContextMenuOption } from './components/ContextMenu';
-import ElementNode from './components/nodes/ElementNode';
-import ConditionNode from './components/nodes/ConditionNode';
-import JumpNode from './components/nodes/JumpNode';
-import CommentNode from './components/nodes/CommentNode';
+import ContextMenu from './components/ContextMenu';
 import PlayMode from './components/PlayMode';
-import { AppNode } from './types';
-import { GitFork, ArrowRightCircle, Copy as CopyIcon, Trash2, PlusCircle, MessageSquare } from 'lucide-react';
-import FloatingEdge from '@/components/edge/FloatingEdge';
-import { useProjectState } from './hooks/useProjectState';
+import { AssetSelectorModal } from './components/AssetSelectorModal';
 import { TopToolbar } from './components/TopToolbar';
+import { TimelineView } from './components/timeline/TimelineView';
+import { useFlowLogic } from './hooks/useFlowLogic';
+import { useContextMenu } from './hooks/useContextMenu';
+import { useDragAndDrop } from './hooks/useDragAndDrop';
+import { useMenuOptions } from './hooks/useMenuOptions';
+import { exportProject } from './utils/projectUtils';
+import { nodeTypes as initialNodeTypes, edgeTypes as initialEdgeTypes } from './components/flowConfig';
+import { Dashboard } from './components/Dashboard';
 
-function FlowApp() {
-  // Local state for React Flow performance
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+const CustomControls = ({ isPanMode, setIsPanMode }: { isPanMode: boolean, setIsPanMode: (v: boolean) => void }) => {
+  const { zoomIn, zoomOut, fitView } = useReactFlow();
+  const { zoom } = useViewport();
 
-  const { project, setProject, isInitializing, lastSaved } = useProjectState(nodes, edges, setNodes, setEdges);
+  return (
+    <Controls 
+      position="bottom-left" 
+      showZoom={false} 
+      showFitView={false} 
+      showInteractive={false}
+      className="!flex !flex-row !gap-2 !bg-transparent !border-none !shadow-none !items-center"
+    >
+       <ControlButton onClick={() => zoomOut({ duration: 300 })} className="!w-9 !h-9 !bg-zinc-800 !border !border-zinc-700 !text-zinc-400 hover:!text-zinc-100 !rounded-md !shadow-sm !flex !items-center !justify-center !p-0" title="Zoom Out">
+        <Minus size={18} />
+      </ControlButton>
+      
+      <div className="flex items-center justify-center w-14 h-9 text-xs font-medium text-zinc-400 bg-zinc-800 border border-zinc-700 rounded-md shadow-sm select-none">
+        {Math.round(zoom * 100)}%
+      </div>
 
+      <ControlButton onClick={() => zoomIn({ duration: 300 })} className="!w-9 !h-9 !bg-zinc-800 !border !border-zinc-700 !text-zinc-400 hover:!text-zinc-100 !rounded-md !shadow-sm !flex !items-center !justify-center !p-0" title="Zoom In">
+        <Plus size={18} />
+      </ControlButton>
+
+      <ControlButton onClick={() => fitView({ duration: 300 })} className="!w-9 !h-9 !bg-zinc-800 !border !border-zinc-700 !text-zinc-400 hover:!text-zinc-100 !rounded-md !shadow-sm !flex !items-center !justify-center !p-0" title="Fit View">
+        <Maximize size={18} />
+      </ControlButton>
+
+      <ControlButton onClick={() => setIsPanMode(!isPanMode)} className="!w-9 !h-9 !bg-zinc-800 !border !border-zinc-700 !text-zinc-400 hover:!text-zinc-100 !rounded-md !shadow-sm !flex !items-center !justify-center !p-0" title={isPanMode ? "Switch to Selection Mode" : "Switch to Pan Mode"}>
+        {isPanMode ? <MousePointer2 size={18} /> : <Hand size={18} />}
+      </ControlButton>
+    </Controls>
+  );
+};
+
+function ProjectEditor() {
+  const { projectId } = useParams();
+  const navigate = useNavigate();
+  const [viewMode, setViewMode] = useState<'flow' | 'timeline'>('flow');
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playStartNodeId, setPlayStartNodeId] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [jumpClipboard, setJumpClipboard] = useState<{ id: string; label: string } | null>(null);
+  const [isPanMode, setIsPanMode] = useState(false);
+  const [showAssetSelectorModal, setShowAssetSelectorModal] = useState(false);
+  const [selectedNodeForAsset, setSelectedNodeForAsset] = useState<string | null>(null);
   
-  // Context Menu State
-  const [menu, setMenu] = useState<{ x: number; y: number; type: 'node' | 'pane' | 'edge'; id?: string; label?: string } | null>(null);
-
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
-  
-  // Memoize nodeTypes and edgeTypes
-  const nodeTypes = useMemo(() => ({
-    elementNode: ElementNode,
-    conditionNode: ConditionNode,
-    jumpNode: JumpNode,
-    commentNode: CommentNode,
-  }), []);
 
-  const edgeTypes = useMemo(() => ({
-    floating: FloatingEdge,
-  }), []);
+  const nodeTypes = useMemo(() => initialNodeTypes, []);
+  const edgeTypes = useMemo(() => initialEdgeTypes, []);
 
-  // Cache for memoized nodes
-  const nodeWrapperCache = useRef(new WeakMap<AppNode, AppNode>());
+  const sizeRefreshDone = React.useRef(false);
 
-  // Inject variables into nodes for highlighting
-  const nodesWithContext = useMemo(() => {
-    return nodes.map(node => {
-      const cached = nodeWrapperCache.current.get(node as AppNode);
-      if (cached && cached.data.variables === project.variables) {
-        return cached;
-      }
+  const {
+    nodes,
+    edges,
+    nodesWithContext,
+    setNodes,
+    setEdges,
+    onNodesChange,
+    onEdgesChange,
+    onConnect,
+    onReconnect,
+    addNode,
+    deleteNode,
+    deleteEdge,
+    updateNodeData,
+    updateNode,
+    updateEdgeData,
+    updateEdgeColor,
+    updateEdgeLabel,
+    project,
+    setProject,
+    isInitializing,
+    lastSaved,
+    saveNow,
+    copySelected,
+    pasteClipboard,
+    jumpClipboard,
+    setJumpClipboard,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    onNodeDragStart,
+    takeSnapshot
+  } = useFlowLogic(projectId);
 
-      const newNode = {
-        ...node,
-        data: {
-          ...node.data,
-          variables: project.variables
+  const selectedNodes = useMemo(() => nodes.filter(n => n.selected), [nodes]);
+
+  // Memoize context menu handlers to avoid rerendering
+  const contextMenu = useContextMenu(selectedNodes);
+  const menu = contextMenu.menu;
+  const setMenu = contextMenu.setMenu;
+  const onNodeContextMenu = useCallback(contextMenu.onNodeContextMenu, [contextMenu]);
+  const onEdgeContextMenu = useCallback((event: React.MouseEvent, edge: any) => {
+    contextMenu.onEdgeContextMenu(event, edge);
+    setEdges((eds) => eds.map((e) => e.id === edge.id ? { ...e, selected: false } : e));
+  }, [contextMenu, setEdges]);
+  const onPaneContextMenu = useCallback(contextMenu.onPaneContextMenu, [contextMenu]);
+  const onPaneClick = useCallback(contextMenu.onPaneClick, [contextMenu]);
+
+  // Memoize drag and drop handlers
+  const dragDropHandlers = useDragAndDrop(
+    nodes,
+    setNodes,
+    reactFlowInstance,
+    reactFlowWrapper,
+    takeSnapshot
+  );
+  const onDragOver = useCallback(dragDropHandlers.onDragOver, [dragDropHandlers]);
+  const onNodeDragStop = useCallback(dragDropHandlers.onNodeDragStop, [dragDropHandlers]);
+  const onDrop = useCallback(dragDropHandlers.onDrop, [dragDropHandlers]);
+
+  // Memoize addAsset callback
+  const addAsset = useCallback((asset: any) => {
+    setProject(prev => ({
+      ...prev,
+      assets: [...prev.assets, asset]
+    }));
+  }, [setProject]);
+
+  const startPlayFromNode = React.useCallback((nodeId: string) => {
+      setPlayStartNodeId(nodeId);
+      setIsPlaying(true);
+  }, []);
+
+  const canPlay = React.useMemo(() => {
+      const board = project.boards.find(b => b.id === project.activeBoardId) || project.boards[0];
+      return board && board.nodes.some(n => n.data.label.toLowerCase() === 'start');
+  }, [project.boards, project.activeBoardId]);
+
+  // Keyboard shortcuts
+  React.useEffect(() => {
+      const handleKeyDown = (event: KeyboardEvent) => {
+        // Ignore if input or textarea is focused
+        if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+          return;
+        }
+
+        // Undo / Redo
+        if ((event.metaKey || event.ctrlKey) && event.key === 'z') {
+          if (event.shiftKey) {
+            redo();
+          } else {
+            undo();
+          }
+          event.preventDefault();
+          return;
+        }
+        if ((event.metaKey || event.ctrlKey) && event.key === 'y') {
+          redo();
+          event.preventDefault();
+          return;
+        }
+
+        // Delete / Backspace: remove selected node(s)
+        if (event.key === 'Delete') {
+          if (selectedNodes.length > 0) {
+            const idsToDelete = selectedNodes.map(n => n.id);
+            // Create a single snapshot for the batch delete and remove nodes + connected edges
+            takeSnapshot();
+            setNodes((nds) => nds.filter(n => !idsToDelete.includes(n.id)));
+            setEdges((eds) => eds.filter(e => !idsToDelete.includes(e.source) && !idsToDelete.includes(e.target)));
+            event.preventDefault();
+          }
+        }
+        // Save: Ctrl+S / Cmd+S
+        if ((event.metaKey || event.ctrlKey) && (event.key === 's' || event.key === 'S')) {
+          if (typeof saveNow === 'function') {
+            saveNow();
+            event.preventDefault();
+          }
+          return;
+        }
+
+        // Copy nodes: Ctrl+C / Cmd+C
+        if ((event.metaKey || event.ctrlKey) && (event.key === 'c' || event.key === 'C')) {
+          if (typeof copySelected === 'function') {
+            copySelected();
+            event.preventDefault();
+          }
+          return;
+        }
+
+        // Paste nodes: Ctrl+V / Cmd+V
+        if ((event.metaKey || event.ctrlKey) && (event.key === 'v' || event.key === 'V')) {
+          if (typeof pasteClipboard === 'function') {
+            pasteClipboard();
+            event.preventDefault();
+          }
+          return;
         }
       };
-      nodeWrapperCache.current.set(node as AppNode, newNode as AppNode);
-      return newNode;
-    });
-  }, [nodes, project.variables]);
 
-  // Helper to update a specific node's data
-  const updateNodeData = useCallback((id: string, data: any) => {
-    setNodes(nds => nds.map(node => {
-      if (node.id === id) {
-        return { ...node, data: { ...node.data, ...data } };
-      }
-      return node;
-    }));
-  }, [setNodes]);
+      document.addEventListener('keydown', handleKeyDown);
+      return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [undo, redo, selectedNodes, setNodes, setEdges, takeSnapshot, saveNow, copySelected, pasteClipboard]);
 
-  const onConnectStart = useCallback(() => {
+  const getMenuOptions = useMenuOptions({
+      menu,
+      nodes,
+      edges,
+      updateNodeData,
+      updateNode,
+      deleteNode,
+      setJumpClipboard,
+      jumpClipboard,
+      updateEdgeLabel,
+      updateEdgeColor,
+      updateEdgeData,
+      deleteEdge,
+      addNode,
+      addAsset,
+      setShowAssetSelectorModal,
+      setSelectedNodeForAsset,
+      reactFlowInstance,
+      startPlayFromNode
+  });
+
+  const onConnectStart = React.useCallback(() => {
     setIsConnecting(true);
   }, []);
 
-  const onConnectEnd = useCallback(() => {
+  const onConnectEnd = React.useCallback(() => {
     setIsConnecting(false);
   }, []);
 
-  const onConnect = useCallback((params: Connection) => {
-    if (params.source === params.target) return;
-
-    const isDuplicate = edges.some(edge => 
-      (edge.source === params.source && edge.target === params.target) ||
-      (edge.source === params.target && edge.target === params.source)
-    );
-
-    if (isDuplicate) return;
-
-    const sourceNode = nodes.find(n => n.id === params.source);
-    let currentEdges = edges;
-
-    if (sourceNode?.type === 'conditionNode') {
-        const existingBranchEdge = currentEdges.find(e => 
-            e.source === params.source && 
-            e.sourceHandle === params.sourceHandle
-        );
-        
-        if (existingBranchEdge) {
-            currentEdges = currentEdges.filter(e => e.id !== existingBranchEdge.id);
-        }
-    }
-
-    const edge: Edge = { 
-        ...params, 
-        type: 'floating',
-        id: `e-${params.source}-${params.target}-${Date.now()}`,
-        animated: true,
-        style: { stroke: '#71717a'}
-    };
-    setEdges(eds => addEdge(edge, currentEdges));
-  }, [edges, nodes, setEdges]);
-
-  const onReconnect = useCallback((oldEdge: Edge, newConnection: Connection) => {
-    setEdges(eds => reconnectEdge(oldEdge, newConnection, eds));
-  }, [setEdges]);
-
-  const onPaneClick = useCallback(() => {
-      setMenu(null);
+  // Disable double-click deletion on edges per new UX
+  const onEdgeDoubleClick = React.useCallback((_event: React.MouseEvent, _edge: any) => {
+    // Intentionally empty
   }, []);
 
-  const onNodeContextMenu = useCallback(
-    (event: React.MouseEvent, node: Node) => {
-      event.preventDefault();
-      setMenu({
-        x: event.clientX,
-        y: event.clientY,
-        type: 'node',
-        id: node.id,
-        label: node.data.label
+  // Force React Flow to apply persisted dimensions on load without needing a manual nudge
+  React.useEffect(() => {
+    if (!reactFlowInstance) return;
+    const updater = (reactFlowInstance as any).updateNodeInternals;
+    if (typeof updater !== 'function') return;
+    nodes.forEach((n) => {
+      const hasSize = typeof n.width === 'number' || typeof n.height === 'number' || typeof (n as any)?.style?.width === 'number' || typeof (n as any)?.style?.height === 'number';
+      if (hasSize) updater(n.id);
+    });
+  }, [nodes, reactFlowInstance]);
+
+  // One-time size refresh right after a project/board load to avoid user interaction requirement
+  React.useEffect(() => {
+    if (!reactFlowInstance || isInitializing || sizeRefreshDone.current) return;
+    const updater = (reactFlowInstance as any).updateNodeInternals;
+    if (typeof updater !== 'function') return;
+
+    // Defer to next frame so React Flow has mounted DOM nodes
+    const id = requestAnimationFrame(() => {
+      nodes.forEach((n) => {
+        const hasSize = typeof n.width === 'number' || typeof n.height === 'number' || typeof (n as any)?.style?.width === 'number' || typeof (n as any)?.style?.height === 'number';
+        if (hasSize) updater(n.id);
       });
-    },
-    []
-  );
+      sizeRefreshDone.current = true;
+    });
 
-  const onEdgeContextMenu = useCallback(
-    (event: React.MouseEvent, edge: Edge) => {
-      event.preventDefault();
-      if (!edge.selected) return;
-      setMenu({
-        x: event.clientX,
-        y: event.clientY,
-        type: 'edge',
-        id: edge.id
-      });
-    },
-    []
-  );
+    return () => cancelAnimationFrame(id);
+  }, [reactFlowInstance, isInitializing, nodes]);
 
-  const onPaneContextMenu = useCallback(
-    (event: React.MouseEvent) => {
-      event.preventDefault();
-      setMenu({
-        x: event.clientX,
-        y: event.clientY,
-        type: 'pane'
-      });
-    },
-    []
-  );
-
-  const addNode = (type: 'elementNode' | 'conditionNode' | 'jumpNode' | 'commentNode', position?: { x: number, y: number }, extraData?: any) => {
-    const id = `node-${Date.now()}`;
-    const newNode: AppNode = {
-      id,
-      type,
-      position: position || { x: Math.random() * 400 + 100, y: Math.random() * 400 + 100 },
-      data: { 
-          label: type === 'elementNode' ? 'New Element' : type === 'conditionNode' ? 'Logic Check' : 'Jump', 
-          content: '',
-          condition: type === 'conditionNode' ? 'var == true' : undefined,
-          text: '',
-          ...extraData
-      },
-    };
-    setNodes(nds => [...nds, newNode]);
-  };
-
-  const deleteNode = (id: string) => {
-    setNodes(nds => nds.filter(n => n.id !== id));
-    setEdges(eds => eds.filter(e => e.source !== id && e.target !== id));
-  };
-
-  const deleteEdge = (id: string) => {
-      setEdges(eds => eds.filter(e => e.id !== id));
-  };
-
-  const onEdgeDoubleClick = useCallback((event: React.MouseEvent, edge: Edge) => {
-      event.stopPropagation();
-      deleteEdge(edge.id);
-  }, []);
-
-  const updateEdgeColor = (id: string, color: string) => {
-      setEdges(eds => eds.map(e => {
-          if (e.id === id) {
-              return { ...e, style: { ...e.style, stroke: color } };
-          }
-          return e;
-      }));
-  };
-
-  const onDragOver = useCallback((event: React.DragEvent) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
-  }, []);
-
-  const onDrop = useCallback(
-    (event: React.DragEvent) => {
-      event.preventDefault();
-
-      if (!reactFlowWrapper.current || !reactFlowInstance) return;
-
-      const type = event.dataTransfer.getData('application/reactflow/type');
-      const payloadStr = event.dataTransfer.getData('application/reactflow/payload');
-      
-      if (!type) return;
-
-      const position = reactFlowInstance.screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
-      });
-
-      const payload = payloadStr ? JSON.parse(payloadStr) : {};
-      
-      const newNode: AppNode = {
-        id: `node-${Date.now()}`,
-        type,
-        position,
-        data: { 
-            label: payload.label || 'New Node',
-            ...payload
-        },
-      };
-
-      setNodes(nds => [...nds, newNode]);
-    },
-    [reactFlowInstance]
-  );
-
-  const exportProject = () => {
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(project));
-      const downloadAnchorNode = document.createElement('a');
-      downloadAnchorNode.setAttribute("href",     dataStr);
-      downloadAnchorNode.setAttribute("download", project.name.replace(" ", "_") + ".json");
-      document.body.appendChild(downloadAnchorNode);
-      downloadAnchorNode.click();
-      downloadAnchorNode.remove();
-  };
-
-  const getMenuOptions = (): ContextMenuOption[] => {
-    if (!menu) return [];
-
-    if (menu.type === 'node') {
-        const node = nodes.find(n => n.id === menu.id);
-        
-        const options: ContextMenuOption[] = [];
-
-        if (node && node.type === 'conditionNode') {
-            options.push(
-                {
-                    label: 'Add Condition Case',
-                    icon: <GitFork size={14} />,
-                    onClick: () => {
-                         const branches = node.data.branches || [];
-                         const elseIdx = branches.findIndex((b: any) => b.label === 'Else');
-                         const newBranch = { id: `branch-${Date.now()}`, label: 'Else If', condition: 'var == true' };
-                         const newBranches = [...branches];
-                         
-                         if (elseIdx !== -1) {
-                             newBranches.splice(elseIdx, 0, newBranch);
-                         } else {
-                             newBranches.push(newBranch);
-                         }
-                         updateNodeData(node.id, { branches: newBranches });
-                    }
-                },
-                { type: 'divider' } as ContextMenuOption
-            );
-        }
-
-        options.push(
-            {
-                label: 'Copy as Jump Target',
-                icon: <CopyIcon size={14} />,
-                onClick: () => setJumpClipboard({ id: menu.id!, label: menu.label || 'Untitled' })
-            },
-            { type: 'divider' } as ContextMenuOption,
-            { label: 'Orange', color: '#f97316', onClick: () => updateNodeData(menu.id!, { color: '#f97316' }) },
-            { label: 'Blue', color: '#3b82f6', onClick: () => updateNodeData(menu.id!, { color: '#3b82f6' }) },
-            { label: 'Green', color: '#22c55e', onClick: () => updateNodeData(menu.id!, { color: '#22c55e' }) },
-            { label: 'Purple', color: '#a855f7', onClick: () => updateNodeData(menu.id!, { color: '#a855f7' }) },
-            { label: 'Red', color: '#ef4444', onClick: () => updateNodeData(menu.id!, { color: '#ef4444' }) },
-            { 
-                label: 'Custom Color', 
-                type: 'color-picker', 
-                color: '#f97316', 
-                onChange: (e) => updateNodeData(menu.id!, { color: e.target.value }) 
-            },
-            { type: 'divider' } as ContextMenuOption,
-            {
-                label: 'Delete Node',
-                danger: true,
-                icon: <Trash2 size={14} />,
-                onClick: () => deleteNode(menu.id!)
-            }
-        );
-        return options;
-    }
-
-    if (menu.type === 'edge') {
-        return [
-            { label: 'Red', color: '#ef4444', onClick: () => updateEdgeColor(menu.id!, '#ef4444') },
-            { label: 'Green', color: '#22c55e', onClick: () => updateEdgeColor(menu.id!, '#22c55e') },
-            { label: 'Blue', color: '#3b82f6', onClick: () => updateEdgeColor(menu.id!, '#3b82f6') },
-            { 
-                label: 'Custom Color', 
-                type: 'color-picker', 
-                color: '#ffffff', 
-                onChange: (e) => updateEdgeColor(menu.id!, e.target.value) 
-            },
-            { type: 'divider' } as ContextMenuOption,
-            { label: 'Delete Connection', danger: true, icon: <Trash2 size={14}/>, onClick: () => deleteEdge(menu.id!) }
-        ];
-    }
-
-    if (menu.type === 'pane') {
-        const options: ContextMenuOption[] = [
-             {
-                label: 'Add Element',
-                icon: <PlusCircle size={14} />,
-                onClick: () => {
-                     if (reactFlowInstance) {
-                        const position = reactFlowInstance.screenToFlowPosition({ x: menu.x, y: menu.y });
-                        addNode('elementNode', position);
-                    }
-                }
-            },
-            {
-                label: 'Add Comment',
-                icon: <MessageSquare size={14} />,
-                onClick: () => {
-                     if (reactFlowInstance) {
-                        const position = reactFlowInstance.screenToFlowPosition({ x: menu.x, y: menu.y });
-                        addNode('commentNode', position);
-                    }
-                }
-            }
-        ];
-
-        if (jumpClipboard) {
-            options.unshift({
-                label: `Paste Jump to "${jumpClipboard.label}"`,
-                icon: <ArrowRightCircle size={14} />,
-                onClick: () => {
-                    if (reactFlowInstance) {
-                        const position = reactFlowInstance.screenToFlowPosition({ x: menu.x, y: menu.y });
-                        addNode('jumpNode', position, { 
-                            jumpTargetId: jumpClipboard.id,
-                            jumpTargetLabel: jumpClipboard.label
-                        });
-                    }
-                }
-            });
-        }
-        return options;
-    }
-
-    return [];
-  };
+  // Reset the one-time refresh when switching boards/projects
+  React.useEffect(() => {
+    sizeRefreshDone.current = false;
+  }, [project.activeBoardId, project.id]);
 
   if (isInitializing) {
     return (
@@ -398,7 +304,7 @@ function FlowApp() {
   }
 
   return (
-    <div className="flex h-screen w-screen bg-[#121212] text-zinc-100 overflow-hidden font-sans">
+    <div className="flex h-screen w-screen bg-[#121212] text-zinc-100 overflow-hidden">
       
       <SidebarLeft project={project} setProject={setProject} />
 
@@ -406,15 +312,24 @@ function FlowApp() {
         
         <TopToolbar 
             onAddNode={(type) => addNode(type)}
-            onPlay={() => setIsPlaying(true)}
-            onExport={exportProject}
+            onPlay={() => { setPlayStartNodeId(null); setIsPlaying(true); }}
+            onExport={() => exportProject(project)}
             lastSaved={lastSaved}
+          onSave={saveNow}
             jumpClipboard={jumpClipboard}
             setJumpClipboard={setJumpClipboard}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            onUndo={undo}
+            onRedo={redo}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            canPlay={canPlay}
         />
 
         <div className="flex-1 bg-[#0f0f11] relative" ref={reactFlowWrapper}>
-          <ReactFlow
+          {viewMode === 'flow' ? (
+            <ReactFlow
             key={project.activeBoardId}
             nodes={nodesWithContext}
             edges={edges}
@@ -424,6 +339,8 @@ function FlowApp() {
             onConnectStart={onConnectStart}
             onConnectEnd={onConnectEnd}
             onReconnect={onReconnect}
+            onNodeDragStop={onNodeDragStop}
+            onNodeDragStart={onNodeDragStart}
             onNodeContextMenu={onNodeContextMenu}
             onEdgeContextMenu={onEdgeContextMenu}
             onEdgeDoubleClick={onEdgeDoubleClick}
@@ -435,22 +352,47 @@ function FlowApp() {
             nodeTypes={nodeTypes}
             fitView
             edgeTypes={edgeTypes}
-            snapToGrid={true}
-            snapGrid={[20, 20]}
             proOptions={{ hideAttribution: true }}
             className="bg-[#0f0f11]"
             multiSelectionKeyCode={['Control', 'Meta']}
-            selectionOnDrag={false}
-            panOnDrag={[1, 2]}
+            selectionOnDrag={!isPanMode}
+            panOnDrag={isPanMode ? [0, 1, 2] : [1, 2]}
             panOnScroll={true}
             panOnScrollMode={PanOnScrollMode.Free}
-            connectionRadius={30}
+            connectionRadius={40}
+            elevateNodesOnSelect={false}
           >
             <Background color="#52525b" gap={20} size={1} variant={BackgroundVariant.Dots} />
-            <Controls className="bg-zinc-800 border-zinc-700 text-zinc-400" />
+            <CustomControls isPanMode={isPanMode} setIsPanMode={setIsPanMode} />
           </ReactFlow>
+          ) : (
+            <TimelineView 
+              nodes={nodesWithContext} 
+              onNodeClick={(nodeId) => {
+                setViewMode('flow');
+                setTimeout(() => {
+                  // Select the node
+                  setNodes(nds => nds.map(n => ({
+                    ...n,
+                    selected: n.id === nodeId
+                  })));
+                  
+                  // Find the node and center/zoom to it
+                  const targetNode = nodes.find(n => n.id === nodeId);
+                  if (targetNode && reactFlowInstance) {
+                    reactFlowInstance.fitView({
+                      nodes: [{ id: nodeId }],
+                      duration: 500,
+                      padding: 0.5,
+                      maxZoom: 1.5
+                    });
+                  }
+                }, 150);
+              }}
+            />
+          )}
 
-          {menu && (
+          {menu && viewMode === 'flow' && (
             <ContextMenu 
                 x={menu.x} 
                 y={menu.y} 
@@ -462,7 +404,41 @@ function FlowApp() {
       </div>
 
       {isPlaying && (
-          <PlayMode project={project} onClose={() => setIsPlaying(false)} />
+          <PlayMode project={project} startNodeId={playStartNodeId} onClose={() => { setIsPlaying(false); setPlayStartNodeId(null); }} />
+      )}
+
+      {showAssetSelectorModal && selectedNodeForAsset && (
+          <AssetSelectorModal
+              project={project}
+              currentAssets={nodes.find(n => n.id === selectedNodeForAsset)?.data.assets || []}
+              onSelect={(asset) => {
+                  const node = nodes.find(n => n.id === selectedNodeForAsset);
+                  if (node) {
+                      const currentAssets = node.data.assets || [];
+                      const projectAssets = project.assets;
+                      const nodeAssets = currentAssets.map(id => projectAssets.find(a => a.id === id)).filter(Boolean);
+                      
+                      // Check if asset already exists
+                      if (currentAssets.includes(asset.id)) return;
+                      
+                      // Check if adding a visual asset and there's already one
+                      const isVisual = asset.type === 'image' || asset.type === 'video';
+                      const hasVisual = nodeAssets.some(a => a.type === 'image' || a.type === 'video');
+                      if (isVisual && hasVisual) return;
+                      
+                      updateNode(selectedNodeForAsset, {
+                          style: { ...node.style, height: undefined },
+                          data: { ...node.data, assets: [...currentAssets, asset.id] }
+                      });
+                  }
+                  setShowAssetSelectorModal(false);
+                  setSelectedNodeForAsset(null);
+              }}
+              onClose={() => {
+                  setShowAssetSelectorModal(false);
+                  setSelectedNodeForAsset(null);
+              }}
+          />
       )}
       <style>{`
         .is-connecting .react-flow__handle-source {
@@ -475,6 +451,22 @@ function FlowApp() {
             transition: all 0.2s ease;
             z-index: 100 !important;
         }
+        .react-flow__nodesselection-rect {
+            display: none !important;
+        }
+       
+        .react-flow__node.selected {
+            z-index: 1000 !important;
+        }
+        .react-flow__edge-path {
+            transition: stroke 0.3s ease, stroke-width 0.3s ease, d 0.15s ease-out;
+        }
+        .react-flow__controls-button {
+            transition: all 0.2s ease !important;
+        }
+        .react-flow__background {
+            transition: opacity 0.3s ease;
+        }
       `}</style>
     </div>
   );
@@ -482,8 +474,15 @@ function FlowApp() {
 
 export default function App() {
   return (
-    <ReactFlowProvider>
-      <FlowApp />
-    </ReactFlowProvider>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/:projectId" element={
+          <ReactFlowProvider>
+            <ProjectEditor />
+          </ReactFlowProvider>
+        } />
+      </Routes>
+    </BrowserRouter>
   );
 }

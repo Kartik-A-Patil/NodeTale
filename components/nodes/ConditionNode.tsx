@@ -1,18 +1,153 @@
-import React, { memo, useState } from 'react';
-import { Handle, Position, NodeProps, useReactFlow } from 'reactflow';
-import { NodeData, Branch } from '../../types';
-import { X, GitBranch } from 'lucide-react';
-import clsx from 'clsx';
+import { memo, useState, useMemo } from "react";
+import { Handle, Position, NodeProps, useReactFlow, useStore } from "reactflow";
+import { NodeData, Branch, Variable } from "../../types";
+import { X, AlertCircle } from "lucide-react";
+import clsx from "clsx";
+
+const ConditionInput = ({
+  value,
+  onChange,
+  variables,
+  placeholder,
+  autoFocus,
+  onBlur,
+  onKeyDown
+}: any) => {
+  const renderHighlight = () => {
+    if (!value) return <span className="text-zinc-600">{placeholder}</span>;
+
+    // Regex to match:
+    // 1. String literals ("..." or '...')
+    // 2. Numbers
+    // 3. Identifiers (variables/keywords)
+    // 4. Operators/Punctuation
+    const regex =
+      /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\b\d+(?:\.\d+)?\b|[a-zA-Z_$][a-zA-Z0-9_$]*|[^a-zA-Z0-9_$"' \t\n\r]+)/g;
+
+    const tokens = value.split(regex).filter((t: string) => t);
+
+    return tokens.map((token: string, i: number) => {
+      // String literal
+      if (/^["'].*["']$/.test(token)) {
+        return (
+          <span key={i} className="text-green-400">
+            {token}
+          </span>
+        );
+      }
+
+      // Number
+      if (/^\d+(\.\d+)?$/.test(token)) {
+        return (
+          <span key={i} className="text-orange-400">
+            {token}
+          </span>
+        );
+      }
+
+      // Identifier
+      if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(token)) {
+        const isKeyword = ["true", "false", "null", "undefined"].includes(
+          token
+        );
+        const isVar = variables.some((v: Variable) => v.name === token);
+
+        let color = "text-zinc-300";
+        if (isKeyword) color = "text-purple-400";
+        else if (isVar) color = "text-blue-400";
+        else
+          color =
+            "text-red-400 underline decoration-wavy decoration-red-400/50"; // Error for unknown
+
+        return (
+          <span key={i} className={color}>
+            {token}
+          </span>
+        );
+      }
+
+      // Operators/Other
+      return (
+        <span key={i} className="text-zinc-400">
+          {token}
+        </span>
+      );
+    });
+  };
+
+  return (
+    <div className="relative h-full flex items-center group min-w-[100px]">
+      {/* Ghost element for width */}
+      <div className="opacity-0 whitespace-pre font-mono text-xs pointer-events-none px-1 h-0 overflow-hidden">
+        {value || placeholder}
+      </div>
+
+      {/* Highlighter */}
+      <div className="absolute inset-0 pointer-events-none whitespace-pre font-mono text-xs flex items-center overflow-hidden px-1">
+        {renderHighlight()}
+      </div>
+
+      {/* Input */}
+      <input
+        value={value}
+        onChange={onChange}
+        maxLength={100}
+        className="absolute inset-0 w-full h-full bg-transparent border-none outline-none text-xs font-mono text-transparent caret-white z-10 placeholder-transparent px-1"
+        placeholder={placeholder}
+        spellCheck={false}
+        autoFocus={autoFocus}
+        onBlur={onBlur}
+        onKeyDown={onKeyDown}
+      />
+    </div>
+  );
+};
 
 const ConditionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
   const { setNodes } = useReactFlow();
-  const [editingField, setEditingField] = useState<'label' | null>(null);
-  const [hoveredSide, setHoveredSide] = useState<'left' | null>(null);
+  const connectionNodeId = useStore((state) => state.connectionNodeId);
+  const edges = useStore((state) => state.edges);
+  const isTarget = connectionNodeId && connectionNodeId !== id;
+
+  const [hoveredSide, setHoveredSide] = useState<"left" | null>(null);
 
   const branches = data.branches || [
-    { id: 'true', label: 'If', condition: 'true' },
-    { id: 'false', label: 'Else', condition: '' }
+    { id: "true", label: "If", condition: "true" },
+    { id: "false", label: "Else", condition: "" }
   ];
+
+  const variables = data.variables || [];
+
+  const validateCondition = (condition: string) => {
+    if (!condition || condition === "true") return true;
+
+    const regex =
+      /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\b\d+(?:\.\d+)?\b|[a-zA-Z_$][a-zA-Z0-9_$]*)/g;
+    const tokens = condition.match(regex) || [];
+
+    const keywords = ["true", "false", "null", "undefined", "NaN", "Infinity"];
+
+    for (const token of tokens) {
+      // Skip strings
+      if (/^["'].*["']$/.test(token)) continue;
+      // Skip numbers
+      if (/^\d+(\.\d+)?$/.test(token)) continue;
+
+      // Check identifiers
+      if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(token)) {
+        if (keywords.includes(token)) continue;
+        if (variables.some((v) => v.name === token)) continue;
+        return false; // Unknown variable
+      }
+    }
+    return true;
+  };
+
+  const hasError = useMemo(() => {
+    return branches.some(
+      (b) => b.label !== "Else" && !validateCondition(b.condition)
+    );
+  }, [branches, variables]);
 
   const updateBranches = (newBranches: Branch[]) => {
     setNodes((nds) =>
@@ -25,31 +160,20 @@ const ConditionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
     );
   };
 
-  const handleChange = (field: string, value: any) => {
-    setNodes((nds) =>
-      nds.map((node) => {
-        if (node.id === id) {
-          return { ...node, data: { ...node.data, [field]: value } };
-        }
-        return node;
-      })
-    );
-  };
-
   const removeBranch = (idx: number) => {
-      const newBranches = [...branches];
-      newBranches.splice(idx, 1);
-      updateBranches(newBranches);
+    const newBranches = [...branches];
+    newBranches.splice(idx, 1);
+    updateBranches(newBranches);
   };
 
   const editBranch = (idx: number, val: string) => {
-      const newBranches = [...branches];
-      newBranches[idx] = { ...newBranches[idx], condition: val };
-      updateBranches(newBranches);
+    const newBranches = [...branches];
+    newBranches[idx] = { ...newBranches[idx], condition: val };
+    updateBranches(newBranches);
   };
 
   const getBorderClass = (isConnected: boolean) => {
-    const isHovered = hoveredSide === 'left';
+    const isHovered = hoveredSide === "left";
     const color = isConnected
       ? "bg-blue-400"
       : isHovered
@@ -63,116 +187,118 @@ const ConditionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
 
   return (
     <div
-      className={`min-w-[240px] bg-[#09090b] rounded-md border shadow-xl transition-all flex flex-col relative ${
-        selected ? 'border-blue-500 shadow-blue-500/20' : 'border-zinc-800'
-      }`}
+      className={`min-w-[180px] w-fit bg-zinc-800 rounded-md transition-all duration-300 ease-in-out flex flex-col relative `}
     >
-      {/* Header */}
-      <div className="p-2 rounded-t-md flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/50">
-        <GitBranch size={16} className="text-purple-400 shrink-0" />
-        <div 
-          className="flex-1 min-w-0"
-          onDoubleClick={() => setEditingField('label')}
-        >
-          {editingField === 'label' ? (
-            <input
-              className="nodrag w-full bg-transparent border-none outline-none p-0 text-xs font-bold text-zinc-200 placeholder-zinc-600 font-mono"
-              value={data.label}
-              onChange={(e) => handleChange('label', e.target.value)}
-              autoFocus
-              onBlur={() => setEditingField(null)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') setEditingField(null);
-              }}
-              placeholder="Condition Name"
-            />
-          ) : (
-            <div className="text-xs font-bold text-zinc-200 font-mono truncate cursor-text">
-              {data.label || 'Condition'}
-            </div>
-          )}
-        </div>
-      </div>
+      {/* Border Overlay */}
+      <div
+        className={clsx(
+          "absolute inset-0 rounded-md pointer-events-none transition-all duration-300 ease-in-out z-10 border",
+          selected ? "border-orange-500 ring-4 ring-orange-500/20" : "border-transparent",
+          isTarget ? "hover:!border-orange-500" : ""
+        )}
+      />
 
-       {/* Main Input Handle - Invisible Area */}
-       <Handle
-          type="target"
-          position={Position.Left}
-          className="!opacity-0 !w-4 !h-full !-left-3 !top-0 !transform-none !border-0 !rounded-none z-40"
-          onMouseEnter={() => setHoveredSide('left')}
-          onMouseLeave={() => setHoveredSide(null)}
+      {/* Global Target Handle */}
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="!w-full !h-full !absolute !inset-0 !transform-none !border-0 !rounded-md z-[100] !opacity-0"
+        style={{
+          borderRadius: "inherit",
+          pointerEvents: isTarget ? "all" : "none"
+        }}
       />
 
       {/* Visual Border Indicator */}
       <div
         className={clsx(
-            getBorderClass(
-                // Check if any handle connected to 'target' or generic connection exists
-                // Since we don't have a specific ID for this handle, we might need to check generic connectivity
-                // For now, let's rely on data.connectedHandles if it contains 'target' or similar, 
-                // but since I don't know the exact ID logic for default handles, I'll check if the array is non-empty and contains a null/undefined match or just rely on hover for now if unsure.
-                // Actually, let's assume the parent passes 'target' or the node ID. 
-                // If I look at ElementNode, it checks for 'target-left'.
-                // I'll check for 'target' or just use hover for now to be safe, or check if data.connectedHandles has anything.
-                // Better: check if data.connectedHandles includes the handle id. The handle id is null here.
-                // Let's try to match ElementNode's style.
-                data.connectedHandles?.includes('target') || false 
-            ),
-            "top-[4px] -left-2 bottom-[4px] w-[8px] rounded-l-lg"
+          getBorderClass(data.connectedHandles?.includes("target") || false),
+          "top-[4px] -left-2 bottom-[4px] w-[8px] rounded-l-lg"
         )}
       />
 
-      <div className="flex flex-col py-1">
-        {branches.map((branch, index) => {
-          const isElse = branch.label === 'Else';
-          const isIf = branch.label === 'If';
-          const keywordColor = isIf ? 'text-purple-400' : isElse ? 'text-orange-400' : 'text-blue-400';
-          
-          return (
-            <div 
-                key={branch.id} 
-                className="relative flex items-center h-10 pr-3 border-b border-zinc-800/50 last:border-0 group hover:bg-zinc-900/30 transition-colors"
-            >
+      <div className="relative flex bg-zinc-800/60 rounded-md">
+        <div
+          className="w-5 rounded-l-md"
+          style={{
+            backgroundColor: data.color ? `${data.color}60` : "#18181b"
+          }}
+        />
+
+        <div className="flex-1 flex flex-col py-1">
+          {branches.map((branch, index) => {
+            const isElse = branch.label === "Else";
+            const isIf = branch.label === "If";
+
+            const isConnected = edges.some(
+              (edge) => edge.source === id && edge.sourceHandle === branch.id
+            );
+            return (
+              <div
+                key={branch.id}
+                className="relative flex items-center h-12 pr-4 border-b border-zinc-700/50 last:border-0 group transition-colors"
+              >
                 {/* Keyword */}
-                <span className={`text-xs font-bold font-mono w-14 shrink-0 text-right mr-3 ${keywordColor}`}>
-                    {branch.label.toLowerCase()}
+                <span
+                  className={`text-sm font-bold font-mono w-auto shrink-0 text-center mr-3 pl-4 text-white`}
+                >
+                  {branch.label.toLowerCase()}
                 </span>
 
                 {/* Input */}
-                <div className="flex-1 min-w-0 mr-4">
-                     {!isElse ? (
-                        <input 
-                            className="nodrag w-full bg-transparent border-none outline-none text-xs text-zinc-300 font-mono placeholder-zinc-700 font-medium"
-                            value={branch.condition}
-                            onChange={(e) => editBranch(index, e.target.value)}
-                            placeholder="condition..."
-                        />
-                     ) : (
-                         <span className="text-xs text-zinc-600 italic select-none">fallback</span>
-                     )}
+                <div className="flex-1 min-w-[180px] mr-4 h-full">
+                  {!isElse ? (
+                    <ConditionInput
+                      value={branch.condition}
+                      onChange={(e: any) => editBranch(index, e.target.value)}
+                      variables={variables}
+                      placeholder="Enter condition here..."
+                    />
+                  ) : (
+                    <span className="text-xs text-zinc-500 italic select-none flex items-center h-full">
+                      fallback
+                    </span>
+                  )}
                 </div>
 
                 {/* Delete 'Else If' on hover */}
                 {!isIf && !isElse && (
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); removeBranch(index); }}
-                        className="absolute right-6 p-1 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                        <X size={10} />
-                    </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeBranch(index);
+                    }}
+                    className="absolute right-2 w-7 h-7 rounded-full bg-slate-700 text-white flex items-center justify-center border border-white/10 shadow-sm opacity-0 group-hover:opacity-100 transition-all hover:bg-slate-600 hover:scale-105"
+                    aria-label="Remove branch"
+                  >
+                    <X size={12} strokeWidth={2} />
+                  </button>
                 )}
 
                 {/* Output Handle */}
                 <Handle
-                    type="source"
-                    position={Position.Right}
-                    id={branch.id}
-                    className={`!w-3 !h-3 !right-[-8px] transition-all !border-zinc-400 bg-black hover:!w-3.5 hover:!h-3.5`}
+                  type="source"
+                  position={Position.Right}
+                  id={branch.id}
+                  className={`!w-3 !h-3 !right-[-5px] z-100 transition-all hover:!w-3.5 hover:!h-3.5 ${
+                    isConnected ? "opacity-0" : "!border-zinc-400 bg-black "
+                  }`}
                 />
-            </div>
-          );
-        })}
+              </div>
+            );
+          })}
+        </div>
       </div>
+
+      {/* Error Badge */}
+      {hasError && (
+        <div
+          className="absolute -bottom-2 -right-2 bg-red-500 text-white rounded-full p-0.5 shadow-lg z-50"
+          title="Invalid condition"
+        >
+          <AlertCircle size={12} />
+        </div>
+      )}
     </div>
   );
 };

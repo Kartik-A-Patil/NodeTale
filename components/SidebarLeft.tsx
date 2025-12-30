@@ -1,13 +1,23 @@
-import React, { useState, useRef } from 'react';
-import { Project, Variable, VariableType, Board, Asset } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Project } from '../types';
 import { 
   Layout, 
   Database, 
-  Plus, 
-  Trash2,
   FolderOpen,
-  Upload
+  Settings,
+  HelpCircle,
+  ArrowLeft,
+  Download,
+  Edit2,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react';
+import { BoardsList } from './sidebar/BoardsList';
+import { VariablesList } from './sidebar/VariablesList';
+import { AssetsList } from './sidebar/AssetsList';
+import { HelpModal } from './sidebar/HelpModal';
+import { ExportProjectModal } from './ExportProjectModal';
 
 interface SidebarLeftProps {
   project: Project;
@@ -16,234 +26,264 @@ interface SidebarLeftProps {
 
 const SidebarLeft: React.FC<SidebarLeftProps> = ({ project, setProject }) => {
   const [activeTab, setActiveTab] = useState<'boards' | 'vars' | 'assets'>('boards');
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [width, setWidth] = useState(260);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
+  const navigate = useNavigate();
+  const sidebarRef = useRef<HTMLDivElement>(null);
 
-  const addBoard = () => {
-    const newBoard: Board = {
-      id: `board-${Date.now()}`,
-      name: 'New Board',
-      nodes: [],
-      edges: []
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      
+      // If we are resizing, we are dragging the right edge.
+      // If the mouse is close to the left edge, collapse.
+      if (e.clientX < 100) {
+        setIsCollapsed(true);
+        setIsResizing(false);
+      } else {
+        setIsCollapsed(false);
+        setWidth(Math.min(Math.max(e.clientX, 200), 600));
+      }
     };
-    setProject(prev => ({
-      ...prev,
-      boards: [...prev.boards, newBoard],
-      activeBoardId: newBoard.id
-    }));
-  };
 
-  const addVariable = () => {
-    const newVar: Variable = {
-      id: `var-${Date.now()}`,
-      name: 'new_variable',
-      type: VariableType.BOOLEAN,
-      value: false
+    const handleMouseUp = () => {
+      setIsResizing(false);
     };
-    setProject(prev => ({
-      ...prev,
-      variables: [...prev.variables, newVar]
-    }));
-  };
 
-  const deleteBoard = (id: string, e: React.MouseEvent) => {
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    } else {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing]);
+
+  const startResizing = (e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
-    if (project.boards.length <= 1) return;
-    setProject(prev => ({
-        ...prev,
-        boards: prev.boards.filter(b => b.id !== id),
-        activeBoardId: prev.activeBoardId === id ? prev.boards.find(b => b.id !== id)?.id || '' : prev.activeBoardId
-    }));
+    setIsResizing(true);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+  const toggleCollapse = () => {
+    setIsCollapsed(!isCollapsed);
+  };
 
-      const reader = new FileReader();
-      reader.onload = (event) => {
-          if (event.target?.result) {
-              const newAsset: Asset = {
-                  id: `asset-${Date.now()}`,
-                  name: file.name,
-                  type: file.type.startsWith('image/') ? 'image' : 'audio',
-                  url: event.target.result as string
-              };
-              setProject(prev => ({
-                  ...prev,
-                  assets: [...prev.assets, newAsset]
-              }));
-          }
-      };
-      reader.readAsDataURL(file);
+  const handleTabClick = (tab: 'boards' | 'vars' | 'assets') => {
+    setActiveTab(tab);
+    if (isCollapsed) {
+      setIsCollapsed(false);
+    }
+  };
+
+  const getInitials = (name: string) => {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return '?';
+    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+    return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
   };
 
   return (
-    <div className="w-64 bg-[#18181b] border-r border-[#27272a] flex flex-col h-full select-none">
+    <div 
+      ref={sidebarRef}
+      className="bg-[#18181b] border-r border-zinc-800 flex flex-col h-full select-none relative group"
+      style={{ width: isCollapsed ? 60 : width, transition: isResizing ? 'none' : 'width 0.2s ease-in-out' }}
+    >
+      {/* Resize Handle */}
+      <div 
+        className="absolute right-[-4px] top-0 bottom-0 w-3 cursor-col-resize hover:bg-orange-500/0 z-50 flex justify-center"
+        onMouseDown={startResizing}
+      >
+         <div className="w-[1px] h-full bg-transparent group-hover:bg-orange-500/50 transition-colors" />
+      </div>
+
       {/* Project Header */}
-      <div className="h-14 border-b border-[#27272a] flex items-center px-4 gap-2">
-        <div className="w-8 h-8 bg-orange-600 rounded flex items-center justify-center font-bold text-white">
-          A
-        </div>
-        <div className="flex flex-col overflow-hidden">
-             <span className="font-semibold text-sm truncate">{project.name}</span>
-             <span className="text-[10px] text-zinc-500 uppercase">Single Project</span>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex border-b border-[#27272a]">
-        <button 
-          onClick={() => setActiveTab('boards')}
-          className={`flex-1 py-3 flex justify-center text-zinc-400 hover:text-white transition-colors ${activeTab === 'boards' ? 'border-b-2 border-orange-500 text-orange-500' : ''}`}
-        >
-          <Layout size={18} />
-        </button>
-        <button 
-          onClick={() => setActiveTab('vars')}
-          className={`flex-1 py-3 flex justify-center text-zinc-400 hover:text-white transition-colors ${activeTab === 'vars' ? 'border-b-2 border-orange-500 text-orange-500' : ''}`}
-        >
-          <Database size={18} />
-        </button>
-        <button 
-          onClick={() => setActiveTab('assets')}
-          className={`flex-1 py-3 flex justify-center text-zinc-400 hover:text-white transition-colors ${activeTab === 'assets' ? 'border-b-2 border-orange-500 text-orange-500' : ''}`}
-        >
-          <FolderOpen size={18} />
-        </button>
-      </div>
-
-      {/* Content Area */}
-      <div className="flex-1 overflow-y-auto p-2">
-        
-        {/* BOARDS LIST */}
-        {activeTab === 'boards' && (
-          <div className="space-y-1">
-            
-            {/* Boards Section */}
-            <div className="flex items-center justify-between px-2 py-1 text-xs font-semibold text-zinc-500 uppercase mt-2">
-              <span>Boards</span>
-              <button onClick={addBoard} className="hover:text-orange-500"><Plus size={14} /></button>
-            </div>
-            {project.boards.map(board => (
-              <div 
-                key={board.id}
-                onClick={() => setProject(p => ({ ...p, activeBoardId: board.id }))}
-                className={`group flex items-center justify-between px-3 py-2 rounded-md cursor-pointer text-sm transition-colors ${project.activeBoardId === board.id ? 'bg-[#27272a] text-white' : 'text-zinc-400 hover:bg-[#27272a]/50'}`}
-              >
-                <div className="flex items-center gap-2">
-                   <Layout size={14} />
-                   <span className="truncate max-w-[120px]">{board.name}</span>
-                </div>
-                {project.boards.length > 1 && (
-                    <button onClick={(e) => deleteBoard(board.id, e)} className="opacity-0 group-hover:opacity-100 hover:text-red-500">
-                        <Trash2 size={12} />
-                    </button>
+      <div className={`h-14 border-b border-zinc-800 flex items-center ${isCollapsed ? 'justify-center flex-col gap-1' : 'px-3 gap-2'} transition-all overflow-hidden`}>
+        {isCollapsed ? (
+             <button 
+                onClick={() => navigate('/')}
+                className="p-1.5 hover:bg-zinc-800 rounded-md text-zinc-400 hover:text-zinc-100 transition-colors"
+                title="Back to Dashboard"
+            >
+                <ArrowLeft size={18} />
+            </button>
+        ) : (
+            <>
+                <button 
+                    onClick={() => navigate('/')}
+                    className="p-1.5 hover:bg-zinc-800 rounded-md text-zinc-400 hover:text-zinc-100 transition-colors"
+                    title="Back to Dashboard"
+                >
+                    <ArrowLeft size={18} />
+                </button>
+                <div className="w-10 h-8 bg-zinc-700 border border-zinc-600 rounded-md flex items-center justify-center font-medium text-zinc-100 overflow-hidden shrink-0">
+                {project.coverImage ? (
+                    <img src={project.coverImage} alt="Cover" className="w-full h-full object-cover" />
+                ) : (
+                    <span>{getInitials(project.name)}</span>
                 )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* VARIABLES LIST */}
-        {activeTab === 'vars' && (
-          <div className="space-y-2">
-             <div className="flex items-center justify-between px-2 py-1 text-xs font-semibold text-zinc-500 uppercase">
-              <span>Global Variables</span>
-              <button onClick={addVariable} className="hover:text-orange-500"><Plus size={14} /></button>
-            </div>
-            {project.variables.map((v, idx) => (
-                <div key={v.id} className="bg-[#27272a] p-2 rounded text-xs space-y-2 border border-zinc-700">
-                    <div className="flex items-center gap-2">
-                        <input 
-                            className="bg-transparent border-none text-orange-400 font-mono w-full focus:outline-none"
-                            value={v.name}
-                            onChange={(e) => {
-                                const newVars = [...project.variables];
-                                newVars[idx].name = e.target.value;
-                                setProject({...project, variables: newVars});
-                            }}
-                        />
-                         <button onClick={() => {
-                             const newVars = project.variables.filter(vari => vari.id !== v.id);
-                             setProject({...project, variables: newVars});
-                         }} className="text-zinc-500 hover:text-red-500"><Trash2 size={12}/></button>
-                    </div>
-                    <div className="flex items-center gap-2">
-                         <select 
-                            className="bg-zinc-900 text-zinc-400 p-1 rounded border border-zinc-700"
-                            value={v.type}
-                            onChange={(e) => {
-                                const newVars = [...project.variables];
-                                newVars[idx].type = e.target.value as VariableType;
-                                if(e.target.value === VariableType.BOOLEAN) newVars[idx].value = false;
-                                if(e.target.value === VariableType.NUMBER) newVars[idx].value = 0;
-                                if(e.target.value === VariableType.STRING) newVars[idx].value = "";
-                                setProject({...project, variables: newVars});
-                            }}
-                         >
-                             <option value={VariableType.BOOLEAN}>Bool</option>
-                             <option value={VariableType.NUMBER}>Num</option>
-                             <option value={VariableType.STRING}>Str</option>
-                         </select>
-                         
-                         {v.type === VariableType.BOOLEAN ? (
-                             <button 
-                                onClick={() => {
-                                    const newVars = [...project.variables];
-                                    newVars[idx].value = !newVars[idx].value;
-                                    setProject({...project, variables: newVars});
-                                }}
-                                className={`flex-1 py-1 rounded ${v.value ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}`}
-                             >
-                                 {String(v.value)}
-                             </button>
-                         ) : (
-                             <input 
-                                className="flex-1 bg-zinc-900 p-1 rounded border border-zinc-700"
-                                value={String(v.value)}
-                                type={v.type === VariableType.NUMBER ? 'number' : 'text'}
-                                onChange={(e) => {
-                                    const newVars = [...project.variables];
-                                    newVars[idx].value = v.type === VariableType.NUMBER ? Number(e.target.value) : e.target.value;
-                                    setProject({...project, variables: newVars});
-                                }}
-                             />
-                         )}
-                    </div>
                 </div>
-            ))}
-          </div>
+                <div className="flex flex-col overflow-hidden flex-1 min-w-0">
+                    <span className="font-semibold text-sm truncate text-zinc-200">{project.name}</span>
+                </div>
+                <button onClick={toggleCollapse} className="p-1 text-zinc-500 hover:text-zinc-300">
+                    <PanelLeftClose size={16} />
+                </button>
+            </>
         )}
-
-        {/* ASSETS LIST */}
-        {activeTab === 'assets' && (
-          <div className="grid grid-cols-2 gap-2">
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={handleFileUpload} 
-                className="hidden" 
-                accept="image/*"
-              />
-              {project.assets.map(asset => (
-                  <div key={asset.id} className="relative group rounded overflow-hidden aspect-square border border-zinc-700 bg-zinc-900">
-                      <img src={asset.url} alt={asset.name} className="w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                          <span className="text-[10px] text-white font-mono px-1 text-center truncate w-full">{asset.name}</span>
-                      </div>
-                  </div>
-              ))}
-              <button 
-                onClick={() => fileInputRef.current?.click()}
-                className="aspect-square rounded border border-zinc-700 border-dashed flex flex-col items-center justify-center text-zinc-500 hover:text-orange-500 hover:border-orange-500 transition-colors"
-              >
-                  <Upload size={24} />
-                  <span className="text-[10px] mt-1">Upload</span>
-              </button>
-          </div>
-        )}
-
       </div>
+
+      {/* Tabs & Content */}
+      {isCollapsed ? (
+        <div className="flex flex-col items-center py-2 gap-2 flex-1">
+             <button 
+                onClick={() => handleTabClick('boards')}
+                className={`p-2 rounded-md transition-colors ${activeTab === 'boards' ? 'text-orange-500 bg-zinc-800' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'}`}
+                title="Boards"
+            >
+                <Layout size={20} />
+            </button>
+            <button 
+                onClick={() => handleTabClick('vars')}
+                className={`p-2 rounded-md transition-colors ${activeTab === 'vars' ? 'text-orange-500 bg-zinc-800' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'}`}
+                title="Variables"
+            >
+                <Database size={20} />
+            </button>
+            <button 
+                onClick={() => handleTabClick('assets')}
+                className={`p-2 rounded-md transition-colors ${activeTab === 'assets' ? 'text-orange-500 bg-zinc-800' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'}`}
+                title="Assets"
+            >
+                <FolderOpen size={20} />
+            </button>
+            
+            <div className="flex-1" />
+            
+             <button 
+                onClick={() => setShowSettingsMenu(!showSettingsMenu)}
+                className={`p-2 rounded-md transition-colors ${showSettingsMenu ? 'text-zinc-100 bg-zinc-800' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'}`}
+                title="Settings"
+            >
+                <Settings size={20} />
+            </button>
+             <button 
+                onClick={() => setShowHelpModal(true)}
+                className="p-2 rounded-md transition-colors text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
+                title="Help"
+            >
+                <HelpCircle size={20} />
+            </button>
+             <button 
+                onClick={toggleCollapse}
+                className="p-2 mt-2 rounded-md transition-colors text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
+                title="Expand"
+            >
+                <PanelLeftOpen size={20} />
+            </button>
+        </div>
+      ) : (
+        <>
+            {/* Tabs */}
+            <div className="flex border-b border-zinc-800 shrink-0">
+                <button 
+                onClick={() => setActiveTab('boards')}
+                className={`flex-1 py-3 flex justify-center relative text-zinc-500 hover:text-zinc-300 transition-colors ${activeTab === 'boards' ? 'text-orange-500' : ''}`}
+                title="Boards"
+                >
+                <Layout size={18} />
+                {activeTab === 'boards' && <div className="absolute bottom-0 w-full h-[2px] bg-orange-500" />}
+                </button>
+                <button 
+                onClick={() => setActiveTab('vars')}
+                className={`flex-1 py-3 flex justify-center relative text-zinc-500 hover:text-zinc-300 transition-colors ${activeTab === 'vars' ? 'text-orange-500' : ''}`}
+                title="Variables"
+                >
+                <Database size={18} />
+                {activeTab === 'vars' && <div className="absolute bottom-0 w-full h-[2px] bg-orange-500" />}
+                </button>
+                <button 
+                onClick={() => setActiveTab('assets')}
+                className={`flex-1 py-3 flex justify-center relative text-zinc-500 hover:text-zinc-300 transition-colors ${activeTab === 'assets' ? 'text-orange-500' : ''}`}
+                title="Assets"
+                >
+                <FolderOpen size={18} />
+                {activeTab === 'assets' && <div className="absolute bottom-0 w-full h-[2px] bg-orange-500" />}
+                </button>
+            </div>
+
+            {/* Content Area */}
+            <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 min-w-0">
+                
+                {/* BOARDS LIST */}
+                {activeTab === 'boards' && (
+                <BoardsList project={project} setProject={setProject} />
+                )}
+
+                {/* VARIABLES LIST */}
+                {activeTab === 'vars' && (
+                <VariablesList project={project} setProject={setProject} />
+                )}
+
+                {/* ASSETS LIST */}
+                {activeTab === 'assets' && (
+                <AssetsList project={project} setProject={setProject} />
+                )}
+
+            </div>
+
+            {/* Footer / Settings */}
+            <div className="border-t border-zinc-800 p-2 relative shrink-0">
+                {showSettingsMenu && (
+                    <div className="absolute bottom-full left-2 right-2 mb-2 bg-zinc-800 border border-zinc-700 rounded-md shadow-xl z-50 py-1">
+                        <button 
+                            onClick={() => { setShowExportModal(true); setShowSettingsMenu(false); }}
+                            className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-700 hover:text-white flex items-center gap-2"
+                        >
+                            <Download size={14} /> Export Project
+                        </button>
+                        <button 
+                            className="w-full text-left px-4 py-2 text-sm text-zinc-500 cursor-not-allowed flex items-center gap-2"
+                            title="Coming soon"
+                        >
+                            <Edit2 size={14} /> Rename Project
+                        </button>
+                    </div>
+                )}
+
+                <button 
+                    onClick={() => setShowSettingsMenu(!showSettingsMenu)}
+                    className={`w-full flex items-center gap-3 px-3 py-2 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-md transition-colors ${showSettingsMenu ? 'bg-zinc-800 text-zinc-100' : ''}`}
+                >
+                    <Settings size={18} />
+                    <span className="text-sm truncate">Project Settings</span>
+                </button>
+                <button 
+                    onClick={() => setShowHelpModal(true)}
+                    className="w-full flex items-center gap-3 px-3 py-2 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-md transition-colors"
+                >
+                    <HelpCircle size={18} />
+                    <span className="text-sm truncate">Help & Shortcuts</span>
+                </button>
+            </div>
+        </>
+      )}
+
+      <HelpModal isOpen={showHelpModal} onClose={() => setShowHelpModal(false)} />
+      <ExportProjectModal isOpen={showExportModal} onClose={() => setShowExportModal(false)} project={project} />
     </div>
   );
 };

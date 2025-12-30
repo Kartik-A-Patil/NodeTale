@@ -3,21 +3,47 @@ import { Edge, Node } from 'reactflow';
 export enum VariableType {
   STRING = 'string',
   NUMBER = 'number',
-  BOOLEAN = 'boolean'
+  BOOLEAN = 'boolean',
+  ARRAY = 'array',
+  OBJECT = 'object'
+}
+
+export interface ArrayValue {
+  elementType: VariableType.STRING | VariableType.NUMBER | VariableType.BOOLEAN;
+  elements: (string | number | boolean)[];
+}
+
+export interface ObjectValue {
+  keys: Record<string, {
+    type: VariableType.STRING | VariableType.NUMBER | VariableType.BOOLEAN;
+    value: string | number | boolean;
+  }>;
 }
 
 export interface Variable {
   id: string;
   name: string;
   type: VariableType;
-  value: string | number | boolean;
+  value: string | number | boolean | ArrayValue | ObjectValue;
+}
+
+export interface Folder {
+  id: string;
+  name: string;
+  parentId: string | null;
 }
 
 export interface Asset {
   id: string;
   name: string;
   url: string;
-  type: 'image' | 'audio';
+  type: 'image' | 'audio' | 'video';
+  parentId: string | null;
+}
+
+export interface AudioSettings {
+  loop: boolean;
+  delay: number;
 }
 
 export interface Branch {
@@ -29,7 +55,8 @@ export interface Branch {
 export interface NodeData {
   label: string;
   content: string; // HTML/Rich text content
-  assets?: string[]; // Asset IDs
+  assets?: string[]; // Asset IDs only, not objects
+  audioSettings?: Record<string, AudioSettings>; // assetId -> settings
   variables?: Variable[]; // Inject global variables for highlighting context
   
   // Logic
@@ -65,4 +92,6 @@ export interface Project {
   activeBoardId: string;
   variables: Variable[];
   assets: Asset[];
+  folders: Folder[];
+  coverImage?: string; // Base64 or URL
 }
