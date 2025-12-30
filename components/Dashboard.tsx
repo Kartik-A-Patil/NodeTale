@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Upload, Sparkles } from 'lucide-react';
+import { Plus, Upload, Sparkles, ChevronDown } from 'lucide-react';
 import JSZip from 'jszip';
 import { getAllProjects, saveProject, deleteProject, checkProjectNameExists } from '../services/storageService';
 import { Project } from '../types';
@@ -26,10 +26,17 @@ export const Dashboard = () => {
   const [projectToRename, setProjectToRename] = useState<Project | null>(null);
   const [renameProjectName, setRenameProjectName] = useState('');
   const [renameError, setRenameError] = useState('');
+  const [showCreateDropdown, setShowCreateDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadProjects();
-    const handleClickOutside = () => setActiveMenu(null);
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowCreateDropdown(false);
+      }
+      setActiveMenu(null);
+    };
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
@@ -152,6 +159,48 @@ export const Dashboard = () => {
     setRenameError('');
   };
 
+  const handleCreateExampleProject = async () => {
+    try {
+      const res = await fetch('/assets/Example_Project/Project.json');
+      if (!res.ok) throw new Error('Could not load Example Project');
+      const project = await res.json();
+      // Patch asset URLs to correct relative path
+      if (project.assets) {
+        project.assets = project.assets.map((a) => ({
+          ...a,
+          url: a.url.replace('assets/', '/assets/Example_Project/assets/')
+        }));
+      }
+      // Patch coverImage if present
+      if (project.coverImage && !project.coverImage.startsWith('data:')) {
+        project.coverImage = '/assets/Example_Project/' + project.coverImage;
+      }
+      // Patch embedded images in node content
+      for (const board of project.boards || []) {
+        for (const node of board.nodes || []) {
+          if (node.data && typeof node.data.content === 'string') {
+            node.data.content = node.data.content.replace(/src=["']assets\//g, 'src="/assets/Example_Project/assets/');
+          }
+        }
+      }
+      // Ensure unique name
+      let newName = project.name || 'Example Project';
+      let counter = 1;
+      while (await checkProjectNameExists(newName)) {
+        newName = `Example Project (${counter++})`;
+      }
+      const newProject = {
+        ...project,
+        id: crypto.randomUUID(),
+        name: newName,
+      };
+      await saveProject(newProject);
+      await loadProjects();
+    } catch (err) {
+      alert('Failed to add Example Project: ' + err);
+    }
+  };
+
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -214,13 +263,40 @@ export const Dashboard = () => {
                 Import
                 <input type="file" accept=".json,.zip" onChange={handleImport} className="hidden" />
               </label>
-              <button 
-                onClick={() => setIsCreating(true)}
-                className="flex items-center gap-2 px-5 py-2 bg-orange-500 hover:bg-orange-400 text-black font-semibold rounded-lg transition-colors shadow-sm"
-              >
-                <Plus size={18} />
-                New Project
-              </button>
+              <div className="relative" ref={dropdownRef}>
+                <button 
+                  onClick={() => setShowCreateDropdown(!showCreateDropdown)}
+                  className="flex items-center gap-2 px-5 py-2 bg-orange-500 hover:bg-orange-400 text-black font-semibold rounded-lg transition-colors shadow-sm"
+                >
+                  <Plus size={18} />
+                  Create Project
+                  <ChevronDown size={16} className={`transition-transform ${showCreateDropdown ? 'rotate-180' : ''}`} />
+                </button>
+                {showCreateDropdown && (
+                  <div className="absolute top-full mt-2 right-0 bg-[#1a1a1f] border border-white/15 rounded-lg shadow-lg py-2 min-w-[200px] z-50">
+                    <button
+                      onClick={() => {
+                        setIsCreating(true);
+                        setShowCreateDropdown(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-colors text-zinc-200"
+                    >
+                      <Plus size={16} />
+                      New Project
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleCreateExampleProject();
+                        setShowCreateDropdown(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-colors text-zinc-200"
+                    >
+                      <Sparkles size={16} />
+                      Example Project
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </header>
