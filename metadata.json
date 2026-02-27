@@ -1,0 +1,5 @@
+{
+  "name": "Arcweave Clone",
+  "description": "A single-project narrative engine clone featuring infinite canvas boards, logic branching, variables, and a visual novel style play mode.",
+  "requestFramePermissions": []
+}
