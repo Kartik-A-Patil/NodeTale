@@ -1,7 +1,7 @@
 {
   "name": "nodetale",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "NodeTale is a visually programmable story and logic engine.",
   "author": "NodeTale",
   "type": "module",
