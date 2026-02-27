@@ -15,15 +15,15 @@ compression: normal
 win:
   target:
     - nsis
-  # icon: build/icon.ico
+  icon: build/icon.ico
   artifactName: ${productName}-${version}-Windows.${ext}
 
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
-  # installerIcon: build/icon.ico
-  # uninstallerIcon: build/icon.ico
-  # installerHeaderIcon: build/icon.ico
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
   createDesktopShortcut: true
   createStartMenuShortcut: true
 
@@ -31,7 +31,7 @@ nsis:
 mac:
   target:
     - dmg
-  # icon: build/icon.icns
+  icon: build/icon.icns
   category: public.app-category.utilities
   artifactName: ${productName}-${version}-macOS.${ext}
 
@@ -51,7 +51,7 @@ linux:
     - dir
   category: Utility
   maintainer: nodetale
-  # icon: build/icon.png
+  icon: build/icon.png
   executableArgs:
     - --no-sandbox
   artifactName: ${productName}-${version}-Linux.${ext}
