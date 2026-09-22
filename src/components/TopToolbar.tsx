@@ -139,7 +139,11 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
           <button onClick={onPlay} className={`flex items-center gap-2 px-4 py-1.5 rounded text-sm font-semibold transition-colors shadow-lg ${canPlay ? 'bg-orange-600 hover:bg-orange-500 text-white shadow-orange-900/20' : 'bg-zinc-600 text-zinc-400 cursor-not-allowed'}`} disabled={!canPlay} title={canPlay ? undefined : "Add an element titled 'Start' for playing"}>
               <Play size={14} fill="currentColor" /> Play
           </button>
-          {!canPlay && <AlertTriangle size={14} className="text-red-500" title="No 'Start' node found" />}
+          {!canPlay && (
+            <span title="No 'Start' node found">
+              <AlertTriangle size={14} className="text-red-500" />
+            </span>
+          )}
          <button onClick={onExport} className="p-2 text-zinc-400 hover:text-white transition-colors">
               <Download size={18} />
           </button>

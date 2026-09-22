@@ -1,9 +1,9 @@
 import React, { memo, useState } from 'react';
 import { NodeProps, NodeResizeControl, useReactFlow } from 'reactflow';
-import { NodeData } from '../../types';
+import { SectionNodeData } from '../../types';
 import JumpTargetBadge from './JumpTargetBadge';
 
-const SectionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
+const SectionNode = ({ id, data, selected }: NodeProps<SectionNodeData>) => {
   const { setNodes } = useReactFlow();
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const primaryColor = data.color || '#71717a'; // Default zinc-500

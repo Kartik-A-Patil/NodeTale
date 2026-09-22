@@ -1,29 +1,39 @@
 import React,{ useCallback } from 'react';
 import { ReactFlowInstance, Node } from 'reactflow';
 import { AppNode } from '../types';
+import { CommandContext, Command } from '../editor/commands/types';
+import { addElementsCommand } from '../editor/commands/addElementsCommand';
+import { moveNodesCommand, NodeMove, NodeTransform } from '../editor/commands/moveNodeCommand';
 
 export function useDragAndDrop(
     nodes: AppNode[],
-    setNodes: (nodes: AppNode[] | ((nds: AppNode[]) => AppNode[])) => void,
+    ctx: CommandContext,
     reactFlowInstance: ReactFlowInstance | null,
-    reactFlowWrapper: React.RefObject<HTMLDivElement>,
-    takeSnapshot: () => void
+    reactFlowWrapper: React.RefObject<HTMLDivElement | null>,
+    executeCommand: (command: Command) => void,
+    dragStartRef: React.MutableRefObject<(({ id: string } & NodeTransform)[]) | null>
 ) {
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
   }, []);
 
-  const onNodeDragStop = useCallback((event: React.MouseEvent, node: Node) => {
+  const onNodeDragStop = useCallback((event: React.MouseEvent, node: Node, draggedNodes: Node[]) => {
       // Check intersection with section nodes to handle grouping
       if (!reactFlowInstance) return;
 
+      const dragStart = dragStartRef.current;
+      dragStartRef.current = null;
+      if (!dragStart) return;
+      const primaryStart = dragStart.find(d => d.id === node.id);
+      if (!primaryStart) return;
+
       // If node is already a child, check if it's moved out
       // Or if it's a standalone node, check if it's moved in
-      
+
       // Get all section nodes
       const sectionNodes = nodes.filter(n => n.type === 'sectionNode' && n.id !== node.id);
-      
+
       // Simple intersection check
       const nodeRect = {
           x: node.positionAbsolute?.x || node.position.x,
@@ -53,39 +63,37 @@ export function useDragAndDrop(
           }
       }
 
+      let primaryTo: NodeTransform;
+
       if (parentSection && node.parentNode !== parentSection.id) {
-          takeSnapshot();
           // Move into section
-          setNodes(nds => nds.map(n => {
-              if (n.id === node.id) {
-                  const relativeX = nodeRect.x - (parentSection!.positionAbsolute?.x || parentSection!.position.x);
-                  const relativeY = nodeRect.y - (parentSection!.positionAbsolute?.y || parentSection!.position.y);
-                  
-                  return {
-                      ...n,
-                      parentNode: parentSection!.id,
-                      // extent: 'parent', // Removed to allow dragging out
-                      position: { x: relativeX, y: relativeY }
-                  };
-              }
-              return n;
-          }));
+          const relativeX = nodeRect.x - (parentSection.positionAbsolute?.x || parentSection.position.x);
+          const relativeY = nodeRect.y - (parentSection.positionAbsolute?.y || parentSection.position.y);
+          primaryTo = { position: { x: relativeX, y: relativeY }, parentNode: parentSection.id, extent: undefined };
       } else if (!parentSection && node.parentNode) {
-          takeSnapshot();
           // Move out of section
-          setNodes(nds => nds.map(n => {
-              if (n.id === node.id) {
-                  return {
-                      ...n,
-                      parentNode: undefined,
-                      extent: undefined,
-                      position: { x: nodeRect.x, y: nodeRect.y }
-                  };
-              }
-              return n;
-          }));
+          primaryTo = { position: { x: nodeRect.x, y: nodeRect.y }, parentNode: undefined, extent: undefined };
+      } else {
+          // Plain move, no reparenting — commit the drag's final position as-is
+          // (already applied live by onNodesChange during the drag).
+          primaryTo = { position: node.position, parentNode: node.parentNode, extent: (node as any).extent };
       }
-  }, [nodes, reactFlowInstance, setNodes, takeSnapshot]);
+
+      // Section-reparenting only ever applies to the node under the cursor; every
+      // other co-dragged node (multi-selection drag) just commits wherever it
+      // ended up, same as the primary node's "plain move" branch above.
+      const moves: NodeMove[] = draggedNodes
+        .map((n): NodeMove | null => {
+          const start = dragStart.find(d => d.id === n.id);
+          if (!start) return null;
+          const to = n.id === node.id ? primaryTo : { position: n.position, parentNode: n.parentNode, extent: (n as any).extent };
+          return { id: n.id, from: { position: start.position, parentNode: start.parentNode, extent: start.extent }, to };
+        })
+        .filter((m): m is NodeMove => m !== null);
+
+      if (moves.length === 0) return;
+      executeCommand(moveNodesCommand(ctx, moves));
+  }, [nodes, reactFlowInstance, ctx, executeCommand, dragStartRef]);
 
   const onDrop = useCallback(
     (event: React.DragEvent) => {
@@ -95,10 +103,8 @@ export function useDragAndDrop(
 
       const type = event.dataTransfer.getData('application/reactflow/type');
       const payloadStr = event.dataTransfer.getData('application/reactflow/payload');
-      
-      if (!type) return;
 
-      takeSnapshot();
+      if (!type) return;
 
       const position = reactFlowInstance.screenToFlowPosition({
         x: event.clientX,
@@ -106,20 +112,20 @@ export function useDragAndDrop(
       });
 
       const payload = payloadStr ? JSON.parse(payloadStr) : {};
-      
+
       const newNode: AppNode = {
         id: `node-${Date.now()}`,
         type,
         position,
-        data: { 
+        data: {
             label: payload.label || 'New Node',
             ...payload
         },
-      };
+      } as AppNode;
 
-      setNodes(nds => [...nds, newNode]);
+      executeCommand(addElementsCommand(ctx, [newNode]));
     },
-    [reactFlowInstance, reactFlowWrapper, setNodes, takeSnapshot]
+    [reactFlowInstance, reactFlowWrapper, ctx, executeCommand]
   );
 
   return {

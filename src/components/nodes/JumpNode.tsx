@@ -1,9 +1,9 @@
 import React, { memo, useState } from 'react';
 import { Handle, Position, NodeProps, useReactFlow, useStore } from 'reactflow';
 import { Forward, Link as LinkIcon } from 'lucide-react';
-import { NodeData } from '../../types';
+import { JumpNodeData } from '../../types';
 
-const JumpNode = ({ id, data, selected }: NodeProps<NodeData>) => {
+const JumpNode = ({ id, data, selected }: NodeProps<JumpNodeData>) => {
   const { setNodes, getNodes } = useReactFlow();
   const connectionNodeId = useStore((state) => state.connectionNodeId);
   const isTarget = connectionNodeId && connectionNodeId !== id;

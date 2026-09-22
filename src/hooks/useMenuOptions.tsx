@@ -6,7 +6,7 @@ import {
     FileAudio, FileVideo, X
 } from 'lucide-react';
 import { ContextMenuOption } from '../components/ContextMenu';
-import { AppNode, Asset } from '../types';
+import { AppNode, Asset, isAnnotationNode, isConditionNode, isElementNode } from '../types';
 import { Edge, ReactFlowInstance } from 'reactflow';
 import { MenuState } from './useContextMenu';
 
@@ -160,7 +160,7 @@ export function useMenuOptions({
              return options;
         }
 
-        if (node && node.type === 'annotationNode') {
+        if (node && isAnnotationNode(node)) {
             options.push(
                 {
                     type: 'icon-row',
@@ -213,7 +213,7 @@ export function useMenuOptions({
             return options;
         }
 
-        if (node && node.type === 'conditionNode') {
+        if (node && isConditionNode(node)) {
             options.push(
                 {
                     label: 'Add Condition Case',
@@ -240,7 +240,7 @@ export function useMenuOptions({
             );
         }
 
-        if (node && node.type === 'elementNode') {
+        if (node && isElementNode(node)) {
              const projectAssets = (node.data.projectAssets as Asset[]) || [];
              const nodeAssetIds = node.data.assets || [];
              const nodeAssets = nodeAssetIds

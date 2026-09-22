@@ -1,4 +1,4 @@
-import { Project } from '../../types';
+import { Project, ProjectSummary } from '../../types';
 
 /**
  * Union type for file data handling.
@@ -71,6 +71,10 @@ export interface StorageAdapter {
    * @returns Promise<Project[]> - List of projects.
    */
   getAllProjects(): Promise<Project[]>;
+
+  // Lightweight metadata for listing UI (e.g. the Dashboard), without loading
+  // each project's full boards/nodes/edges. Kept in sync by saveProject/deleteProject.
+  getProjectSummaries(): Promise<ProjectSummary[]>;
 
   /**
    * Deletes a project by ID.

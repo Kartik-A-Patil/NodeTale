@@ -1,6 +1,6 @@
 import { memo, useState, useMemo } from "react";
 import { Handle, Position, NodeProps, useReactFlow, useStore } from "reactflow";
-import { NodeData, Branch, Variable } from "../../types";
+import { ConditionNodeData, Branch, Variable } from "../../types";
 import { X, AlertCircle } from "lucide-react";
 import clsx from "clsx";
 
@@ -52,7 +52,7 @@ const ConditionInput = ({
         );
         const isVar = variables.some((v: Variable) => v.name === token);
 
-        let color = "text-zinc-300";
+        let color: string;
         if (isKeyword) color = "text-purple-400";
         else if (isVar) color = "text-blue-400";
         else
@@ -103,7 +103,7 @@ const ConditionInput = ({
   );
 };
 
-const ConditionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
+const ConditionNode = ({ id, data, selected }: NodeProps<ConditionNodeData>) => {
   const { setNodes } = useReactFlow();
   const connectionNodeId = useStore((state) => state.connectionNodeId);
   const edges = useStore((state) => state.edges);

@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electron', {
     saveProject: (project: any) => ipcRenderer.invoke('storage:save-project', project),
     loadProject: (id: string) => ipcRenderer.invoke('storage:load-project', id),
     getAllProjects: () => ipcRenderer.invoke('storage:get-all-projects'),
+    getProjectSummaries: () => ipcRenderer.invoke('storage:get-project-summaries'),
     deleteProject: (id: string) => ipcRenderer.invoke('storage:delete-project', id),
     getAssetData: (id: string) => ipcRenderer.invoke('storage:get-asset-data', id),
   }

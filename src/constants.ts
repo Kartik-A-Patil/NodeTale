@@ -32,9 +32,8 @@ export const INITIAL_PROJECT: Project = {
             id: 'node-3',
             type: 'conditionNode',
             position: { x: 500, y: 300 },
-            data: { 
-              label: 'Has Key?', 
-              content: '', 
+            data: {
+              label: 'Has Key?',
               branches: [
                 { id: 'branch-1', label: 'If', condition: 'hasKey == true' },
                 { id: 'else', label: 'Else', condition: '' }

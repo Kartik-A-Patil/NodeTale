@@ -54,7 +54,7 @@ export const AssetsList: React.FC<AssetsListProps> = ({ project, setProject }) =
       const getDescendants = (folderId: string): string[] => {
         const children = (project.folders || []).filter(f => f.parentId === folderId).map(f => f.id);
         const assets = project.assets.filter(a => a.parentId === folderId).map(a => a.id);
-        let all = [...children, ...assets];
+        const all = [...children, ...assets];
         children.forEach(child => all.push(...getDescendants(child)));
         return all;
       };
