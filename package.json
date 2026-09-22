@@ -24,6 +24,7 @@
     "@types/prismjs": "^1.26.5",
     "clsx": "^2.1.1",
     "file-saver": "^2.0.5",
+    "jsdom": "^29.1.1",
     "jszip": "^3.10.1",
     "lucide-react": "^0.554.0",
     "prismjs": "^1.30.0",
