@@ -22,9 +22,14 @@ import { useFlowLogic } from './hooks/useFlowLogic';
 import { useContextMenu } from './hooks/useContextMenu';
 import { useDragAndDrop } from './hooks/useDragAndDrop';
 import { useMenuOptions } from './hooks/useMenuOptions';
+import { deleteElementsCommand } from './editor/commands/deleteElementsCommand';
 import { exportProject } from './utils/projectUtils';
 import { nodeTypes as initialNodeTypes, edgeTypes as initialEdgeTypes } from './components/flowConfig';
 import { Dashboard } from './components/Dashboard';
+import { EditorAction } from './editor/shortcuts/types';
+import { Asset } from './types';
+import { useShortcuts } from './editor/shortcuts/useShortcuts';
+import { CommandPalette } from './components/CommandPalette';
 
 const CustomControls = ({ isPanMode, setIsPanMode }: { isPanMode: boolean, setIsPanMode: (v: boolean) => void }) => {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
@@ -71,7 +76,8 @@ function ProjectEditor() {
   const [isPanMode, setIsPanMode] = useState(false);
   const [showAssetSelectorModal, setShowAssetSelectorModal] = useState(false);
   const [selectedNodeForAsset, setSelectedNodeForAsset] = useState<string | null>(null);
-  
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
 
@@ -112,7 +118,9 @@ function ProjectEditor() {
     canUndo,
     canRedo,
     onNodeDragStart,
-    takeSnapshot
+    dragStartRef,
+    ctx,
+    executeCommand
   } = useFlowLogic(projectId);
 
   const selectedNodes = useMemo(() => nodes.filter(n => n.selected), [nodes]);
@@ -132,10 +140,11 @@ function ProjectEditor() {
   // Memoize drag and drop handlers
   const dragDropHandlers = useDragAndDrop(
     nodes,
-    setNodes,
+    ctx,
     reactFlowInstance,
     reactFlowWrapper,
-    takeSnapshot
+    executeCommand,
+    dragStartRef
   );
   const onDragOver = useCallback(dragDropHandlers.onDragOver, [dragDropHandlers]);
   const onNodeDragStop = useCallback(dragDropHandlers.onNodeDragStop, [dragDropHandlers]);
@@ -159,72 +168,53 @@ function ProjectEditor() {
       return board && board.nodes.some(n => n.data.label.toLowerCase() === 'start');
   }, [project.boards, project.activeBoardId]);
 
-  // Keyboard shortcuts
+  // Every editor action — keyboard shortcut and/or command palette entry.
+  // Migrated from a single scattered keydown handler (Phase 8): one list drives
+  // both, so there's one place that knows the full shortcut/action surface.
+  const cutSelected = React.useCallback(() => {
+    if (selectedNodes.length === 0) return;
+    copySelected();
+    executeCommand(deleteElementsCommand(ctx, selectedNodes.map(n => n.id)));
+  }, [selectedNodes, copySelected, executeCommand, ctx]);
+
+  const selectAll = React.useCallback(() => {
+    setNodes(nds => nds.map(n => ({ ...n, selected: true })));
+    setEdges(eds => eds.map(e => ({ ...e, selected: true })));
+  }, [setNodes, setEdges]);
+
+  const deselectAll = React.useCallback(() => {
+    setNodes(nds => nds.map(n => (n.selected ? { ...n, selected: false } : n)));
+    setEdges(eds => eds.map(e => (e.selected ? { ...e, selected: false } : e)));
+  }, [setNodes, setEdges]);
+
+  const editorActions: EditorAction[] = useMemo(() => [
+    { id: 'undo', label: 'Undo', category: 'Edit', keys: { key: 'z', ctrlOrCmd: true }, run: undo, enabled: canUndo },
+    { id: 'redo', label: 'Redo', category: 'Edit', keys: [{ key: 'z', ctrlOrCmd: true, shift: true }, { key: 'y', ctrlOrCmd: true }], run: redo, enabled: canRedo },
+    { id: 'delete', label: 'Delete Selected', category: 'Edit', keys: { key: 'Delete' }, run: () => executeCommand(deleteElementsCommand(ctx, selectedNodes.map(n => n.id))), enabled: selectedNodes.length > 0 },
+    { id: 'save', label: 'Save', category: 'File', keys: { key: 's', ctrlOrCmd: true }, run: saveNow },
+    { id: 'copy', label: 'Copy', category: 'Edit', keys: { key: 'c', ctrlOrCmd: true }, run: copySelected, enabled: selectedNodes.length > 0 },
+    { id: 'cut', label: 'Cut', category: 'Edit', keys: { key: 'x', ctrlOrCmd: true }, run: cutSelected, enabled: selectedNodes.length > 0 },
+    { id: 'paste', label: 'Paste', category: 'Edit', keys: { key: 'v', ctrlOrCmd: true }, run: pasteClipboard },
+    { id: 'select-all', label: 'Select All', category: 'Edit', keys: { key: 'a', ctrlOrCmd: true }, run: selectAll },
+    { id: 'deselect', label: 'Deselect', category: 'Edit', keys: { key: 'Escape' }, run: deselectAll },
+    { id: 'validate', label: 'Validate Project', category: 'File', run: () => window.dispatchEvent(new CustomEvent('nodetale:show-problems')) },
+    { id: 'play', label: 'Run Story', category: 'Story', run: () => { setPlayStartNodeId(null); setIsPlaying(true); }, enabled: canPlay },
+    { id: 'export', label: 'Export Project', category: 'File', run: () => exportProject(project) },
+  ], [undo, redo, canUndo, canRedo, selectedNodes, ctx, executeCommand, saveNow, copySelected, cutSelected, pasteClipboard, selectAll, deselectAll, canPlay, project]);
+
+  useShortcuts(editorActions);
+
+  // Command palette: Ctrl/Cmd+K, standard convention (VSCode/Notion/Linear).
   React.useEffect(() => {
-      const handleKeyDown = (event: KeyboardEvent) => {
-        // Ignore if input or textarea is focused
-        if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
-          return;
-        }
-
-        // Undo / Redo
-        if ((event.metaKey || event.ctrlKey) && event.key === 'z') {
-          if (event.shiftKey) {
-            redo();
-          } else {
-            undo();
-          }
-          event.preventDefault();
-          return;
-        }
-        if ((event.metaKey || event.ctrlKey) && event.key === 'y') {
-          redo();
-          event.preventDefault();
-          return;
-        }
-
-        // Delete / Backspace: remove selected node(s)
-        if (event.key === 'Delete') {
-          if (selectedNodes.length > 0) {
-            const idsToDelete = selectedNodes.map(n => n.id);
-            // Create a single snapshot for the batch delete and remove nodes + connected edges
-            takeSnapshot();
-            setNodes((nds) => nds.filter(n => !idsToDelete.includes(n.id)));
-            setEdges((eds) => eds.filter(e => !idsToDelete.includes(e.source) && !idsToDelete.includes(e.target)));
-            event.preventDefault();
-          }
-        }
-        // Save: Ctrl+S / Cmd+S
-        if ((event.metaKey || event.ctrlKey) && (event.key === 's' || event.key === 'S')) {
-          if (typeof saveNow === 'function') {
-            saveNow();
-            event.preventDefault();
-          }
-          return;
-        }
-
-        // Copy nodes: Ctrl+C / Cmd+C
-        if ((event.metaKey || event.ctrlKey) && (event.key === 'c' || event.key === 'C')) {
-          if (typeof copySelected === 'function') {
-            copySelected();
-            event.preventDefault();
-          }
-          return;
-        }
-
-        // Paste nodes: Ctrl+V / Cmd+V
-        if ((event.metaKey || event.ctrlKey) && (event.key === 'v' || event.key === 'V')) {
-          if (typeof pasteClipboard === 'function') {
-            pasteClipboard();
-            event.preventDefault();
-          }
-          return;
-        }
-      };
-
-      document.addEventListener('keydown', handleKeyDown);
-      return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [undo, redo, selectedNodes, setNodes, setEdges, takeSnapshot, saveNow, copySelected, pasteClipboard]);
+    const handleOpenPalette = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setShowCommandPalette(true);
+      }
+    };
+    document.addEventListener('keydown', handleOpenPalette);
+    return () => document.removeEventListener('keydown', handleOpenPalette);
+  }, []);
 
   const getMenuOptions = useMenuOptions({
       menu,
@@ -407,6 +397,12 @@ function ProjectEditor() {
           <PlayMode project={project} startNodeId={playStartNodeId} onClose={() => { setIsPlaying(false); setPlayStartNodeId(null); }} />
       )}
 
+      <CommandPalette
+          isOpen={showCommandPalette}
+          onClose={() => setShowCommandPalette(false)}
+          actions={editorActions}
+      />
+
       {showAssetSelectorModal && selectedNodeForAsset && (
           <AssetSelectorModal
               project={project}
@@ -414,9 +410,11 @@ function ProjectEditor() {
               onSelect={(asset) => {
                   const node = nodes.find(n => n.id === selectedNodeForAsset);
                   if (node) {
-                      const currentAssets = node.data.assets || [];
+                      const currentAssets: string[] = node.data.assets || [];
                       const projectAssets = project.assets;
-                      const nodeAssets = currentAssets.map(id => projectAssets.find(a => a.id === id)).filter(Boolean);
+                      const nodeAssets = currentAssets
+                        .map((id) => projectAssets.find((a) => a.id === id))
+                        .filter((a): a is Asset => a !== undefined);
                       
                       // Check if asset already exists
                       if (currentAssets.includes(asset.id)) return;

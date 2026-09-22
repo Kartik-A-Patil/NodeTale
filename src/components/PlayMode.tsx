@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Project } from "../types";
+import { Project, ElementNodeData, Asset } from "../types";
 import { replaceVariablesInText } from "../services/logicService";
 import { usePlayModeLogic } from "../hooks/usePlayMode";
 import { PlayControls } from "./playmode/PlayControls";
@@ -87,11 +87,15 @@ const PlayMode: React.FC<PlayModeProps> = ({
     );
   }
 
+  // Only elementNode is expected to reach this point (conditionNode/jumpNode
+  // returned above); other node types have no assets/content/audioSettings.
+  const elementData = currentNode.data as ElementNodeData;
+
   // Assets resolution
-  const assets = currentNode.data.assets
-    ? currentNode.data.assets
+  const assets = elementData.assets
+    ? elementData.assets
         .map((id) => projectAssets.find((a) => a.id === id))
-        .filter(Boolean)
+        .filter((a): a is Asset => a !== undefined)
     : [];
   const visualAsset = assets.find(
     (a) => a.type === "image" || a.type === "video"
@@ -100,7 +104,7 @@ const PlayMode: React.FC<PlayModeProps> = ({
 
   // Content processing
   const processedContent = replaceVariablesInText(
-    currentNode.data.content,
+    elementData.content,
     runtimeVars
   );
 
@@ -140,7 +144,7 @@ const PlayMode: React.FC<PlayModeProps> = ({
          {/* Story Content Area */}
          <div className={`relative h-full transition-all duration-500 ease-in-out ${visualAsset ? 'w-full md:w-1/2 bg-zinc-950/90' : 'w-full bg-black'}`}>
             <StoryNode
-              label={currentNode.data.label}
+              label={elementData.label}
               content={processedContent}
               options={getOptions()}
               onOptionClick={handleOptionClick}
@@ -151,7 +155,7 @@ const PlayMode: React.FC<PlayModeProps> = ({
 
       {/* Background Audio */}
       {audioAssets.map((asset) => {
-        const settings = currentNode.data.audioSettings?.[asset.id] || {
+        const settings = elementData.audioSettings?.[asset.id] || {
           loop: false,
           delay: 0
         };
