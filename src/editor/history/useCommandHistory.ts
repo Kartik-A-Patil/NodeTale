@@ -1,4 +1,4 @@
-import { useCallback, useReducer, useRef } from 'react';
+import { useCallback, useMemo, useReducer, useRef } from 'react';
 import { Command } from '../commands/types';
 
 const HISTORY_LIMIT = 50;
@@ -40,11 +40,9 @@ export function useCommandHistory() {
     forceRender();
   }, []);
 
-  return {
-    execute,
-    undo,
-    redo,
-    canUndo: pastRef.current.length > 0,
-    canRedo: futureRef.current.length > 0,
-  };
+  const canUndo = pastRef.current.length > 0;
+  const canRedo = futureRef.current.length > 0;
+  // Memoized so consumers can depend on the object without re-creating their
+  // callbacks every render.
+  return useMemo(() => ({ execute, undo, redo, canUndo, canRedo }), [execute, undo, redo, canUndo, canRedo]);
 }

@@ -4,7 +4,8 @@ import React, {
   useRef,
   useEffect,
   useCallback,
-  useMemo
+  useMemo,
+  useDeferredValue
 } from "react";
 import {
   Handle,
@@ -187,38 +188,19 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
   );
   const audioAssets = nodeAssets.filter((a) => a.type === "audio");
 
+  // Deferred: validation re-parses the content and runs the code checker, so
+  // let React do it after the edit has painted instead of blocking it.
+  const deferredContent = useDeferredValue(data.content);
   const hasError = useMemo(() => {
     // Only check for code syntax errors and type mismatches in <pre> blocks
     // Don't validate variable references in normal text (they're fine as {{var}})
-    const parser = new DOMParser();
+    if (!deferredContent || !deferredContent.includes("<pre")) return false;
     try {
-      const doc = parser.parseFromString(data.content || "", "text/html");
-      const preBlocks = doc.querySelectorAll("pre");
-      for (const block of preBlocks) {
-        // Use textContent to get clean text without HTML tags
-        const codeText = block.textContent || block.innerText || "";
-
-        // Check syntax errors
-        const syntaxResult = validateCodeSyntax(codeText);
-        if (!syntaxResult.valid) {
-          console.log("Syntax error:", syntaxResult.errors);
-          return true;
-        }
-
-        // Check type assignments
-        const typeResult = validateTypeAssignments(
-          codeText,
-          data.variables || []
-        );
-        if (!typeResult.valid) {
-          console.log(
-            "Type error:",
-            typeResult.errors,
-            "Variables:",
-            data.variables
-          );
-          return true;
-        }
+      const doc = new DOMParser().parseFromString(deferredContent, "text/html");
+      for (const block of doc.querySelectorAll("pre")) {
+        const codeText = block.textContent || "";
+        if (!validateCodeSyntax(codeText).valid) return true;
+        if (!validateTypeAssignments(codeText, data.variables || []).valid) return true;
       }
     } catch (err) {
       // Parser error - not critical for display
@@ -226,7 +208,7 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
     }
 
     return false;
-  }, [data.content, data.variables]);
+  }, [deferredContent, data.variables]);
 
   return (
     <>
@@ -271,11 +253,11 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
           </svg>
         </NodeResizeControl>
       )}
-      <div className="w-full h-full min-w-[250px] min-h-[150px] bg-zinc-800 rounded-md transition-all duration-300 ease-in-out flex flex-col relative">
+      <div className="w-full h-full min-w-[250px] min-h-[150px] bg-zinc-800 rounded-md flex flex-col relative">
         {/* Border Overlay */}
         <div
           className={clsx(
-            "absolute inset-0 rounded-md pointer-events-none transition-all duration-300 ease-in-out z-10 border",
+            "absolute inset-0 rounded-md pointer-events-none transition-[border-color,box-shadow] duration-300 ease-in-out z-10 border",
             selected ? "border-orange-500 ring-4 ring-orange-500/20" : "border-transparent",
             isTarget ? "hover:!border-orange-500" : ""
           )}
@@ -506,39 +488,6 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
           )}
         />
 
-        <style>{`
-        .markdown-content blockquote { 
-            border-left: 3px solid #52525b; 
-            padding-left: 8px; 
-            font-style: italic; 
-            color: #a1a1aa; 
-            margin: 4px 0; 
-        }
-        .markdown-content pre { 
-            background: #18181b; 
-            padding: 4px; 
-            border-radius: 4px; 
-            font-family: 'JetBrains Mono', monospace; 
-            border: 0px solid #27272a; 
-            color: #a1a1aa; 
-            margin: 6px 0; 
-            white-space: pre-wrap; 
-            min-height: 1rem; 
-        }
-        .markdown-content ul { 
-            list-style-type: disc; 
-            padding-left: 20px; 
-            margin: 4px 0; 
-        }
-        /* Editor Highlight Colors */
-        .markdown-content .text-blue-400 { color: #60a5fa; }
-        .markdown-content .text-white { color: #ffffff; }
-        .markdown-content .text-zinc-400 { color: #a1a1aa; }
-        .markdown-content .text-purple-400 { color: #a78bfa; }
-        pre[class*="language-"]{
-            box-shadow: none;
-        }
-      `}</style>
 
         {/* Error Badge */}
         {hasError && (

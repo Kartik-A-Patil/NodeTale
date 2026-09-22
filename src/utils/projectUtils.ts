@@ -169,7 +169,7 @@ export const exportProjectAsZip = async (project: Project, includeAssets: boolea
             if (extracted) {
                 const ext = getExtension(extracted.type);
                 const coverFilename = `cover.${ext}`;
-                zip.file(coverFilename, extracted.data, { base64: true });
+                zip.file(coverFilename, extracted.data, { base64: true, compression: 'STORE' });
                 projectToSave.coverImage = coverFilename;
             } else {
                 projectToSave.coverImage = '';
@@ -192,8 +192,8 @@ export const exportProjectAsZip = async (project: Project, includeAssets: boolea
             return parentPath ? `${parentPath}/${folder.name}` : folder.name;
         };
 
-        // Process assets
-        for (const asset of projectToSave.assets) {
+        // Process assets — in parallel; each is an independent storage read.
+        await Promise.all(projectToSave.assets.map(async (asset) => {
             try {
                 // If the asset has a data URL (Legacy Base64), extract it.
                 // If it has NO url (modern), fetch via ID.
@@ -221,14 +221,17 @@ export const exportProjectAsZip = async (project: Project, includeAssets: boolea
                     const assetFolder = folderPath || asset.type; // fall back to type bucket for predictable grouping
                     const zipPath = assetFolder ? `assets/${assetFolder}/${finalFileName}` : `assets/${finalFileName}`;
                     
-                    zip.file(zipPath, blob);
+                    // STORE, not DEFLATE: images/audio/video are already
+                    // compressed, and re-deflating them at level 9 in pure JS
+                    // was most of the export time for ~nothing saved.
+                    zip.file(zipPath, blob, { compression: 'STORE' });
                     asset.url = zipPath; // Store relative path in JSON for export
                 }
             } catch (err) {
                 console.error(`Failed to export asset ${asset.id}`, err);
                 asset.url = ''; 
             }
-        }
+        }));
     } else {
         // Strip asset data to reduce size
         projectToSave.assets = projectToSave.assets.map(a => ({
@@ -264,7 +267,7 @@ export const exportProjectAsZip = async (project: Project, includeAssets: boolea
                         if (extracted) {
                             const ext = getExtension(extracted.type);
                             const fileName = `embedded/${board.id}_${node.id}_${imgIndex}.${ext}`;
-                            zip.file(fileName, extracted.data, { base64: true });
+                            zip.file(fileName, extracted.data, { base64: true, compression: 'STORE' });
                             
                             replacements.push({
                                 original: fullMatch,
@@ -304,7 +307,7 @@ export const exportProjectAsZip = async (project: Project, includeAssets: boolea
     zip.file('Project.json', projectJson);
 
     // Generate ZIP
-    const content = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 9 } });
+    const content = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
     saveAs(content, `${project.name.replace(/\s+/g, "_")}.zip`);
 };
 

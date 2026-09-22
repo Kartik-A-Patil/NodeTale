@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Project, AppNode } from '../types';
 import { INITIAL_PROJECT } from '../constants';
 import { saveProject, loadProject } from '../services/storageService';
@@ -22,6 +22,17 @@ const normalizeNodeDimensions = (node: Node): Node => {
 
   return { ...node, ...(Object.keys(style).length ? { style } : {}) };
 };
+
+// Node components edit via ReactFlow's setNodes, which (in controlled mode)
+// round-trips the store's nodes — i.e. the nodesWithContext wrappers carrying
+// the whole project's variables/assets in `data` — back into state. Strip them
+// before anything is persisted so each node doesn't store a project-wide copy.
+const stripContext = (nodes: Node[]): AppNode[] =>
+  nodes.map(n => {
+    if (!n.data || !('variables' in n.data || 'projectAssets' in n.data)) return n as AppNode;
+    const { variables: _v, projectAssets: _a, ...data } = n.data;
+    return { ...n, data } as AppNode;
+  });
 
 const projectMetaHash = (project: Project): string =>
   hashString(JSON.stringify({
@@ -71,7 +82,7 @@ export function useProjectState(
 
           const activeBoard = savedProject.boards.find(b => b.id === savedProject.activeBoardId) || savedProject.boards[0];
           if (activeBoard) {
-            const normalizedNodes = activeBoard.nodes.map(n => normalizeNodeDimensions(n as any));
+            const normalizedNodes = stripContext(activeBoard.nodes).map(n => normalizeNodeDimensions(n as any));
             setNodes(normalizedNodes as any);
             setEdges(activeBoard.edges);
             hasLoadedInitialDataRef.current = true;
@@ -109,7 +120,7 @@ export function useProjectState(
             const newBoards = [...prev.boards];
             newBoards[boardIndex] = {
                 ...newBoards[boardIndex],
-                nodes: nodesToSave as AppNode[],
+                nodes: stripContext(nodesToSave),
                 edges: edgesToSave
             };
 
@@ -120,7 +131,7 @@ export function useProjectState(
 
         const activeBoard = project.boards.find(b => b.id === project.activeBoardId) || project.boards[0];
         if (activeBoard) {
-          const normalizedNodes = activeBoard.nodes.map(n => normalizeNodeDimensions(n as any));
+          const normalizedNodes = stripContext(activeBoard.nodes).map(n => normalizeNodeDimensions(n as any));
           setNodes(normalizedNodes as any);
           setEdges(activeBoard.edges);
           lastSavedHashRef.current = computeDirtyHash(normalizedNodes, activeBoard.edges, project);
@@ -135,12 +146,12 @@ export function useProjectState(
     if (isInitializing) return;
     if (!hasLoadedInitialDataRef.current) return;
 
-    const hash = computeDirtyHash(nodes, edges, project);
-    if (hash === lastSavedHashRef.current) return;
-
-    const timeoutId = setTimeout(async () => {
+    // Dirty check lives inside the debounce: hashing the board on every drag
+    // frame / keystroke was measurable, and only the settled state matters.
+    const timeoutId = setTimeout(() => {
       const nodesToSave = nodesRef.current;
       const edgesToSave = edgesRef.current;
+      if (computeDirtyHash(nodesToSave, edgesToSave, project) === lastSavedHashRef.current) return;
 
       setProject(prev => {
           const boardIndex = prev.boards.findIndex(b => b.id === prev.activeBoardId);
@@ -149,7 +160,7 @@ export function useProjectState(
           const newBoards = [...prev.boards];
           newBoards[boardIndex] = {
               ...newBoards[boardIndex],
-              nodes: nodesToSave as AppNode[],
+              nodes: stripContext(nodesToSave),
               edges: edgesToSave
           };
 
@@ -173,7 +184,7 @@ export function useProjectState(
     return () => clearTimeout(timeoutId);
   }, [nodes, edges, project, isInitializing]);
 
-  const saveNow = async () => {
+  const saveNow = useCallback(() => {
     if (isInitializing) return;
     const nodesToSave = nodesRef.current;
     const edgesToSave = edgesRef.current;
@@ -185,7 +196,7 @@ export function useProjectState(
         const newBoards = [...prev.boards];
         newBoards[boardIndex] = {
             ...newBoards[boardIndex],
-            nodes: nodesToSave as AppNode[],
+            nodes: stripContext(nodesToSave),
             edges: edgesToSave
         };
 
@@ -196,6 +207,6 @@ export function useProjectState(
         }).catch((e) => console.error('[useProjectState] ✗ Manual save failed:', e));
         return newProject;
     });
-  };
+  }, [isInitializing]);
   return { project, setProject, isInitializing, lastSaved, saveNow };
 }

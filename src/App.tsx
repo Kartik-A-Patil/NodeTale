@@ -123,7 +123,12 @@ function ProjectEditor() {
     executeCommand
   } = useFlowLogic(projectId);
 
-  const selectedNodes = useMemo(() => nodes.filter(n => n.selected), [nodes]);
+  // Keyed on the selected ids, not `nodes`: a drag changes `nodes` every frame,
+  // and a fresh array here would rebuild editorActions (re-binding the global
+  // keydown listener) and the context-menu callbacks on every frame.
+  const selectedKey = nodes.filter(n => n.selected).map(n => n.id).join(',');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const selectedNodes = useMemo(() => nodes.filter(n => n.selected), [selectedKey]);
 
   // Memoize context menu handlers to avoid rerendering
   const contextMenu = useContextMenu(selectedNodes);
@@ -157,6 +162,10 @@ function ProjectEditor() {
       assets: [...prev.assets, asset]
     }));
   }, [setProject]);
+
+  const onToolbarAddNode = useCallback((type: Parameters<typeof addNode>[0]) => addNode(type), [addNode]);
+  const onToolbarPlay = useCallback(() => { setPlayStartNodeId(null); setIsPlaying(true); }, []);
+  const onToolbarExport = useCallback(() => exportProject(project), [project]);
 
   const startPlayFromNode = React.useCallback((nodeId: string) => {
       setPlayStartNodeId(nodeId);
@@ -250,17 +259,6 @@ function ProjectEditor() {
     // Intentionally empty
   }, []);
 
-  // Force React Flow to apply persisted dimensions on load without needing a manual nudge
-  React.useEffect(() => {
-    if (!reactFlowInstance) return;
-    const updater = (reactFlowInstance as any).updateNodeInternals;
-    if (typeof updater !== 'function') return;
-    nodes.forEach((n) => {
-      const hasSize = typeof n.width === 'number' || typeof n.height === 'number' || typeof (n as any)?.style?.width === 'number' || typeof (n as any)?.style?.height === 'number';
-      if (hasSize) updater(n.id);
-    });
-  }, [nodes, reactFlowInstance]);
-
   // One-time size refresh right after a project/board load to avoid user interaction requirement
   React.useEffect(() => {
     if (!reactFlowInstance || isInitializing || sizeRefreshDone.current) return;
@@ -301,9 +299,9 @@ function ProjectEditor() {
       <div className={`flex-1 relative flex flex-col h-full ${isConnecting ? 'is-connecting' : ''}`}>
         
         <TopToolbar 
-            onAddNode={(type) => addNode(type)}
-            onPlay={() => { setPlayStartNodeId(null); setIsPlaying(true); }}
-            onExport={() => exportProject(project)}
+            onAddNode={onToolbarAddNode}
+            onPlay={onToolbarPlay}
+            onExport={onToolbarExport}
             lastSaved={lastSaved}
           onSave={saveNow}
             jumpClipboard={jumpClipboard}
@@ -351,6 +349,7 @@ function ProjectEditor() {
             panOnScrollMode={PanOnScrollMode.Free}
             connectionRadius={40}
             elevateNodesOnSelect={false}
+            onlyRenderVisibleElements
           >
             <Background color="#52525b" gap={20} size={1} variant={BackgroundVariant.Dots} />
             <CustomControls isPanMode={isPanMode} setIsPanMode={setIsPanMode} />
@@ -438,34 +437,6 @@ function ProjectEditor() {
               }}
           />
       )}
-      <style>{`
-        .is-connecting .react-flow__handle-source {
-            pointer-events: none !important;
-            opacity: 0 !important;
-        }
-        .is-connecting .react-flow__handle-target {
-            opacity: 0.4 !important;
-            background-color: #3b82f6 !important;
-            transition: all 0.2s ease;
-            z-index: 100 !important;
-        }
-        .react-flow__nodesselection-rect {
-            display: none !important;
-        }
-       
-        .react-flow__node.selected {
-            z-index: 1000 !important;
-        }
-        .react-flow__edge-path {
-            transition: stroke 0.3s ease, stroke-width 0.3s ease, d 0.15s ease-out;
-        }
-        .react-flow__controls-button {
-            transition: all 0.2s ease !important;
-        }
-        .react-flow__background {
-            transition: opacity 0.3s ease;
-        }
-      `}</style>
     </div>
   );
 }

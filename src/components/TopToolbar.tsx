@@ -18,7 +18,8 @@ interface TopToolbarProps {
     onSave?: () => void;
 }
 
-export const TopToolbar: React.FC<TopToolbarProps> = ({ 
+// memo: ProjectEditor re-renders on every drag frame; the toolbar's props don't change then.
+export const TopToolbar = React.memo(({ 
   onAddNode, 
   onPlay, 
   onExport, 
@@ -33,7 +34,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
   canRedo,
   canPlay,
   onSave
-}) => {
+}: TopToolbarProps) => {
   const onDragStart = (event: React.DragEvent, nodeType: string, label: string) => {
     event.dataTransfer.setData('application/reactflow/type', nodeType);
     event.dataTransfer.setData('application/reactflow/payload', JSON.stringify({ label }));
@@ -153,4 +154,4 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
       </div>
     </div>
   );
-};
+});

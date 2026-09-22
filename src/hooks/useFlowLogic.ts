@@ -39,6 +39,9 @@ export function useFlowLogic(projectIdOrName?: string) {
     [setNodes, setEdges]
   );
   const history = useCommandHistory();
+  // Stable across renders; callbacks depend on this rather than `history`,
+  // whose identity changes whenever canUndo/canRedo flip.
+  const { execute } = history;
 
   const [jumpClipboard, setJumpClipboard] = useState<{ id: string; label: string } | null>(null);
 
@@ -64,18 +67,20 @@ export function useFlowLogic(projectIdOrName?: string) {
     const clipboardRef = useRef<{ nodes: AppNode[]; edges: Edge[] } | null>(null);
 
     const copySelected = useCallback(() => {
-        const selected = nodes.filter(n => n.selected) as AppNode[];
+        // Read through refs so this callback (and the editorActions list that
+        // holds it) doesn't change identity on every drag frame.
+        const selected = nodesRef.current.filter(n => n.selected) as AppNode[];
         if (selected.length === 0) return;
 
         const selectedIds = new Set(selected.map(n => n.id));
-        const relatedEdges = edges.filter(e => selectedIds.has(e.source) && selectedIds.has(e.target));
+        const relatedEdges = edgesRef.current.filter(e => selectedIds.has(e.source) && selectedIds.has(e.target));
 
         // Deep clone to avoid referencing original objects
         const clonedNodes = selected.map(n => ({ ...n, data: { ...n.data } }));
         const clonedEdges = relatedEdges.map(e => ({ ...e, data: { ...e.data } }));
 
         clipboardRef.current = { nodes: clonedNodes, edges: clonedEdges };
-    }, [nodes, edges]);
+    }, []);
 
     const pasteClipboard = useCallback(() => {
         if (!clipboardRef.current) return;
@@ -104,8 +109,8 @@ export function useFlowLogic(projectIdOrName?: string) {
             } as Edge;
         });
 
-        history.execute(addElementsCommand(ctx, newNodes, newEdges, true));
-    }, [ctx, history]);
+        execute(addElementsCommand(ctx, newNodes, newEdges, true));
+    }, [ctx, execute]);
 
   // Migration for edge design
   useEffect(() => {
@@ -151,24 +156,24 @@ export function useFlowLogic(projectIdOrName?: string) {
   }, [nodes, project.variables]);
 
   const updateNodeData = useCallback((id: string, data: any) => {
-    history.execute(updateNodeCommand(ctx, id, (n) => ({ ...n, data: { ...n.data, ...data } })));
-  }, [ctx, history]);
+    execute(updateNodeCommand(ctx, id, (n) => ({ ...n, data: { ...n.data, ...data } })));
+  }, [ctx, execute]);
 
   const updateNode = useCallback((id: string, patch: Partial<AppNode>) => {
-      history.execute(updateNodeCommand(ctx, id, (n) => ({ ...n, ...patch })));
-  }, [ctx, history]);
+      execute(updateNodeCommand(ctx, id, (n) => ({ ...n, ...patch })));
+  }, [ctx, execute]);
 
   const updateEdgeData = useCallback((id: string, data: any) => {
-      history.execute(updateEdgeCommand(ctx, id, (e) => ({ ...e, data: { ...e.data, ...data } })));
-  }, [ctx, history]);
+      execute(updateEdgeCommand(ctx, id, (e) => ({ ...e, data: { ...e.data, ...data } })));
+  }, [ctx, execute]);
 
   const updateEdgeColor = useCallback((id: string, color: string) => {
-      history.execute(updateEdgeCommand(ctx, id, (e) => ({ ...e, style: { ...e.style, stroke: color } })));
-  }, [ctx, history]);
+      execute(updateEdgeCommand(ctx, id, (e) => ({ ...e, style: { ...e.style, stroke: color } })));
+  }, [ctx, execute]);
 
   const updateEdgeLabel = useCallback((id: string, label: string) => {
-      history.execute(updateEdgeCommand(ctx, id, (e) => ({ ...e, label })));
-  }, [ctx, history]);
+      execute(updateEdgeCommand(ctx, id, (e) => ({ ...e, label })));
+  }, [ctx, execute]);
 
   const onConnect = useCallback((params: Connection) => {
     // ReactFlow's Connection type allows null endpoints mid-drag; onConnect is
@@ -176,6 +181,7 @@ export function useFlowLogic(projectIdOrName?: string) {
     if (!params.source || !params.target) return;
     if (params.source === params.target) return;
 
+    const edges = edgesRef.current;
     const isDuplicate = edges.some(edge =>
       (edge.source === params.source && edge.target === params.target) ||
       (edge.source === params.target && edge.target === params.source)
@@ -183,7 +189,7 @@ export function useFlowLogic(projectIdOrName?: string) {
 
     if (isDuplicate) return;
 
-    const sourceNode = nodes.find(n => n.id === params.source);
+    const sourceNode = nodesRef.current.find(n => n.id === params.source);
     let existingBranchEdge: Edge | undefined;
 
     if (sourceNode?.type === 'conditionNode') {
@@ -208,12 +214,12 @@ export function useFlowLogic(projectIdOrName?: string) {
         markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 20 },
         style: { stroke: '#71717a'}
     };
-    history.execute(connectEdgeCommand(ctx, edge, existingBranchEdge));
-  }, [edges, nodes, ctx, history]);
+    execute(connectEdgeCommand(ctx, edge, existingBranchEdge));
+  }, [ctx, execute]);
 
   const onReconnect = useCallback((oldEdge: Edge, newConnection: Connection) => {
-    history.execute(reconnectEdgeCommand(ctx, oldEdge, newConnection));
-  }, [ctx, history]);
+    execute(reconnectEdgeCommand(ctx, oldEdge, newConnection));
+  }, [ctx, execute]);
 
   const addNode = useCallback((type: NodeTypeKey, position?: { x: number, y: number }, extraData?: any) => {
     const id = `node-${Date.now()}`;
@@ -224,16 +230,16 @@ export function useFlowLogic(projectIdOrName?: string) {
     const style = type === 'sectionNode' ? { width: 400, height: 300, ...extraStyle } : extraStyle;
 
     const newNode: AppNode = { id, type, position: nodePosition, data: entry.create(extraFields), zIndex, style };
-    history.execute(addElementsCommand(ctx, [newNode]));
-  }, [ctx, history]);
+    execute(addElementsCommand(ctx, [newNode]));
+  }, [ctx, execute]);
 
   const deleteNode = useCallback((id: string, deleteChildren: boolean = false) => {
-    history.execute(deleteNodeCommand(ctx, id, deleteChildren));
-  }, [ctx, history]);
+    execute(deleteNodeCommand(ctx, id, deleteChildren));
+  }, [ctx, execute]);
 
   const deleteEdge = useCallback((id: string) => {
-      history.execute(deleteEdgeCommand(ctx, id));
-  }, [ctx, history]);
+      execute(deleteEdgeCommand(ctx, id));
+  }, [ctx, execute]);
 
   return {
     nodes,

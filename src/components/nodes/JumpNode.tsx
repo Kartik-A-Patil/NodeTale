@@ -48,7 +48,7 @@ const JumpNode = ({ id, data, selected }: NodeProps<JumpNodeData>) => {
 
   return (
     <div
-      className={`px-3 py-2 bg-[#18181b] border rounded-lg flex items-center gap-3 min-w-[160px] transition-all duration-300 ease-in-out relative ${
+      className={`px-3 py-2 bg-[#18181b] border rounded-lg flex items-center gap-3 min-w-[160px] transition-[border-color,box-shadow,background-color] duration-300 ease-in-out relative ${
         selected ? 'shadow-lg ring-4 ring-orange-500/20' : ''
       } ${isTarget ? "hover:!border-orange-500 hover:bg-orange-500/5 hover:shadow-[0_0_20px_rgba(245,158,11,0.3)]" : ""}`}
       style={{ 

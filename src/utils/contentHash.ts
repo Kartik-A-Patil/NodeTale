@@ -12,8 +12,12 @@ const objectHashCache = new WeakMap<object, string>();
 
 // Excludes ReactFlow's transient fields (selected, dragging, positionAbsolute,
 // resizing) so selecting/dragging a node doesn't look like a content change.
-const pickNodeHashFields = (node: Node) =>
-  JSON.stringify({ type: node.type, data: node.data, position: node.position, style: node.style, zIndex: node.zIndex, parentId: node.parentId });
+// Also drops the injected render context (variables/projectAssets, see
+// nodesWithContext in useFlowLogic) — it's project-level, not node content.
+const pickNodeHashFields = (node: Node) => {
+  const { variables: _v, projectAssets: _a, ...data } = node.data ?? {};
+  return JSON.stringify({ type: node.type, data, position: node.position, style: node.style, zIndex: node.zIndex, parentId: node.parentId });
+};
 
 const pickEdgeHashFields = (edge: Edge) =>
   JSON.stringify({ type: edge.type, source: edge.source, target: edge.target, sourceHandle: edge.sourceHandle, targetHandle: edge.targetHandle, animated: edge.animated, style: edge.style, label: edge.label, data: edge.data });

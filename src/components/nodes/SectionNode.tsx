@@ -37,7 +37,7 @@ const SectionNode = ({ id, data, selected }: NodeProps<SectionNodeData>) => {
   return (
     <>
       <div
-        className={`group relative flex flex-col rounded-lg border-2 transition-all duration-300 ease-in-out`}
+        className={`group relative flex flex-col rounded-lg border-2 transition-[border-color,box-shadow,background-color] duration-300 ease-in-out`}
         style={{
           minWidth: 400,
           minHeight: 300,

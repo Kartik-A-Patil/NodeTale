@@ -18,6 +18,12 @@ describe('computeBoardHash', () => {
     expect(before).not.toBe(after);
   });
 
+  it('ignores injected render context (variables/projectAssets)', () => {
+    const plain = computeBoardHash([node('a', { label: 'A' })], []);
+    const wrapped = computeBoardHash([node('a', { label: 'A', variables: [{ name: 'x' }], projectAssets: [{ id: 'img' }] })], []);
+    expect(wrapped).toBe(plain);
+  });
+
   it('changes when a node moves (position-only edit)', () => {
     const before = computeBoardHash([node('a', { label: 'A' }, { x: 0, y: 0 })], []);
     const after = computeBoardHash([node('a', { label: 'A' }, { x: 10, y: 0 })], []);

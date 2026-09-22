@@ -337,4 +337,5 @@ const SidebarLeft: React.FC<SidebarLeftProps> = ({ project, setProject }) => {
   );
 };
 
-export default SidebarLeft;
+// memo: ProjectEditor re-renders on every drag frame; `project` doesn't change then.
+export default React.memo(SidebarLeft);
