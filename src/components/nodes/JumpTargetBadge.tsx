@@ -1,7 +1,7 @@
 import React, { memo, useMemo } from 'react';
 import { useReactFlow, useStore } from 'reactflow';
 import { Link2 } from 'lucide-react';
-import { NodeData } from '../../types';
+import { JumpNodeData } from '../../types';
 
 interface JumpTargetBadgeProps {
   nodeId: string;
@@ -13,13 +13,13 @@ const JumpTargetBadge = ({ nodeId, className = '' }: JumpTargetBadgeProps) => {
   const { fitView, setNodes } = useReactFlow();
 
   const jumpSource = useMemo(
-    () => nodes.find((n) => n.type === 'jumpNode' && (n.data as NodeData).jumpTargetId === nodeId),
+    () => nodes.find((n) => n.type === 'jumpNode' && (n.data as JumpNodeData).jumpTargetId === nodeId),
     [nodes, nodeId]
   );
 
   if (!jumpSource) return null;
 
-  const jumpLabel = (jumpSource.data as NodeData).label || 'Jump';
+  const jumpLabel = (jumpSource.data as JumpNodeData).label || 'Jump';
 
   const handleClick = (event: React.MouseEvent) => {
     event.stopPropagation();

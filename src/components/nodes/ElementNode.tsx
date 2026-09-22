@@ -23,7 +23,7 @@ import {
   RotateCcw,
   Clock
 } from "lucide-react";
-import { NodeData, Variable, Asset, AudioSettings } from "../../types";
+import { ElementNodeData, Variable, Asset, AudioSettings } from "../../types";
 import clsx from "clsx";
 import { DatePicker } from "@/components/DatePicker";
 import { RichTextEditor } from "../RichTextEditor";
@@ -54,7 +54,7 @@ const sanitizeContent = (html: string) => {
   return doc.body.innerHTML;
 };
 
-const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
+const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
   const { setNodes } = useReactFlow();
   const connectionNodeId = useStore((state) => state.connectionNodeId);
   const isTarget = connectionNodeId && connectionNodeId !== id;
@@ -136,7 +136,7 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
         const projectAssets = (data.projectAssets as Asset[]) || [];
         const nodeAssets = currentAssets
           .map((id) => projectAssets.find((a) => a.id === id))
-          .filter(Boolean);
+          .filter((a): a is Asset => a !== undefined);
 
         // Check if asset already exists
         if (currentAssets.includes(assetId)) return;
@@ -194,7 +194,7 @@ const ElementNode = ({ id, data, selected }: NodeProps<NodeData>) => {
     try {
       const doc = parser.parseFromString(data.content || "", "text/html");
       const preBlocks = doc.querySelectorAll("pre");
-      for (let block of preBlocks) {
+      for (const block of preBlocks) {
         // Use textContent to get clean text without HTML tags
         const codeText = block.textContent || block.innerText || "";
 

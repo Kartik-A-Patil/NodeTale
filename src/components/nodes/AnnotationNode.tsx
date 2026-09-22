@@ -1,8 +1,8 @@
 import React, { memo, useState } from "react";
 import { NodeProps, useReactFlow } from "reactflow";
-import { NodeData } from "../../types";
+import { AnnotationNodeData } from "../../types";
 
-const AnnotationNode = ({ id, data,selected }: NodeProps<NodeData>) => {
+const AnnotationNode = ({ id, data,selected }: NodeProps<AnnotationNodeData>) => {
   const { setNodes } = useReactFlow();
   const [editingField, setEditingField] = useState<"label" | "content" | null>(
     null
