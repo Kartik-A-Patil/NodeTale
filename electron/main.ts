@@ -150,6 +150,65 @@ app.whenReady().then(() => {
   if (!existsSync(projectsDir)) mkdirSync(projectsDir, { recursive: true });
   if (!existsSync(assetsDir)) mkdirSync(assetsDir, { recursive: true });
 
+  // Lightweight project-summary index, kept in sync with the per-project files
+  // on every save/delete. Lives outside projectsDir since load-project's
+  // name-scan fallback and get-all-projects both treat every *.json file there
+  // as a project.
+  const summariesPath = path.join(userDataPath, 'project-summaries.json');
+
+  const toSummary = (project: any) => ({
+    id: project.id,
+    name: project.name,
+    modifiedAt: project.modifiedAt,
+    coverImage: project.coverImage,
+    boardCount: Array.isArray(project.boards) ? project.boards.length : 0,
+    assetCount: Array.isArray(project.assets) ? project.assets.length : 0,
+  });
+
+  // Single in-memory cache, shared by every handler below and mutated
+  // synchronously before any await — concurrent autosave/manual-save calls
+  // read fresh independent copies otherwise, and whichever write lands last on
+  // disk silently discards the other's update.
+  let summariesCache: any[] | null = null;
+
+  const loadSummariesCache = async (): Promise<any[]> => {
+    if (summariesCache) return summariesCache;
+    try {
+      summariesCache = JSON.parse(await fs.readFile(summariesPath, 'utf-8'));
+    } catch (e) {
+      summariesCache = [];
+    }
+    return summariesCache!;
+  };
+
+  const persistSummariesCache = async (): Promise<void> => {
+    const temp = summariesPath + '.' + randomUUID() + '.tmp';
+    await fs.writeFile(temp, JSON.stringify(summariesCache));
+    await fs.rename(temp, summariesPath);
+  };
+
+  // First run, or upgrading from before the index existed: build it once from
+  // the existing project files so summaries are available immediately rather
+  // than falling back to the slow path forever.
+  const buildSummariesFromProjectFiles = async (): Promise<any[]> => {
+    try {
+      const files = await fs.readdir(projectsDir);
+      const summaries: any[] = [];
+      for (const file of files) {
+        if (!file.endsWith('.json')) continue;
+        try {
+          const content = await fs.readFile(path.join(projectsDir, file), 'utf-8');
+          summaries.push(toSummary(JSON.parse(content)));
+        } catch (e) {
+          // skip corrupted
+        }
+      }
+      return summaries;
+    } catch (e) {
+      return [];
+    }
+  };
+
   // IPC Handlers
   
   ipcMain.handle('storage:save-asset', async (_, buffer: ArrayBuffer, name: string, preferredId?: string, mimeType?: string) => {
@@ -196,11 +255,30 @@ app.whenReady().then(() => {
 
   // Project Handlers
   ipcMain.handle('storage:save-project', async (_, project: any) => {
-     const safeId = path.basename(project.id);
+     // Stamped here, not by callers, so every save path gets a consistent
+     // modifiedAt for free (matches WebStorageAdapter's saveProject).
+     const stamped = { ...project, modifiedAt: Date.now() };
+
+     const safeId = path.basename(stamped.id);
      const target = path.join(projectsDir, safeId + '.json');
      const temp = target + '.' + randomUUID() + '.tmp';
-     await fs.writeFile(temp, JSON.stringify(project));
+     await fs.writeFile(temp, JSON.stringify(stamped));
      await fs.rename(temp, target);
+
+     // The project file above is the source of truth and is now durably
+     // saved — a failure updating the summary index (a convenience cache for
+     // the dashboard list) must not make the caller believe the save itself
+     // failed, or the renderer's autosave error handling reports a false
+     // "Auto-save failed" and keeps retrying a save that actually succeeded.
+     try {
+       const summaries = await loadSummariesCache();
+       const summary = toSummary(stamped);
+       const idx = summaries.findIndex((s) => s.id === stamped.id);
+       if (idx === -1) summaries.push(summary); else summaries[idx] = summary;
+       await persistSummariesCache();
+     } catch (e) {
+       console.error('[main] Failed to update project-summaries index:', e);
+     }
   });
 
   ipcMain.handle('storage:load-project', async (_, idOrName: string) => {
@@ -259,12 +337,38 @@ app.whenReady().then(() => {
       }
   });
 
+  ipcMain.handle('storage:get-project-summaries', async () => {
+      const summaries = await loadSummariesCache();
+      if (summaries.length > 0) return summaries;
+
+      // Empty index: either a fresh install (nothing to summarize, fine) or an
+      // upgrade from before this index existed. Either way, build once from
+      // whatever project files actually exist and persist it.
+      const rebuilt = await buildSummariesFromProjectFiles();
+      if (rebuilt.length > 0) {
+          summariesCache = rebuilt;
+          try { await persistSummariesCache(); } catch (e) { /* non-fatal — served fresh below regardless */ }
+      }
+      return rebuilt;
+  });
+
   ipcMain.handle('storage:delete-project', async (_, id: string) => {
       const safeId = path.basename(id);
       try {
           await fs.unlink(path.join(projectsDir, safeId + '.json'));
       } catch (e) {
           // ignore
+      }
+
+      try {
+        const summaries = await loadSummariesCache();
+        const filtered = summaries.filter((s) => s.id !== id);
+        if (filtered.length !== summaries.length) {
+            summariesCache = filtered;
+            await persistSummariesCache();
+        }
+      } catch (e) {
+        console.error('[main] Failed to update project-summaries index:', e);
       }
   });
 

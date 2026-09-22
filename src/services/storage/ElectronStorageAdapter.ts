@@ -1,5 +1,5 @@
 import { StorageAdapter, FileOrBlob } from './StorageAdapter';
-import { Project } from '../../types';
+import { Project, ProjectSummary } from '../../types';
 
 // Declare global augmentation for window.electron
 declare global {
@@ -12,6 +12,7 @@ declare global {
         saveProject(project: Project): Promise<void>;
         loadProject(id: string): Promise<Project | null>;
         getAllProjects(): Promise<Project[]>;
+        getProjectSummaries(): Promise<ProjectSummary[]>;
         deleteProject(id: string): Promise<void>;
         getAssetData(id: string): Promise<ArrayBuffer>;
       }
@@ -59,6 +60,10 @@ export class ElectronStorageAdapter implements StorageAdapter {
 
   async getAllProjects(): Promise<Project[]> {
     return await window.electron.storage.getAllProjects();
+  }
+
+  async getProjectSummaries(): Promise<ProjectSummary[]> {
+    return await window.electron.storage.getProjectSummaries();
   }
 
   async deleteProject(id: string): Promise<void> {

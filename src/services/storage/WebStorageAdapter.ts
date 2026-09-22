@@ -1,12 +1,22 @@
 import { StorageAdapter, FileOrBlob } from './StorageAdapter';
-import { Project } from '../../types';
+import { Project, ProjectSummary } from '../../types';
 
 const DB_NAME = 'NodeTaleDB';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const PROJECT_STORE = 'projects';
 const ASSET_STORE = 'assets';
+const SUMMARY_STORE = 'project_summaries';
 const STORAGE_VERSION_KEY = 'storage_version';
 const CURRENT_STORAGE_VERSION = 2; // Version 2 implies Blob storage
+
+const toSummary = (project: Project): ProjectSummary => ({
+  id: project.id,
+  name: project.name,
+  modifiedAt: project.modifiedAt,
+  coverImage: project.coverImage,
+  boardCount: Array.isArray(project.boards) ? project.boards.length : 0,
+  assetCount: Array.isArray(project.assets) ? project.assets.length : 0,
+});
 
 export class WebStorageAdapter implements StorageAdapter {
   private dbPromise: Promise<IDBDatabase> | null = null;
@@ -50,6 +60,20 @@ export class WebStorageAdapter implements StorageAdapter {
             store.deleteIndex('name');
           }
           store.createIndex('name', 'name', { unique: false });
+        }
+
+        // v4: add the summary store, backfilled from existing project records.
+        if (!db.objectStoreNames.contains(SUMMARY_STORE)) {
+          db.createObjectStore(SUMMARY_STORE, { keyPath: 'id' });
+        }
+        if (oldVersion > 0 && oldVersion < 4) {
+          const tx = (event.target as IDBOpenDBRequest).transaction!;
+          const projectStore = tx.objectStore(PROJECT_STORE);
+          const summaryStore = tx.objectStore(SUMMARY_STORE);
+          projectStore.getAll().onsuccess = (e) => {
+            const projects = (e.target as IDBRequest<Project[]>).result || [];
+            projects.forEach((project) => summaryStore.put(toSummary(project)));
+          };
         }
       };
 
@@ -164,13 +188,16 @@ export class WebStorageAdapter implements StorageAdapter {
 
   async saveProject(project: Project): Promise<void> {
     const db = await this.initDB();
+    // Stamped here, not by callers, so every save path (autosave, manual save,
+    // dashboard create/rename/duplicate) gets a consistent modifiedAt for free.
+    const stamped: Project = { ...project, modifiedAt: Date.now() };
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction([PROJECT_STORE], 'readwrite');
-      const store = transaction.objectStore(PROJECT_STORE);
-      const request = store.put(project);
+      const transaction = db.transaction([PROJECT_STORE, SUMMARY_STORE], 'readwrite');
+      transaction.objectStore(PROJECT_STORE).put(stamped);
+      transaction.objectStore(SUMMARY_STORE).put(toSummary(stamped));
 
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject('Error saving project');
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject('Error saving project');
     });
   }
 
@@ -216,15 +243,26 @@ export class WebStorageAdapter implements StorageAdapter {
     });
   }
 
+  async getProjectSummaries(): Promise<ProjectSummary[]> {
+    const db = await this.initDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([SUMMARY_STORE], 'readonly');
+      const request = transaction.objectStore(SUMMARY_STORE).getAll();
+
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject('Error fetching project summaries');
+    });
+  }
+
   async deleteProject(id: string): Promise<void> {
     const db = await this.initDB();
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction([PROJECT_STORE], 'readwrite');
-      const store = transaction.objectStore(PROJECT_STORE);
-      const request = store.delete(id);
+      const transaction = db.transaction([PROJECT_STORE, SUMMARY_STORE], 'readwrite');
+      transaction.objectStore(PROJECT_STORE).delete(id);
+      transaction.objectStore(SUMMARY_STORE).delete(id);
 
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject('Error deleting project');
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject('Error deleting project');
     });
   }
 

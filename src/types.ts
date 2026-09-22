@@ -130,4 +130,16 @@ export interface Project {
   assets: Asset[];
   folders: Folder[];
   coverImage?: string;
+  modifiedAt?: number;
+}
+
+// Lightweight metadata for listing UI (e.g. the Dashboard) without loading
+// each project's full boards/nodes/edges.
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  modifiedAt?: number;
+  coverImage?: string;
+  boardCount: number;
+  assetCount: number;
 }

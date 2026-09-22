@@ -1,9 +1,9 @@
 import React, { useRef } from 'react';
 import { MoreVertical, Image as ImageIcon, Copy, Trash2, FileText, Calendar, Layers, Edit3 } from 'lucide-react';
-import { Project } from '../../types';
+import { ProjectSummary } from '../../types';
 
 interface ProjectCardProps {
-  project: Project;
+  project: ProjectSummary;
   onClick: () => void;
   onDelete: (e: React.MouseEvent) => void;
   onDuplicate: (e: React.MouseEvent) => void;
@@ -122,19 +122,19 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
             <div className="flex items-center gap-3 text-xs text-zinc-500">
                 <span className="flex items-center gap-1">
                     <Calendar size={12} />
-                    {new Date().toLocaleDateString()}
+                    {project.modifiedAt ? new Date(project.modifiedAt).toLocaleDateString() : '—'}
                 </span>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-3 mt-3 pt-3 border-t border-white/10">
             <div className="flex items-center gap-1.5 text-xs text-zinc-300 bg-white/5 px-2 py-1 rounded-md">
                 <Layers size={12} />
-                <span>{project.boards.length} Board{project.boards.length !== 1 ? 's' : ''}</span>
+                <span>{project.boardCount} Board{project.boardCount !== 1 ? 's' : ''}</span>
             </div>
             <div className="flex items-center gap-1.5 text-xs text-zinc-300 bg-white/5 px-2 py-1 rounded-md">
                 <FileText size={12} />
-                <span>{project.assets.length} Asset{project.assets.length !== 1 ? 's' : ''}</span>
+                <span>{project.assetCount} Asset{project.assetCount !== 1 ? 's' : ''}</span>
             </div>
           </div>
       </div>

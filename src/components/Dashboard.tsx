@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Upload, Sparkles, ChevronDown } from 'lucide-react';
 import JSZip from 'jszip';
-import { getAllProjects, saveProject, deleteProject, checkProjectNameExists } from '../services/storageService';
+import { getProjectSummaries, saveProject, loadProject, deleteProject, checkProjectNameExists } from '../services/storageService';
 import { getStorageAdapter } from '../services/storage';
-import { Project } from '../types';
+import { Project, ProjectSummary } from '../types';
 import { INITIAL_PROJECT } from '../constants';
 import { DashboardBackground } from './dashboard/DashboardBackground';
 import { ProjectCard } from './dashboard/ProjectCard';
@@ -14,7 +14,7 @@ import { RenameProjectModal } from './modals/RenameProjectModal';
 import nodetaleLogo from '../assets/logo.png';
 
 export const Dashboard = () => {
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectImage, setNewProjectImage] = useState<string | null>(null);
@@ -24,7 +24,7 @@ export const Dashboard = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
   const [showRenameModal, setShowRenameModal] = useState(false);
-  const [projectToRename, setProjectToRename] = useState<Project | null>(null);
+  const [projectToRename, setProjectToRename] = useState<ProjectSummary | null>(null);
   const [renameProjectName, setRenameProjectName] = useState('');
   const [renameError, setRenameError] = useState('');
   const [showCreateDropdown, setShowCreateDropdown] = useState(false);
@@ -43,8 +43,8 @@ export const Dashboard = () => {
   }, []);
 
   const loadProjects = async () => {
-    const loadedProjects = await getAllProjects();
-    setProjects(loadedProjects);
+    const summaries = await getProjectSummaries();
+    setProjects(summaries);
   };
 
   const handleCreateProject = async (e: React.FormEvent) => {
@@ -98,8 +98,14 @@ export const Dashboard = () => {
     }
   };
 
-  const handleDuplicate = async (project: Project, e: React.MouseEvent) => {
+  const handleDuplicate = async (summary: ProjectSummary, e: React.MouseEvent) => {
     e.stopPropagation();
+    // The list only holds lightweight summaries now — duplicating needs the
+    // full project body, so load it on demand rather than spreading a summary
+    // (which would silently drop every board/node/edge/variable/asset).
+    const project = await loadProject(summary.id);
+    if (!project) return;
+
     let newName = `${project.name} (Copy)`;
     let counter = 1;
     while (await checkProjectNameExists(newName)) {
@@ -117,10 +123,10 @@ export const Dashboard = () => {
     loadProjects();
   };
 
-  const handleRename = (project: Project, e: React.MouseEvent) => {
+  const handleRename = (summary: ProjectSummary, e: React.MouseEvent) => {
     e.stopPropagation();
-    setProjectToRename(project);
-    setRenameProjectName(project.name);
+    setProjectToRename(summary);
+    setRenameProjectName(summary.name);
     setRenameError('');
     setShowRenameModal(true);
     setActiveMenu(null);
@@ -145,7 +151,14 @@ export const Dashboard = () => {
       }
     }
 
-    const updatedProject: Project = { ...projectToRename, name: trimmedName };
+    // Same as duplicate: need the full project to re-save it without dropping
+    // its content — a summary only carries id/name/counts/thumbnail.
+    const project = await loadProject(projectToRename.id);
+    if (!project) {
+      setRenameError('Project could not be loaded');
+      return;
+    }
+    const updatedProject: Project = { ...project, name: trimmedName };
     await saveProject(updatedProject);
     await loadProjects();
     setShowRenameModal(false);
@@ -313,7 +326,9 @@ export const Dashboard = () => {
       const reader = new FileReader();
       reader.onload = async (event) => {
           const base64 = event.target?.result as string;
-          const project = projects.find(p => p.id === projectId);
+          // Needs the full project (a summary only has id/name/counts/thumbnail)
+          // to re-save without dropping its content.
+          const project = await loadProject(projectId);
           if (project) {
               const updatedProject = { ...project, coverImage: base64 };
               await saveProject(updatedProject);
@@ -517,7 +532,8 @@ const rehydrateEmbeddedImages = async (project: Project, zip: JSZip) => {
 
   for (const board of project.boards) {
     for (const node of board.nodes) {
-      const content = node.data?.content;
+      const nodeData = node.data as { content?: string };
+      const content = nodeData?.content;
       if (typeof content !== 'string') continue;
 
       let newContent = content;
@@ -529,7 +545,7 @@ const rehydrateEmbeddedImages = async (project: Project, zip: JSZip) => {
           newContent = newContent.replace(match[0], `src="${dataUrl}"`);
         }
       }
-      node.data.content = newContent;
+      nodeData.content = newContent;
     }
   }
 };
