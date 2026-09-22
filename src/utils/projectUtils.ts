@@ -200,7 +200,7 @@ export const exportProjectAsZip = async (project: Project, includeAssets: boolea
                 // If it has a Blob URL (modern), fetch via ID.
                 
                 let blob: Blob | null = null;
-                let ext = getExtension(asset.type);
+                const ext = getExtension(asset.type);
 
                 if (asset.url && asset.url.startsWith('data:')) {
                      // Fallback for non-migrated assets?
@@ -243,8 +243,9 @@ export const exportProjectAsZip = async (project: Project, includeAssets: boolea
     if (includeAssets) {
         projectToSave.boards.forEach(board => {
             board.nodes.forEach(node => {
-                if (node.data.content && typeof node.data.content === 'string') {
-                    let content = node.data.content;
+                const nodeData = node.data as { content?: string };
+                if (nodeData.content && typeof nodeData.content === 'string') {
+                    let content = nodeData.content;
                     // Regex to find data URI images
                     // Matches both single and double quoted src attributes
                     const imgRegex = /src=['"](data:image\/[^;]+;base64,[^'"\s]+)['"]/g;
@@ -278,7 +279,7 @@ export const exportProjectAsZip = async (project: Project, includeAssets: boolea
                         content = content.replace(rep.original, rep.replacement);
                     });
                     
-                    node.data.content = content;
+                    nodeData.content = content;
                 }
             });
         });
@@ -286,9 +287,10 @@ export const exportProjectAsZip = async (project: Project, includeAssets: boolea
         // Strip embedded images if not including assets
         projectToSave.boards.forEach(board => {
             board.nodes.forEach(node => {
-                if (node.data.content && typeof node.data.content === 'string') {
+                const nodeData = node.data as { content?: string };
+                if (nodeData.content && typeof nodeData.content === 'string') {
                     // Replace data URI src with empty string or placeholder
-                    node.data.content = node.data.content.replace(/src=["']data:[^"']+["']/g, 'src=""');
+                    nodeData.content = nodeData.content.replace(/src=["']data:[^"']+["']/g, 'src=""');
                 }
             });
         });
