@@ -1,44 +1,27 @@
 import { Variable, VariableType, ArrayValue, ObjectValue } from '../types';
+import { parseExpression } from '../core/expression/parser';
+import { evaluate } from '../core/expression/evaluator';
 
+// Real tokenizer/parser-backed evaluator (see src/core/expression/). Supports
+// ==, !=, >, <, >=, <=, &&, ||, unary !/-, and parentheses — a real superset of
+// the old substring-matching implementation (which didn't support &&/|| at all).
 export const evaluateCondition = (conditionStr: string | undefined, variables: Variable[]): boolean => {
   if (!conditionStr) return true;
 
-  // Very basic parser: "variableName == value"
-  // Supports ==, !=, >, <
-  
-  // 1. Find the variable
-  const variable = variables.find(v => conditionStr.includes(v.name));
-  if (!variable) return false;
-
-  let operator = '';
-  if (conditionStr.includes('==')) operator = '==';
-  else if (conditionStr.includes('!=')) operator = '!=';
-  else if (conditionStr.includes('>')) operator = '>';
-  else if (conditionStr.includes('<')) operator = '<';
-
-  if (!operator) return false;
-
-  const parts = conditionStr.split(operator);
-  const targetValueRaw = parts[1].trim();
-  
-  let targetValue: any = targetValueRaw;
-  
-  if (variable.type === VariableType.BOOLEAN) {
-    targetValue = targetValueRaw === 'true';
-  } else if (variable.type === VariableType.NUMBER) {
-    targetValue = Number(targetValueRaw);
-  } else {
-    targetValue = targetValueRaw.replace(/['"]/g, '');
-  }
-
-  const currentValue = variable.value;
-
-  switch (operator) {
-    case '==': return currentValue === targetValue;
-    case '!=': return currentValue !== targetValue;
-    case '>': return Number(currentValue) > Number(targetValue);
-    case '<': return Number(currentValue) < Number(targetValue);
-    default: return false;
+  try {
+    const expr = parseExpression(conditionStr);
+    const result = evaluate(expr, {
+      resolveIdentifier: (name) => {
+        const variable = variables.find(v => v.name === name);
+        if (!variable) throw new Error(`Unknown variable: ${name}`);
+        return variable.value;
+      },
+    });
+    return Boolean(result);
+  } catch {
+    // Unknown variable, syntax error, etc. — same as the old parser's behavior
+    // of returning false rather than throwing into play mode.
+    return false;
   }
 };
 
@@ -100,8 +83,8 @@ export const replaceVariablesInText = (text: string, variables: Variable[]): str
       if (!variable) return match; // Keep original if not found
       
       if (variable.type === VariableType.OBJECT && isObjectValue(variable.value)) {
-        const value = variable.value.keys[key];
-        return value !== undefined ? String(value) : match;
+        const entry = variable.value.keys[key];
+        return entry !== undefined ? String(entry.value) : match;
       }
       return match; // Not an object or key doesn't exist
     }

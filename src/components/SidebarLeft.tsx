@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Project } from '../types';
-import { 
-  Layout, 
-  Database, 
+import {
+  Layout,
+  Database,
   FolderOpen,
   Settings,
   HelpCircle,
@@ -11,13 +11,16 @@ import {
   Download,
   Edit2,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  AlertTriangle
 } from 'lucide-react';
 import { BoardsList } from './sidebar/BoardsList';
 import { VariablesList } from './sidebar/VariablesList';
 import { AssetsList } from './sidebar/AssetsList';
+import { ProblemsList } from './sidebar/ProblemsList';
 import { HelpModal } from './modals/HelpModal';
 import { ExportProjectModal } from './modals/ExportProjectModal';
+import { validateProject } from '../core/validation/Validator';
 
 interface SidebarLeftProps {
   project: Project;
@@ -25,7 +28,14 @@ interface SidebarLeftProps {
 }
 
 const SidebarLeft: React.FC<SidebarLeftProps> = ({ project, setProject }) => {
-  const [activeTab, setActiveTab] = useState<'boards' | 'vars' | 'assets'>('boards');
+  const [activeTab, setActiveTab] = useState<'boards' | 'vars' | 'assets' | 'problems'>('boards');
+  // Scoped to the active board and computed once here — ProblemsList (the tab
+  // content) reuses this instead of running its own separate validation pass.
+  const activeDiagnostics = useMemo(
+    () => validateProject(project, { boardIds: [project.activeBoardId] }),
+    [project]
+  );
+  const problemCount = activeDiagnostics.length;
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -34,6 +44,19 @@ const SidebarLeft: React.FC<SidebarLeftProps> = ({ project, setProject }) => {
   const [isResizing, setIsResizing] = useState(false);
   const navigate = useNavigate();
   const sidebarRef = useRef<HTMLDivElement>(null);
+
+  // Lets the command palette's "Validate Project" action (App.tsx) jump here
+  // without lifting activeTab/isCollapsed state out of this component — a
+  // plain DOM event is the smallest option for a single, rare, cross-component
+  // trigger like this.
+  useEffect(() => {
+    const showProblems = () => {
+      setActiveTab('problems');
+      setIsCollapsed(false);
+    };
+    window.addEventListener('nodetale:show-problems', showProblems);
+    return () => window.removeEventListener('nodetale:show-problems', showProblems);
+  }, []);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -82,7 +105,7 @@ const SidebarLeft: React.FC<SidebarLeftProps> = ({ project, setProject }) => {
     setIsCollapsed(!isCollapsed);
   };
 
-  const handleTabClick = (tab: 'boards' | 'vars' | 'assets') => {
+  const handleTabClick = (tab: 'boards' | 'vars' | 'assets' | 'problems') => {
     setActiveTab(tab);
     if (isCollapsed) {
       setIsCollapsed(false);
@@ -163,14 +186,24 @@ const SidebarLeft: React.FC<SidebarLeftProps> = ({ project, setProject }) => {
             >
                 <Database size={20} />
             </button>
-            <button 
+            <button
                 onClick={() => handleTabClick('assets')}
                 className={`p-2 rounded-md transition-colors ${activeTab === 'assets' ? 'text-orange-500 bg-zinc-800' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'}`}
                 title="Assets"
             >
                 <FolderOpen size={20} />
             </button>
-            
+            <button
+                onClick={() => handleTabClick('problems')}
+                className={`relative p-2 rounded-md transition-colors ${activeTab === 'problems' ? 'text-orange-500 bg-zinc-800' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'}`}
+                title="Problems"
+            >
+                <AlertTriangle size={20} />
+                {problemCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-0.5 rounded-full bg-amber-500 text-[9px] leading-[14px] text-black font-bold text-center">{problemCount}</span>
+                )}
+            </button>
+
             <div className="flex-1" />
             
              <button 
@@ -223,11 +256,22 @@ const SidebarLeft: React.FC<SidebarLeftProps> = ({ project, setProject }) => {
                 <FolderOpen size={18} />
                 {activeTab === 'assets' && <div className="absolute bottom-0 w-full h-[2px] bg-orange-500" />}
                 </button>
+                <button
+                onClick={() => setActiveTab('problems')}
+                className={`flex-1 py-3 flex justify-center relative text-zinc-500 hover:text-zinc-300 transition-colors ${activeTab === 'problems' ? 'text-orange-500' : ''}`}
+                title="Problems"
+                >
+                <AlertTriangle size={18} />
+                {problemCount > 0 && (
+                    <span className="absolute top-1 right-[calc(50%-14px)] min-w-[14px] h-[14px] px-0.5 rounded-full bg-amber-500 text-[9px] leading-[14px] text-black font-bold text-center">{problemCount}</span>
+                )}
+                {activeTab === 'problems' && <div className="absolute bottom-0 w-full h-[2px] bg-orange-500" />}
+                </button>
             </div>
 
             {/* Content Area */}
             <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 min-w-0">
-                
+
                 {/* BOARDS LIST */}
                 {activeTab === 'boards' && (
                 <BoardsList project={project} setProject={setProject} />
@@ -241,6 +285,11 @@ const SidebarLeft: React.FC<SidebarLeftProps> = ({ project, setProject }) => {
                 {/* ASSETS LIST */}
                 {activeTab === 'assets' && (
                 <AssetsList project={project} setProject={setProject} />
+                )}
+
+                {/* PROBLEMS LIST */}
+                {activeTab === 'problems' && (
+                <ProblemsList diagnostics={activeDiagnostics} />
                 )}
 
             </div>
@@ -288,4 +337,5 @@ const SidebarLeft: React.FC<SidebarLeftProps> = ({ project, setProject }) => {
   );
 };
 
-export default SidebarLeft;
+// memo: ProjectEditor re-renders on every drag frame; `project` doesn't change then.
+export default React.memo(SidebarLeft);

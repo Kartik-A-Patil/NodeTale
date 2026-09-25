@@ -31,16 +31,16 @@
   "assets": [
     {
       "id": "asset-1766583597905",
-      "name": "facility_exterior_night.png",
+      "name": "facility_exterior_night.jpg",
       "type": "image",
-      "url": "assets/images/facility_exterior_night.png",
+      "url": "assets/images/facility_exterior_night.jpg",
       "parentId": "folder-1766583561095"
     },
     {
       "id": "asset-1766583601308",
-      "name": "facility_hall_interior.png",
+      "name": "facility_hall_interior.jpg",
       "type": "image",
-      "url": "assets/images/facility_hall_interior.png",
+      "url": "assets/images/facility_hall_interior.jpg",
       "parentId": "folder-1766583561095"
     },
     {
@@ -432,5 +432,5 @@
       ]
     }
   ],
-  "coverImage": "cover.png"
+  "coverImage": "assets/images/facility_exterior_night.jpg"
 }

@@ -1,7 +1,7 @@
-import React, { memo, useMemo } from 'react';
-import { useReactFlow, useStore } from 'reactflow';
+import React, { memo, useCallback } from 'react';
+import { Node, useReactFlow, useStore } from 'reactflow';
 import { Link2 } from 'lucide-react';
-import { NodeData } from '../../types';
+import { JumpNodeData } from '../../types';
 
 interface JumpTargetBadgeProps {
   nodeId: string;
@@ -9,22 +9,30 @@ interface JumpTargetBadgeProps {
 }
 
 const JumpTargetBadge = ({ nodeId, className = '' }: JumpTargetBadgeProps) => {
-  const nodes = useStore((state) => state.getNodes());
+  // Select primitives, not the node list: getNodes() returns a fresh array on
+  // every store tick (drag/pan/zoom), which re-rendered every badge per frame.
+  // ponytail: still an O(n) scan per tick per badge; index jump targets if boards get huge.
+  const findSource = useCallback(
+    (nodes: Iterable<Node>) => {
+      for (const n of nodes) {
+        if (n.type === 'jumpNode' && (n.data as JumpNodeData).jumpTargetId === nodeId) return n;
+      }
+      return undefined;
+    },
+    [nodeId]
+  );
+  const jumpSourceId = useStore(useCallback((s) => findSource(s.nodeInternals.values())?.id ?? null, [findSource]));
+  const jumpLabel = useStore(
+    useCallback((s) => (findSource(s.nodeInternals.values())?.data as JumpNodeData | undefined)?.label || 'Jump', [findSource])
+  );
   const { fitView, setNodes } = useReactFlow();
 
-  const jumpSource = useMemo(
-    () => nodes.find((n) => n.type === 'jumpNode' && (n.data as NodeData).jumpTargetId === nodeId),
-    [nodes, nodeId]
-  );
-
-  if (!jumpSource) return null;
-
-  const jumpLabel = (jumpSource.data as NodeData).label || 'Jump';
+  if (!jumpSourceId) return null;
 
   const handleClick = (event: React.MouseEvent) => {
     event.stopPropagation();
-    setNodes((nds) => nds.map((node) => ({ ...node, selected: node.id === jumpSource.id })));
-    fitView({ nodes: [{ id: jumpSource.id }], duration: 450, padding: 0.6, maxZoom: 1.4 });
+    setNodes((nds) => nds.map((node) => ({ ...node, selected: node.id === jumpSourceId })));
+    fitView({ nodes: [{ id: jumpSourceId }], duration: 450, padding: 0.6, maxZoom: 1.4 });
   };
 
   return (

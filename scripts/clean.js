@@ -15,7 +15,7 @@ for (const dir of dirs) {
   try {
     await rm(target, { recursive: true, force: true });
     console.log(`  ✓ Cleaned: ${dir}`);
-  } catch (e) {
+  } catch (_e) {
     console.log(`  ⚠ Skipped: ${dir} (not found)`);
   }
 }

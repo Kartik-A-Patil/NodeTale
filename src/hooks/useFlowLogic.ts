@@ -1,58 +1,65 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { 
-  useNodesState, 
-  useEdgesState, 
-  addEdge, 
-  reconnectEdge, 
-  MarkerType, 
-  Connection, 
-  Edge, 
-  Node 
+import {
+  useNodesState,
+  useEdgesState,
+  MarkerType,
+  Connection,
+  Edge,
+  Node
 } from 'reactflow';
 import { AppNode } from '../types';
 import { useProjectState } from './useProjectState';
+import { nodeRegistry, NodeTypeKey } from '../core/nodes/nodeRegistry';
+import { useCommandHistory } from '../editor/history/useCommandHistory';
+import { CommandContext } from '../editor/commands/types';
+import { addElementsCommand } from '../editor/commands/addElementsCommand';
+import { deleteNodeCommand } from '../editor/commands/deleteNodeCommand';
+import { connectEdgeCommand } from '../editor/commands/connectEdgeCommand';
+import { reconnectEdgeCommand } from '../editor/commands/reconnectEdgeCommand';
+import { deleteEdgeCommand } from '../editor/commands/deleteEdgeCommand';
+import { updateNodeCommand } from '../editor/commands/updateNodeCommand';
+import { updateEdgeCommand } from '../editor/commands/updateEdgeCommand';
+import { NodeTransform } from '../editor/commands/moveNodeCommand';
 
 export function useFlowLogic(projectIdOrName?: string) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  
-  // Undo/Redo State
-  const [past, setPast] = useState<{ nodes: AppNode[], edges: Edge[] }[]>([]);
-  const [future, setFuture] = useState<{ nodes: AppNode[], edges: Edge[] }[]>([]);
+
+  // Synchronous reads for commands (e.g. deleteNodeCommand) that need current
+  // state before deciding what to mutate — a setNodes/setEdges updater function is
+  // never invoked synchronously by React, so commands must not depend on reading
+  // a value back out of one within the same execute() call.
+  const nodesRef = useRef(nodes);
+  const edgesRef = useRef(edges);
+  useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+  useEffect(() => { edgesRef.current = edges; }, [edges]);
+
+  const ctx: CommandContext = useMemo(
+    () => ({ setNodes, setEdges, getNodes: () => nodesRef.current, getEdges: () => edgesRef.current }),
+    [setNodes, setEdges]
+  );
+  const history = useCommandHistory();
+  // Stable across renders; callbacks depend on this rather than `history`,
+  // whose identity changes whenever canUndo/canRedo flip.
+  const { execute } = history;
+
   const [jumpClipboard, setJumpClipboard] = useState<{ id: string; label: string } | null>(null);
 
-  const takeSnapshot = useCallback(() => {
-      setPast(past => {
-          const newPast = [...past, { nodes, edges }];
-          if (newPast.length > 50) newPast.shift();
-          return newPast;
-      });
-      setFuture([]);
-  }, [nodes, edges]);
+  // Records every dragged node's transform (position/parentNode/extent) at drag
+  // start — ReactFlow reports all nodes actually being dragged (the whole
+  // selection, not just the one under the cursor) as the drag handler's third
+  // argument — so useDragAndDrop's onNodeDragStop can build one command that moves
+  // (and can undo) the entire dragged set, not just the primary node.
+  const dragStartRef = useRef<(({ id: string } & NodeTransform)[]) | null>(null);
 
-  const undo = useCallback(() => {
-      if (past.length === 0) return;
-      const previous = past[past.length - 1];
-      const newPast = past.slice(0, past.length - 1);
-      
-      setFuture(future => [{ nodes, edges }, ...future]);
-      setPast(newPast);
-      
-      setNodes(previous.nodes);
-      setEdges(previous.edges);
-  }, [past, nodes, edges, setNodes, setEdges]);
-
-  const redo = useCallback(() => {
-      if (future.length === 0) return;
-      const next = future[0];
-      const newFuture = future.slice(1);
-      
-      setPast(past => [...past, { nodes, edges }]);
-      setFuture(newFuture);
-      
-      setNodes(next.nodes);
-      setEdges(next.edges);
-  }, [future, nodes, edges, setNodes, setEdges]);
+  const onNodeDragStart = useCallback((_event: unknown, _node: Node, draggedNodes: Node[]) => {
+    dragStartRef.current = draggedNodes.map(n => ({
+      id: n.id,
+      position: n.position,
+      parentNode: n.parentNode,
+      extent: (n as any).extent,
+    }));
+  }, []);
 
     const { project, setProject, isInitializing, lastSaved, saveNow } = useProjectState(nodes, edges, setNodes, setEdges, projectIdOrName);
 
@@ -60,24 +67,24 @@ export function useFlowLogic(projectIdOrName?: string) {
     const clipboardRef = useRef<{ nodes: AppNode[]; edges: Edge[] } | null>(null);
 
     const copySelected = useCallback(() => {
-        const selected = nodes.filter(n => n.selected) as AppNode[];
+        // Read through refs so this callback (and the editorActions list that
+        // holds it) doesn't change identity on every drag frame.
+        const selected = nodesRef.current.filter(n => n.selected) as AppNode[];
         if (selected.length === 0) return;
 
         const selectedIds = new Set(selected.map(n => n.id));
-        const relatedEdges = edges.filter(e => selectedIds.has(e.source) && selectedIds.has(e.target));
+        const relatedEdges = edgesRef.current.filter(e => selectedIds.has(e.source) && selectedIds.has(e.target));
 
         // Deep clone to avoid referencing original objects
         const clonedNodes = selected.map(n => ({ ...n, data: { ...n.data } }));
         const clonedEdges = relatedEdges.map(e => ({ ...e, data: { ...e.data } }));
 
         clipboardRef.current = { nodes: clonedNodes, edges: clonedEdges };
-    }, [nodes, edges]);
+    }, []);
 
     const pasteClipboard = useCallback(() => {
         if (!clipboardRef.current) return;
         const { nodes: copiedNodes, edges: copiedEdges } = clipboardRef.current;
-
-        takeSnapshot();
 
         // Map old ids to new ids
         const idMap: Record<string, string> = {};
@@ -102,13 +109,8 @@ export function useFlowLogic(projectIdOrName?: string) {
             } as Edge;
         });
 
-        // Deselect existing nodes and append new ones
-        setNodes(nds => [
-            ...nds.map(n => ({ ...n, selected: false })),
-            ...newNodes
-        ]);
-        setEdges(eds => eds.concat(newEdges));
-    }, [takeSnapshot, setNodes, setEdges]);
+        execute(addElementsCommand(ctx, newNodes, newEdges, true));
+    }, [ctx, execute]);
 
   // Migration for edge design
   useEffect(() => {
@@ -154,172 +156,90 @@ export function useFlowLogic(projectIdOrName?: string) {
   }, [nodes, project.variables]);
 
   const updateNodeData = useCallback((id: string, data: any) => {
-    takeSnapshot();
-    setNodes(nds => nds.map(node => {
-      if (node.id === id) {
-        return { ...node, data: { ...node.data, ...data } };
-      }
-      return node;
-    }));
-  }, [setNodes, takeSnapshot]);
+    execute(updateNodeCommand(ctx, id, (n) => ({ ...n, data: { ...n.data, ...data } })));
+  }, [ctx, execute]);
 
   const updateNode = useCallback((id: string, patch: Partial<AppNode>) => {
-      takeSnapshot();
-      setNodes(nds => nds.map(node => {
-          if (node.id === id) {
-              return { ...node, ...patch };
-          }
-          return node;
-      }));
-  }, [setNodes, takeSnapshot]);
+      execute(updateNodeCommand(ctx, id, (n) => ({ ...n, ...patch })));
+  }, [ctx, execute]);
 
   const updateEdgeData = useCallback((id: string, data: any) => {
-      takeSnapshot();
-      setEdges(eds => eds.map(e => {
-          if (e.id === id) {
-              return { ...e, data: { ...e.data, ...data } };
-          }
-          return e;
-      }));
-  }, [setEdges, takeSnapshot]);
+      execute(updateEdgeCommand(ctx, id, (e) => ({ ...e, data: { ...e.data, ...data } })));
+  }, [ctx, execute]);
 
   const updateEdgeColor = useCallback((id: string, color: string) => {
-      takeSnapshot();
-      setEdges(eds => eds.map(e => {
-          if (e.id === id) {
-              return { ...e, style: { ...e.style, stroke: color } };
-          }
-          return e;
-      }));
-  }, [setEdges, takeSnapshot]);
+      execute(updateEdgeCommand(ctx, id, (e) => ({ ...e, style: { ...e.style, stroke: color } })));
+  }, [ctx, execute]);
 
   const updateEdgeLabel = useCallback((id: string, label: string) => {
-      takeSnapshot();
-      setEdges(eds => eds.map(e => {
-          if (e.id === id) {
-              return { ...e, label };
-          }
-          return e;
-      }));
-  }, [setEdges, takeSnapshot]);
+      execute(updateEdgeCommand(ctx, id, (e) => ({ ...e, label })));
+  }, [ctx, execute]);
 
   const onConnect = useCallback((params: Connection) => {
+    // ReactFlow's Connection type allows null endpoints mid-drag; onConnect is
+    // only ever called once both are resolved, but narrows for strict mode.
+    if (!params.source || !params.target) return;
     if (params.source === params.target) return;
 
-    const isDuplicate = edges.some(edge => 
+    const edges = edgesRef.current;
+    const isDuplicate = edges.some(edge =>
       (edge.source === params.source && edge.target === params.target) ||
       (edge.source === params.target && edge.target === params.source)
     );
 
     if (isDuplicate) return;
 
-    takeSnapshot();
-
-    const sourceNode = nodes.find(n => n.id === params.source);
-    let currentEdges = edges;
+    const sourceNode = nodesRef.current.find(n => n.id === params.source);
+    let existingBranchEdge: Edge | undefined;
 
     if (sourceNode?.type === 'conditionNode') {
-        const existingBranchEdge = currentEdges.find(e => 
-            e.source === params.source && 
+        existingBranchEdge = edges.find(e =>
+            e.source === params.source &&
             e.sourceHandle === params.sourceHandle
         );
-        
-        if (existingBranchEdge) {
-            currentEdges = currentEdges.filter(e => e.id !== existingBranchEdge.id);
-        }
     }
 
-    const edge: Edge = { 
-        ...params, 
+    const edge: Edge = {
+        // Not spreading `params` directly: TS's narrowing of params.source/
+        // target above (both non-null) doesn't propagate through an object
+        // spread, since spread reconstructs the object from params' original
+        // declared (nullable) type rather than the narrowed one.
+        source: params.source,
+        target: params.target,
+        sourceHandle: params.sourceHandle,
+        targetHandle: params.targetHandle,
         type: 'floating',
         id: `e-${params.source}-${params.target}-${Date.now()}`,
         animated: false,
         markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 20 },
         style: { stroke: '#71717a'}
     };
-    setEdges(eds => addEdge(edge, currentEdges));
-  }, [edges, nodes, setEdges, takeSnapshot]);
+    execute(connectEdgeCommand(ctx, edge, existingBranchEdge));
+  }, [ctx, execute]);
 
   const onReconnect = useCallback((oldEdge: Edge, newConnection: Connection) => {
-    takeSnapshot();
-    setEdges(eds => reconnectEdge(oldEdge, newConnection, eds));
-  }, [setEdges, takeSnapshot]);
+    execute(reconnectEdgeCommand(ctx, oldEdge, newConnection));
+  }, [ctx, execute]);
 
-  const addNode = useCallback((type: 'elementNode' | 'conditionNode' | 'jumpNode' | 'commentNode' | 'sectionNode' | 'annotationNode', position?: { x: number, y: number }, extraData?: any) => {
-    takeSnapshot();
+  const addNode = useCallback((type: NodeTypeKey, position?: { x: number, y: number }, extraData?: any) => {
     const id = `node-${Date.now()}`;
-    const newNode: AppNode = {
-      id,
-      type,
-      position: position || { x: Math.random() * 400 + 100, y: Math.random() * 400 + 100 },
-      data: { 
-          label: type === 'elementNode' ? 'New Element' : type === 'conditionNode' ? 'Logic Check' : type === 'sectionNode' ? 'New Section' : type === 'annotationNode' ? 'Annotation' : 'Jump', 
-          content: type === 'annotationNode' ? 'This is an annotation describing a part of the flow.' : '',
-          condition: type === 'conditionNode' ? 'var == true' : undefined,
-          text: '',
-          ...extraData
-      },
-      zIndex: type === 'sectionNode' ? -1 : type === 'commentNode' ? -10 : undefined,
-      style: type === 'sectionNode' ? { width: 400, height: 300, ...extraData?.style } : extraData?.style,
-    };
-    setNodes(nds => [...nds, newNode]);
-  }, [setNodes, takeSnapshot]);
+    const nodePosition = position || { x: Math.random() * 400 + 100, y: Math.random() * 400 + 100 };
+    const { style: extraStyle, ...extraFields } = extraData || {};
+    const entry = nodeRegistry[type];
+    const zIndex = entry.defaultZIndex;
+    const style = type === 'sectionNode' ? { width: 400, height: 300, ...extraStyle } : extraStyle;
+
+    const newNode: AppNode = { id, type, position: nodePosition, data: entry.create(extraFields), zIndex, style };
+    execute(addElementsCommand(ctx, [newNode]));
+  }, [ctx, execute]);
 
   const deleteNode = useCallback((id: string, deleteChildren: boolean = false) => {
-    takeSnapshot();
-    
-    // We need to identify which nodes to delete.
-    // If we are deleting a section with children, we need to find those children.
-    // We use the functional update to ensure we are working with the latest state,
-    // but we also need to update edges based on what we delete.
-    
-    setNodes(nds => {
-        const nodeToDelete = nds.find(n => n.id === id);
-        if (!nodeToDelete) return nds;
-
-        let idsToDelete = [id];
-        
-        if (nodeToDelete.type === 'sectionNode') {
-             if (deleteChildren) {
-                 const children = nds.filter(n => n.parentNode === id);
-                 idsToDelete = [...idsToDelete, ...children.map(n => n.id)];
-             } else {
-                 // Ungroup: Remove parentNode from children
-                 return nds.filter(n => n.id !== id).map(n => {
-                     if (n.parentNode === id) {
-                         return {
-                             ...n,
-                             parentNode: undefined,
-                             position: n.positionAbsolute || n.position,
-                             extent: undefined
-                         };
-                     }
-                     return n;
-                 });
-             }
-        }
-
-        // Side effect: Delete edges connected to deleted nodes
-        // Note: This is a bit of a hack to set edges from within setNodes, 
-        // but it ensures we use the consistent set of deleted IDs.
-        // Ideally we would calculate idsToDelete outside, but we need 'nds' state.
-        // To avoid the side effect warning/issue, we can schedule the edge update.
-        setTimeout(() => {
-            setEdges(eds => eds.filter(e => !idsToDelete.includes(e.source) && !idsToDelete.includes(e.target)));
-        }, 0);
-        
-        return nds.filter(n => !idsToDelete.includes(n.id));
-    });
-  }, [setNodes, setEdges, takeSnapshot]);
+    execute(deleteNodeCommand(ctx, id, deleteChildren));
+  }, [ctx, execute]);
 
   const deleteEdge = useCallback((id: string) => {
-      takeSnapshot();
-      setEdges(eds => eds.filter(e => e.id !== id));
-  }, [setEdges, takeSnapshot]);
-
-  const onNodeDragStart = useCallback(() => {
-      takeSnapshot();
-  }, [takeSnapshot]);
+      execute(deleteEdgeCommand(ctx, id));
+  }, [ctx, execute]);
 
   return {
     nodes,
@@ -348,11 +268,13 @@ export function useFlowLogic(projectIdOrName?: string) {
     pasteClipboard,
     jumpClipboard,
     setJumpClipboard,
-    undo,
-    redo,
-    canUndo: past.length > 0,
-    canRedo: future.length > 0,
+    undo: history.undo,
+    redo: history.redo,
+    canUndo: history.canUndo,
+    canRedo: history.canRedo,
     onNodeDragStart,
-    takeSnapshot
+    dragStartRef,
+    ctx,
+    executeCommand: history.execute,
   };
 }

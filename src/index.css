@@ -1,3 +1,71 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Editor canvas (moved from inline <style> blocks so they are parsed once, not per node) */
+.is-connecting .react-flow__handle-source {
+    pointer-events: none !important;
+    opacity: 0 !important;
+}
+.is-connecting .react-flow__handle-target {
+    opacity: 0.4 !important;
+    background-color: #3b82f6 !important;
+    transition: all 0.2s ease;
+    z-index: 100 !important;
+}
+.react-flow__nodesselection-rect {
+    display: none !important;
+}
+
+.react-flow__node.selected {
+    z-index: 1000 !important;
+}
+.react-flow__edge-path {
+    transition: stroke 0.3s ease, stroke-width 0.3s ease;
+}
+.react-flow__controls-button {
+    transition: all 0.2s ease !important;
+}
+.react-flow__background {
+    transition: opacity 0.3s ease;
+}
+
+.markdown-content blockquote { 
+    border-left: 3px solid #52525b; 
+    padding-left: 8px; 
+    font-style: italic; 
+    color: #a1a1aa; 
+    margin: 4px 0; 
+}
+/* The extra [class*="language-"] selector outranks prism-dark.css (imported
+   after this file), whose brown background/border would otherwise win. */
+.markdown-content pre,
+.markdown-content pre[class*="language-"] { 
+    background: #18181b; 
+    box-shadow: none;
+    padding: 4px; 
+    border-radius: 4px; 
+    font-family: 'JetBrains Mono', monospace; 
+    border: 0px solid #27272a; 
+    color: #a1a1aa; 
+    margin: 6px 0; 
+    white-space: pre-wrap; 
+    min-height: 1rem; 
+}
+.markdown-content ul { 
+    list-style-type: disc; 
+    padding-left: 20px; 
+    margin: 4px 0; 
+}
+/* Editor Highlight Colors */
+.markdown-content .text-blue-400 { color: #60a5fa; }
+.markdown-content .text-white { color: #ffffff; }
+.markdown-content .text-zinc-400 { color: #a1a1aa; }
+.markdown-content .text-purple-400 { color: #a78bfa; }
+
+.markdown-content pre:empty::before {
+  content: '';
+  white-space: pre-wrap;
+  display: block;
+}
+

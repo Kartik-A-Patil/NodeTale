@@ -8,6 +8,27 @@ function FloatingEdge({ id, source, target, sourceHandleId, targetHandleId, mark
   const targetNode = useStore(useCallback((store) => store.nodeInternals.get(target), [target]));
   const { setEdges } = useReactFlow();
 
+  // Ensure label used in textarea is a string to satisfy its value prop typing
+  const labelText = typeof label === 'string' ? label : '';
+
+  // Hooks must run unconditionally on every render (Rules of Hooks) — this was
+  // previously below the `!sourceNode || !targetNode` early return, so it was
+  // skipped whenever an edge's endpoint node was transiently missing (e.g.
+  // during a board switch or node deletion), which can corrupt React's hook
+  // call order for this component. labelText only depends on the `label` prop,
+  // not on sourceNode/targetNode, so it's safe to compute before the guard.
+  const measuredWidth = useMemo(() => {
+    const text = (labelText || 'Type label..').toString();
+    const lines = text.split(/\r?\n/);
+    const longest = Math.max(...lines.map((l) => l.length), 0);
+    const charPx = 7; // approximate width per character at text-xs
+    const paddingPx = 16; // horizontal padding inside the container
+    const minPx = 80; // roughly placeholder size
+    const maxPx = 400; // cap to avoid overly wide labels
+    const width = Math.max(minPx, Math.min(maxPx, longest * charPx + paddingPx));
+    return width;
+  }, [labelText]);
+
   if (!sourceNode || !targetNode) {
     return null;
   }
@@ -18,7 +39,7 @@ function FloatingEdge({ id, source, target, sourceHandleId, targetHandleId, mark
       if (['elementNode', 'componentNode', 'conditionNode', 'jumpNode'].includes(node.type || '') && type === 'target') return undefined;
 
       // Try to get exact handle bounds first
-      const handleBounds = node[Symbol.for('__reactFlowHandleBounds') as any] || (node as any).handleBounds;
+      const handleBounds = (node as any)[Symbol.for('__reactFlowHandleBounds')] || (node as any).handleBounds;
       
       if (handleBounds) {
           const handles = type === 'source' ? handleBounds.source : handleBounds.target;
@@ -80,12 +101,9 @@ function FloatingEdge({ id, source, target, sourceHandleId, targetHandleId, mark
 
   const pathType = data?.pathType || 'bezier';
 
-  // Ensure label used in textarea is a string to satisfy its value prop typing
-  const labelText = typeof label === 'string' ? label : '';
-
-  let edgePath = '';
-  let labelX = 0;
-  let labelY = 0;
+  let edgePath: string;
+  let labelX: number;
+  let labelY: number;
 
   const params = {
     sourceX: sx,
@@ -118,18 +136,6 @@ function FloatingEdge({ id, source, target, sourceHandleId, targetHandleId, mark
     )));
   };
 
-  const measuredWidth = useMemo(() => {
-    const text = (labelText || 'Type label..').toString();
-    const lines = text.split(/\r?\n/);
-    const longest = Math.max(...lines.map((l) => l.length), 0);
-    const charPx = 7; // approximate width per character at text-xs
-    const paddingPx = 16; // horizontal padding inside the container
-    const minPx = 80; // roughly placeholder size
-    const maxPx = 400; // cap to avoid overly wide labels
-    const width = Math.max(minPx, Math.min(maxPx, longest * charPx + paddingPx));
-    return width;
-  }, [labelText]);
-
   return (
     <>
       <path
@@ -138,7 +144,6 @@ function FloatingEdge({ id, source, target, sourceHandleId, targetHandleId, mark
         strokeOpacity={0}
         strokeWidth={20}
         className="react-flow__edge-interaction"
-        style={{ transition: 'd 0.02s ease-out' }}
       />
       <path
         id={id}
@@ -149,7 +154,9 @@ function FloatingEdge({ id, source, target, sourceHandleId, targetHandleId, mark
           ...style,
           strokeWidth: 2,
           stroke: selected ? '#F97316' : (style?.stroke || '#94a3b8'),
-          transition: 'stroke 0.1s ease, stroke-width 0.1s ease, d 0.05s ease-out',
+          // No `d` transition: animating the path made edges trail behind a dragged
+          // node (and split from the endpoint dot, which moves instantly).
+          transition: 'stroke 0.1s ease, stroke-width 0.1s ease',
         }}
       />
       <EdgeLabelRenderer>

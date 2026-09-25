@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useReactFlow, Node } from 'reactflow';
-import { NodeData } from '../types';
+import { ElementNodeData } from '../types';
 
 interface DatePickerProps {
   date: string | null;
@@ -107,7 +107,7 @@ export const DatePicker = ({ date, onChange, nodeId }: DatePickerProps) => {
         const otherId = e.source === nodeId ? e.target : e.source;
         return nodes.find(n => n.id === otherId);
       })
-      .filter((n): n is Node<NodeData> => !!n && !!n.data?.date)
+      .filter((n): n is Node<ElementNodeData> => !!n && !!n.data?.date)
       .map(n => ({
         id: n.id,
         label: n.data.label || 'Untitled',

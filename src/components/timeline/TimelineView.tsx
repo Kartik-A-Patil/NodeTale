@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { AppNode } from '@/types';
+import { AppNode, isElementNode } from '@/types';
 import { Clock } from 'lucide-react';
 
 interface TimelineViewProps {
@@ -11,7 +11,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ nodes, onNodeClick }
 
   const sortedNodes = useMemo(() => {
     // Only show elementNode types with dates
-    const filtered = nodes.filter(n => n.type === 'elementNode' && n.data.date);
+    const filtered = nodes.filter(isElementNode).filter(n => n.data.date);
     
     // Sort by date
     return filtered.sort((a, b) => {

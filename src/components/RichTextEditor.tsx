@@ -35,9 +35,11 @@ const ToolbarButton = ({
   </button>
 );
 
-const sanitizeHtmlContent = (html: string) => {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html || "", "text/html");
+// One DOMParser pass does everything: sanitize, unwrap old variable highlights,
+// and (when `highlight`) re-apply Prism + variable highlighting. This used to be
+// 3-4 separate parse/serialize round-trips per keystroke.
+const processHtml = (html: string, highlight: boolean) => {
+  const doc = new DOMParser().parseFromString(html || "", "text/html");
 
   doc.querySelectorAll("script, style").forEach((el) => el.remove());
   doc.body.querySelectorAll("*").forEach((el) => {
@@ -48,87 +50,56 @@ const sanitizeHtmlContent = (html: string) => {
     });
   });
 
-  return doc.body.innerHTML;
-};
-
-// Remove previous variable highlight spans so we don't nest them
-const stripHighlightSpans = (html: string) => {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html || "", "text/html");
-  doc.querySelectorAll('span[data-variable]').forEach((span) => {
-    const textNode = doc.createTextNode(span.textContent || "");
-    span.replaceWith(textNode);
-  });
-  return doc.body.innerHTML;
-};
-
-
-const highlightVariablesSafe = (html: string) => {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html || "", "text/html");
-
-  const walker = doc.createTreeWalker(
-    doc.body,
-    NodeFilter.SHOW_TEXT,
-    {
-      acceptNode(node) {
-        let parent = node.parentElement;
-        while (parent) {
-          if (parent.tagName.toLowerCase() === "pre") {
-            return NodeFilter.FILTER_REJECT;
-          }
-          parent = parent.parentElement;
-        }
-        return NodeFilter.FILTER_ACCEPT;
-      }
-    }
-  );
-
-  const replacements: { node: Text; frag: DocumentFragment }[] = [];
-
-  while (walker.nextNode()) {
-    const node = walker.currentNode as Text;
-    const text = node.nodeValue || "";
-    const parts = text.split(/(\{\{[^}]+\}\})/);
-
-    if (parts.length > 1) {
-      const frag = doc.createDocumentFragment();
-      parts.forEach((part) => {
-        if (/\{\{[^}]+\}\}/.test(part)) {
-          const name = part.slice(2, -2).trim();
-          const span = doc.createElement("span");
-          span.setAttribute("data-variable", name);
-          span.setAttribute("style", "color: #8c8c8c;");
-          span.textContent = part;
-          frag.appendChild(span);
-        } else {
-          frag.appendChild(doc.createTextNode(part));
-        }
-      });
-      replacements.push({ node, frag });
-    }
-  }
-
-  replacements.forEach(({ node, frag }) => {
-    node.parentNode?.replaceChild(frag, node);
+  // Remove previous variable highlight spans so we don't nest them
+  doc.querySelectorAll("span[data-variable]").forEach((span) => {
+    span.replaceWith(doc.createTextNode(span.textContent || ""));
   });
 
-  return doc.body.innerHTML;
-};
-
-const highlightCodeBlocks = (html: string) => {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html || "", "text/html");
+  if (!highlight) return doc.body.innerHTML;
 
   doc.querySelectorAll("pre").forEach((pre) => {
     const codeText = pre.textContent || "";
-    const highlighted = Prism.highlight(codeText, Prism.languages.javascript, "javascript");
     pre.classList.add("language-javascript");
-    pre.innerHTML = highlighted;
+    pre.innerHTML = Prism.highlight(codeText, Prism.languages.javascript, "javascript");
   });
+
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      return node.parentElement?.closest("pre") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+    }
+  });
+
+  const replacements: { node: Text; frag: DocumentFragment }[] = [];
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text;
+    const parts = (node.nodeValue || "").split(/(\{\{[^}]+\}\})/);
+    if (parts.length <= 1) continue;
+    const frag = doc.createDocumentFragment();
+    parts.forEach((part) => {
+      if (/\{\{[^}]+\}\}/.test(part)) {
+        const span = doc.createElement("span");
+        span.setAttribute("data-variable", part.slice(2, -2).trim());
+        span.setAttribute("style", "color: #8c8c8c;");
+        span.textContent = part;
+        frag.appendChild(span);
+      } else {
+        frag.appendChild(doc.createTextNode(part));
+      }
+    });
+    replacements.push({ node, frag });
+  }
+  replacements.forEach(({ node, frag }) => node.parentNode?.replaceChild(frag, node));
 
   return doc.body.innerHTML;
 };
+
+// Plain prose has nothing to highlight — skip the parse and the innerHTML
+// rewrite (which is what made the caret jump) entirely.
+const needsHighlight = (html: string) =>
+  html.includes("{{") || html.includes("<pre") || html.includes("data-variable");
+
+const ONCHANGE_DEBOUNCE_MS = 300;
+const HIGHLIGHT_DEBOUNCE_MS = 400;
 
 export const RichTextEditor = ({
   initialValue,
@@ -146,21 +117,31 @@ export const RichTextEditor = ({
   const [isFocused, setIsFocused] = useState(false);
   const isUpdatingRef = useRef(false);
   const highlightTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const changeTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  // Typing stays local to the contentEditable; the node (and with it the whole
+  // canvas) only hears about it after a pause, on blur, or on unmount.
+  const pendingValueRef = useRef<string | null>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  const flushChange = () => {
+    clearTimeout(changeTimeoutRef.current);
+    if (pendingValueRef.current === null) return;
+    const value = pendingValueRef.current;
+    pendingValueRef.current = null;
+    onChangeRef.current(value);
+  };
 
   useEffect(() => {
     return () => {
-      if (highlightTimeoutRef.current) {
-        clearTimeout(highlightTimeoutRef.current);
-      }
+      clearTimeout(highlightTimeoutRef.current);
+      flushChange();
     };
   }, []);
 
   useEffect(() => {
     if (editorRef.current) {
-      const cleanValue = sanitizeHtmlContent(initialValue);
-      const withCode = highlightCodeBlocks(cleanValue);
-      const highlighted = highlightVariablesSafe(withCode);
-      editorRef.current.innerHTML = highlighted;
+      editorRef.current.innerHTML = processHtml(initialValue, needsHighlight(initialValue || ""));
       
       // Focus automatically when mounted
       editorRef.current.focus();
@@ -191,24 +172,21 @@ export const RichTextEditor = ({
     if (block === "blockquote") formats.push("blockquote");
     if (block === "pre") formats.push("pre");
 
-    setActiveFormats(formats);
+    setActiveFormats((prev) => (prev.join() === formats.join() ? prev : formats));
   };
 
   const handleInput = () => {
     if (editorRef.current && !isUpdatingRef.current) {
       const rawContent = editorRef.current.innerHTML;
-      const cleanContent = sanitizeHtmlContent(stripHighlightSpans(rawContent));
-
-      onChange(cleanContent);
+      pendingValueRef.current = processHtml(rawContent, false);
+      clearTimeout(changeTimeoutRef.current);
+      changeTimeoutRef.current = setTimeout(flushChange, ONCHANGE_DEBOUNCE_MS);
       checkFormats();
 
       // Debounce highlighting to avoid cursor jumps while typing
-      if (highlightTimeoutRef.current) {
-        clearTimeout(highlightTimeoutRef.current);
-      }
-      highlightTimeoutRef.current = setTimeout(() => {
-        applyHighlighting();
-      }, 150);
+      clearTimeout(highlightTimeoutRef.current);
+      if (!needsHighlight(rawContent)) return;
+      highlightTimeoutRef.current = setTimeout(applyHighlighting, HIGHLIGHT_DEBOUNCE_MS);
     }
   };
 
@@ -289,10 +267,7 @@ export const RichTextEditor = ({
     if (editorRef.current && !isUpdatingRef.current) {
       const cursorPos = saveCursorPosition();
 
-      const rawContent = editorRef.current.innerHTML;
-      const cleanContent = sanitizeHtmlContent(stripHighlightSpans(rawContent));
-      const withCode = highlightCodeBlocks(cleanContent);
-      const highlighted = highlightVariablesSafe(withCode);
+      const highlighted = processHtml(editorRef.current.innerHTML, true);
 
       if (editorRef.current.innerHTML !== highlighted) {
         isUpdatingRef.current = true;
@@ -406,19 +381,12 @@ export const RichTextEditor = ({
         onFocus={() => setIsFocused(true)}
         onBlur={() => {
             setIsFocused(false);
+            flushChange();
             onBlur();
         }}
         onMouseUp={checkFormats}
         onKeyUp={checkFormats}
       />
-      <style>{`
-   
-        .markdown-content pre:empty::before {
-          content: '';
-          white-space: pre-wrap;
-          display: block;
-        }
-      `}</style>
     </div>
   );
 };

@@ -1,10 +1,10 @@
 import React, { memo, useState } from 'react';
 import { NodeProps, useReactFlow, NodeResizeControl } from 'reactflow';
-import { NodeData } from '../../types';
+import { CommentNodeData } from '../../types';
 import { RichTextEditor } from '../RichTextEditor';
 import JumpTargetBadge from './JumpTargetBadge';
 
-const CommentNode = ({ id, data, selected }: NodeProps<NodeData>) => {
+const CommentNode = ({ id, data, selected }: NodeProps<CommentNodeData>) => {
   const { setNodes } = useReactFlow();
   const [isEditing, setIsEditing] = useState(false);
 
@@ -40,7 +40,7 @@ const CommentNode = ({ id, data, selected }: NodeProps<NodeData>) => {
   return (
     <>
       <div
-        className={`h-full w-full min-w-[250px] min-h-[200px] rounded-md shadow-sm transition-all duration-300 ease-in-out flex flex-col group relative backdrop-blur-sm ${selected ? 'ring-4 ring-blue-500/20 border border-blue-500' : ''}`}
+        className={`h-full w-full min-w-[250px] min-h-[200px] rounded-md shadow-sm transition-[border-color,box-shadow,background-color] duration-300 ease-in-out flex flex-col group relative backdrop-blur-sm ${selected ? 'ring-4 ring-blue-500/20 border border-blue-500' : ''}`}
         style={{
           // Append 80 for approx 50% opacity hex code
           backgroundColor: `${baseColor}40`, 

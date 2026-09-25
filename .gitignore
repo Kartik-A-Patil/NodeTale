@@ -43,3 +43,6 @@ Thumbs.db
 
 # Local Netlify folder
 .netlify
+
+# Local planning docs, not committed
+docs/refactor/

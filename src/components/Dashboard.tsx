@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Upload, Sparkles, ChevronDown } from 'lucide-react';
 import JSZip from 'jszip';
-import { getAllProjects, saveProject, deleteProject, checkProjectNameExists } from '../services/storageService';
+import { getProjectSummaries, saveProject, loadProject, deleteProject, checkProjectNameExists } from '../services/storageService';
 import { getStorageAdapter } from '../services/storage';
-import { Project } from '../types';
+import { Project, ProjectSummary } from '../types';
 import { INITIAL_PROJECT } from '../constants';
 import { DashboardBackground } from './dashboard/DashboardBackground';
 import { ProjectCard } from './dashboard/ProjectCard';
@@ -12,9 +12,10 @@ import { CreateProjectModal } from './modals/CreateProjectModal';
 import { DeleteProjectModal } from './modals/DeleteProjectModal';
 import { RenameProjectModal } from './modals/RenameProjectModal';
 import nodetaleLogo from '../assets/logo.png';
+import { shrinkCoverImage } from '../utils/coverImage';
 
 export const Dashboard = () => {
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectImage, setNewProjectImage] = useState<string | null>(null);
@@ -24,7 +25,7 @@ export const Dashboard = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
   const [showRenameModal, setShowRenameModal] = useState(false);
-  const [projectToRename, setProjectToRename] = useState<Project | null>(null);
+  const [projectToRename, setProjectToRename] = useState<ProjectSummary | null>(null);
   const [renameProjectName, setRenameProjectName] = useState('');
   const [renameError, setRenameError] = useState('');
   const [showCreateDropdown, setShowCreateDropdown] = useState(false);
@@ -43,8 +44,8 @@ export const Dashboard = () => {
   }, []);
 
   const loadProjects = async () => {
-    const loadedProjects = await getAllProjects();
-    setProjects(loadedProjects);
+    const summaries = await getProjectSummaries();
+    setProjects(summaries);
   };
 
   const handleCreateProject = async (e: React.FormEvent) => {
@@ -98,8 +99,14 @@ export const Dashboard = () => {
     }
   };
 
-  const handleDuplicate = async (project: Project, e: React.MouseEvent) => {
+  const handleDuplicate = async (summary: ProjectSummary, e: React.MouseEvent) => {
     e.stopPropagation();
+    // The list only holds lightweight summaries now — duplicating needs the
+    // full project body, so load it on demand rather than spreading a summary
+    // (which would silently drop every board/node/edge/variable/asset).
+    const project = await loadProject(summary.id);
+    if (!project) return;
+
     let newName = `${project.name} (Copy)`;
     let counter = 1;
     while (await checkProjectNameExists(newName)) {
@@ -117,10 +124,10 @@ export const Dashboard = () => {
     loadProjects();
   };
 
-  const handleRename = (project: Project, e: React.MouseEvent) => {
+  const handleRename = (summary: ProjectSummary, e: React.MouseEvent) => {
     e.stopPropagation();
-    setProjectToRename(project);
-    setRenameProjectName(project.name);
+    setProjectToRename(summary);
+    setRenameProjectName(summary.name);
     setRenameError('');
     setShowRenameModal(true);
     setActiveMenu(null);
@@ -145,7 +152,14 @@ export const Dashboard = () => {
       }
     }
 
-    const updatedProject: Project = { ...projectToRename, name: trimmedName };
+    // Same as duplicate: need the full project to re-save it without dropping
+    // its content — a summary only carries id/name/counts/thumbnail.
+    const project = await loadProject(projectToRename.id);
+    if (!project) {
+      setRenameError('Project could not be loaded');
+      return;
+    }
+    const updatedProject: Project = { ...project, name: trimmedName };
     await saveProject(updatedProject);
     await loadProjects();
     setShowRenameModal(false);
@@ -173,49 +187,27 @@ export const Dashboard = () => {
       const adapter = getStorageAdapter();
       const assetsBaseUrl = `${baseUrl}assets/Example_Project/`;
 
-      // 1. Process Assets
-      if (project.assets) {
-        // Fetch and save each asset to storage
-        const assetPromises = project.assets.map(async (asset: any) => {
-            if (asset.url && !asset.url.startsWith('data:')) {
-               const assetRes = await fetch(assetsBaseUrl + asset.url);
-               if (assetRes.ok) {
-                   const blob = await assetRes.blob();
-                   // Save with preferredId = asset.id to maintain link
-                   await adapter.saveAsset(blob, asset.id);
-                   // Clear URL as it is now managed by storage
-                   asset.url = ''; 
-               }
-            }
-        });
-        await Promise.all(assetPromises);
-      }
-
-      // 2. Process Cover Image
-      if (project.coverImage && !project.coverImage.startsWith('data:')) {
-          // If cover image is a file path, we should ideally save it as an asset too?
-          // Or just keep it as is if it is a static asset?
-          // Current logic expects coverImage to be base64 for now in many places, 
-          // OR a URL. 
-          // If we want to support it properly, we should probably save it.
-          // BUT, project.coverImage is a string property, not an asset ref.
-          // Let's keep existing logic for cover image for now (patching URL), 
-          // assuming it works via standard img src if it points to public folder.
-          // Wait, if we are in Electron, file:// won't access public folder easily if we are in a text editor?
-          // Actually, built app serves from bundle.
-          
-          // Let's patch it to absolute path if needed, or fetch and convert to base64 if that's safer for now across platforms.
-          // Fetching and converting to base64 is safest for coverImage as it is just a string property.
-           const coverRes = await fetch(assetsBaseUrl + project.coverImage);
-           if (coverRes.ok) {
-               const blob = await coverRes.blob();
-               const reader = new FileReader();
-               project.coverImage = await new Promise((resolve) => {
-                   reader.onload = () => resolve(reader.result as string);
-                   reader.readAsDataURL(blob);
-               });
-           }
-      }
+      // 1. Process Assets and 2. Cover Image, all fetched concurrently
+      const assetPromises = (project.assets || []).map(async (asset: any) => {
+          if (asset.url && !asset.url.startsWith('data:')) {
+             const assetRes = await fetch(assetsBaseUrl + asset.url);
+             if (assetRes.ok) {
+                 const blob = await assetRes.blob();
+                 // Save with preferredId = asset.id to maintain link
+                 await adapter.saveAsset(blob, asset.id);
+                 // Clear URL as it is now managed by storage
+                 asset.url = '';
+             }
+          }
+      });
+      // The cover is stored as a thumbnail-sized data URL; the shipped file is
+      // a full-resolution PNG.
+      const coverPromise = (async () => {
+          if (!project.coverImage || project.coverImage.startsWith('data:')) return;
+          const coverRes = await fetch(assetsBaseUrl + project.coverImage);
+          project.coverImage = coverRes.ok ? await shrinkCoverImage(await coverRes.blob()) : '';
+      })();
+      await Promise.all([...assetPromises, coverPromise]);
 
       // 3. Process Embedded Images in Nodes
       // These are problematic. They point to `assets/...`. 
@@ -310,17 +302,14 @@ export const Dashboard = () => {
   };
 
   const handleCoverImageUpdate = async (projectId: string, file: File) => {
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-          const base64 = event.target?.result as string;
-          const project = projects.find(p => p.id === projectId);
-          if (project) {
-              const updatedProject = { ...project, coverImage: base64 };
-              await saveProject(updatedProject);
-              loadProjects();
-          }
-      };
-      reader.readAsDataURL(file);
+      const coverImage = await shrinkCoverImage(file);
+      // Needs the full project (a summary only has id/name/counts/thumbnail)
+      // to re-save without dropping its content.
+      const project = await loadProject(projectId);
+      if (project) {
+          await saveProject({ ...project, coverImage });
+          loadProjects();
+      }
   };
 
   return (
@@ -489,7 +478,8 @@ const readZipEntryAsDataUrl = async (zip: JSZip, path: string): Promise<string |
 
 const rehydrateAssetsFromZip = async (project: Project, zip: JSZip) => {
   const adapter = getStorageAdapter();
-  for (const asset of project.assets) {
+  // Parallel: each asset is an independent unzip + IndexedDB write.
+  await Promise.all(project.assets.map(async (asset) => {
     if (asset.url && !asset.url.startsWith('data:')) {
       // It's a path in the zip (e.g. "assets/foo.png")
       const normalized = asset.url.startsWith('/') ? asset.url.slice(1) : asset.url;
@@ -502,13 +492,14 @@ const rehydrateAssetsFromZip = async (project: Project, zip: JSZip) => {
         asset.url = ''; // Clear URL in model as it's now managed by storage
       }
     }
-  }
+  }));
 };
 
 const rehydrateCoverFromZip = async (project: Project, zip: JSZip) => {
   if (project.coverImage && !project.coverImage.startsWith('data:')) {
-    const coverUrl = await readZipEntryAsDataUrl(zip, project.coverImage);
-    project.coverImage = coverUrl || '';
+    const normalized = project.coverImage.startsWith('/') ? project.coverImage.slice(1) : project.coverImage;
+    const file = zip.file(normalized);
+    project.coverImage = file ? await shrinkCoverImage(await file.async('blob')) : '';
   }
 };
 
@@ -517,7 +508,8 @@ const rehydrateEmbeddedImages = async (project: Project, zip: JSZip) => {
 
   for (const board of project.boards) {
     for (const node of board.nodes) {
-      const content = node.data?.content;
+      const nodeData = node.data as { content?: string };
+      const content = nodeData?.content;
       if (typeof content !== 'string') continue;
 
       let newContent = content;
@@ -529,7 +521,7 @@ const rehydrateEmbeddedImages = async (project: Project, zip: JSZip) => {
           newContent = newContent.replace(match[0], `src="${dataUrl}"`);
         }
       }
-      node.data.content = newContent;
+      nodeData.content = newContent;
     }
   }
 };
@@ -546,9 +538,11 @@ const importZipProject = async (file: File) => {
     throw new Error('Invalid project format');
   }
 
-  await rehydrateAssetsFromZip(importedProject, zip);
-  await rehydrateCoverFromZip(importedProject, zip);
-  await rehydrateEmbeddedImages(importedProject, zip);
+  await Promise.all([
+    rehydrateAssetsFromZip(importedProject, zip),
+    rehydrateCoverFromZip(importedProject, zip),
+    rehydrateEmbeddedImages(importedProject, zip),
+  ]);
 
   await finalizeAndSaveImportedProject(importedProject);
 };

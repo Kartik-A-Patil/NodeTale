@@ -1,9 +1,9 @@
 import React, { memo, useState } from 'react';
 import { NodeProps, NodeResizeControl, useReactFlow } from 'reactflow';
-import { NodeData } from '../../types';
+import { SectionNodeData } from '../../types';
 import JumpTargetBadge from './JumpTargetBadge';
 
-const SectionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
+const SectionNode = ({ id, data, selected }: NodeProps<SectionNodeData>) => {
   const { setNodes } = useReactFlow();
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const primaryColor = data.color || '#71717a'; // Default zinc-500
@@ -37,7 +37,7 @@ const SectionNode = ({ id, data, selected }: NodeProps<NodeData>) => {
   return (
     <>
       <div
-        className={`group relative flex flex-col rounded-lg border-2 transition-all duration-300 ease-in-out`}
+        className={`group relative flex flex-col rounded-lg border-2 transition-[border-color,box-shadow,background-color] duration-300 ease-in-out`}
         style={{
           minWidth: 400,
           minHeight: 300,
