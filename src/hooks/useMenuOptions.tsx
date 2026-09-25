@@ -1,9 +1,8 @@
-import React, { useCallback } from 'react';
+import { useCallback } from 'react';
 import { 
     GitFork, ArrowRightCircle, Copy as CopyIcon, Trash2, PlusCircle, 
     MessageSquare, Layout, Info, ArrowUpLeft, ArrowUpRight, 
-    ArrowDownLeft, ArrowDownRight, MoveUpLeft, CornerDownRight, Spline, Image as ImageIcon, Play,
-    FileAudio, FileVideo, X
+    ArrowDownLeft, ArrowDownRight, MoveUpLeft, CornerDownRight, Spline, Image as ImageIcon, Play, X
 } from 'lucide-react';
 import { ContextMenuOption } from '../components/ContextMenu';
 import { AppNode, Asset, isAnnotationNode, isConditionNode, isElementNode } from '../types';

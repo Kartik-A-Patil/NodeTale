@@ -1,4 +1,4 @@
-import { memo, useState, useMemo, useCallback } from "react";
+import { memo, useMemo, useCallback } from "react";
 import { Handle, Position, NodeProps, useStore, ReactFlowState } from "reactflow";
 import { ConditionNodeData, Branch, Variable } from "../../types";
 import { X, AlertCircle } from "lucide-react";
@@ -105,6 +105,37 @@ const ConditionInput = ({
   );
 };
 
+const DEFAULT_BRANCHES: Branch[] = [
+  { id: "true", label: "If", condition: "true" },
+  { id: "false", label: "Else", condition: "" }
+];
+
+// Flags conditions that reference identifiers that aren't project variables.
+const validateCondition = (condition: string, variables: Variable[]) => {
+  if (!condition || condition === "true") return true;
+
+  const regex =
+    /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\b\d+(?:\.\d+)?\b|[a-zA-Z_$][a-zA-Z0-9_$]*)/g;
+  const tokens = condition.match(regex) || [];
+
+  const keywords = ["true", "false", "null", "undefined", "NaN", "Infinity"];
+
+  for (const token of tokens) {
+    // Skip strings
+    if (/^["'].*["']$/.test(token)) continue;
+    // Skip numbers
+    if (/^\d+(\.\d+)?$/.test(token)) continue;
+
+    // Check identifiers
+    if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(token)) {
+      if (keywords.includes(token)) continue;
+      if (variables.some((v) => v.name === token)) continue;
+      return false; // Unknown variable
+    }
+  }
+  return true;
+};
+
 const ConditionNode = ({ id, data, selected }: NodeProps<ConditionNodeData>) => {
   const { variables, updateNodeData } = useEditor();
   const connectionNodeId = useStore((state) => state.connectionNodeId);
@@ -119,42 +150,11 @@ const ConditionNode = ({ id, data, selected }: NodeProps<ConditionNodeData>) => 
   );
   const isTarget = connectionNodeId && connectionNodeId !== id;
 
-  const [hoveredSide, setHoveredSide] = useState<"left" | null>(null);
-
-  const branches = data.branches || [
-    { id: "true", label: "If", condition: "true" },
-    { id: "false", label: "Else", condition: "" }
-  ];
-
-
-  const validateCondition = (condition: string) => {
-    if (!condition || condition === "true") return true;
-
-    const regex =
-      /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\b\d+(?:\.\d+)?\b|[a-zA-Z_$][a-zA-Z0-9_$]*)/g;
-    const tokens = condition.match(regex) || [];
-
-    const keywords = ["true", "false", "null", "undefined", "NaN", "Infinity"];
-
-    for (const token of tokens) {
-      // Skip strings
-      if (/^["'].*["']$/.test(token)) continue;
-      // Skip numbers
-      if (/^\d+(\.\d+)?$/.test(token)) continue;
-
-      // Check identifiers
-      if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(token)) {
-        if (keywords.includes(token)) continue;
-        if (variables.some((v) => v.name === token)) continue;
-        return false; // Unknown variable
-      }
-    }
-    return true;
-  };
+  const branches = data.branches || DEFAULT_BRANCHES;
 
   const hasError = useMemo(() => {
     return branches.some(
-      (b) => b.label !== "Else" && !validateCondition(b.condition)
+      (b) => b.label !== "Else" && !validateCondition(b.condition, variables)
     );
   }, [branches, variables]);
 
@@ -173,19 +173,6 @@ const ConditionNode = ({ id, data, selected }: NodeProps<ConditionNodeData>) => 
     newBranches[idx] = { ...newBranches[idx], condition: val };
     // Typing a condition undoes as one step.
     updateBranches(newBranches, `${id}:branch:${newBranches[idx].id}`);
-  };
-
-  const getBorderClass = (isConnected: boolean) => {
-    const isHovered = hoveredSide === "left";
-    const color = isConnected
-      ? "bg-blue-400"
-      : isHovered
-      ? "bg-gray-500"
-      : "bg-transparent";
-    return clsx(
-      "absolute transition-colors duration-200 pointer-events-none",
-      color
-    );
   };
 
   return (
@@ -210,14 +197,6 @@ const ConditionNode = ({ id, data, selected }: NodeProps<ConditionNodeData>) => 
           borderRadius: "inherit",
           pointerEvents: isTarget ? "all" : "none"
         }}
-      />
-
-      {/* Visual Border Indicator */}
-      <div
-        className={clsx(
-          getBorderClass(data.connectedHandles?.includes("target") || false),
-          "top-[4px] -left-2 bottom-[4px] w-[8px] rounded-l-lg"
-        )}
       />
 
       <div className="relative flex bg-zinc-800/60 rounded-md">

@@ -239,7 +239,7 @@ export const Dashboard = () => {
                          });
                          replacements.push({ match: fullMatch, replacement: `src="${base64}"` });
                      }
-                 } catch (e) {
+                 } catch {
                      console.warn('Failed to embed example image', relativePath);
                  }
              }

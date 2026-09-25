@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useCallback } from 'react';
-import { HashRouter, Routes, Route, useParams, useNavigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, useParams } from 'react-router-dom';
 import ReactFlow, { 
   Background, 
   Controls, 
@@ -71,7 +71,6 @@ const CustomControls = React.memo(({ isPanMode, setIsPanMode }: { isPanMode: boo
 
 function ProjectEditor() {
   const { projectId } = useParams();
-  const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<'flow' | 'timeline'>('flow');
   const [isPlaying, setIsPlaying] = useState(false);
   const [playStartNodeId, setPlayStartNodeId] = useState<string | null>(null);
@@ -249,11 +248,6 @@ function ProjectEditor() {
     setIsConnecting(false);
   }, []);
 
-  // Disable double-click deletion on edges per new UX
-  const onEdgeDoubleClick = React.useCallback((_event: React.MouseEvent, _edge: any) => {
-    // Intentionally empty
-  }, []);
-
   // One-time size refresh right after a project/board load to avoid user interaction requirement
   React.useEffect(() => {
     if (!reactFlowInstance || isInitializing || sizeRefreshDone.current) return;
@@ -327,7 +321,6 @@ function ProjectEditor() {
             onNodeDragStart={onNodeDragStart}
             onNodeContextMenu={onNodeContextMenu}
             onEdgeContextMenu={onEdgeContextMenu}
-            onEdgeDoubleClick={onEdgeDoubleClick}
             onPaneContextMenu={onPaneContextMenu}
             onPaneClick={onPaneClick}
             onInit={setReactFlowInstance}

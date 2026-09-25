@@ -1,4 +1,4 @@
-import React, { memo, useState } from 'react';
+import { memo, useState } from 'react';
 import { NodeProps, NodeResizeControl } from 'reactflow';
 import { useEditor } from '../../editor/EditorContext';
 import { CommentNodeData } from '../../types';

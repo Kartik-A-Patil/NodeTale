@@ -148,6 +148,9 @@ export const RichTextEditor = ({
         console.error("Failed to set cursor position", e);
       }
     }
+    // Mount-only: initialValue seeds the uncontrolled contentEditable once;
+    // re-running on later values would clobber what the user is typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const checkFormats = () => {
@@ -246,7 +249,7 @@ export const RichTextEditor = ({
         range.collapse(true);
         sel.removeAllRanges();
         sel.addRange(range);
-      } catch (e) {
+      } catch {
         // Ignore cursor restoration errors
       }
     }

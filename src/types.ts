@@ -57,7 +57,6 @@ export interface Branch {
 export interface BaseNodeData {
   label: string;
   color?: string;
-  connectedHandles?: string[];
 }
 
 export interface ElementNodeData extends BaseNodeData {
@@ -106,10 +105,6 @@ export const isConditionNode = (node: AppNode): node is AppNode & { data: Condit
   node.type === 'conditionNode';
 export const isJumpNode = (node: AppNode): node is AppNode & { data: JumpNodeData } =>
   node.type === 'jumpNode';
-export const isCommentNode = (node: AppNode): node is AppNode & { data: CommentNodeData } =>
-  node.type === 'commentNode';
-export const isSectionNode = (node: AppNode): node is AppNode & { data: SectionNodeData } =>
-  node.type === 'sectionNode';
 export const isAnnotationNode = (node: AppNode): node is AppNode & { data: AnnotationNodeData } =>
   node.type === 'annotationNode';
 

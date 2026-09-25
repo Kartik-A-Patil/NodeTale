@@ -3,7 +3,6 @@ import React, {
   useState,
   useRef,
   useEffect,
-  useCallback,
   useMemo,
   useDeferredValue
 } from "react";
@@ -16,15 +15,12 @@ import {
   NodeResizeControl
 } from "reactflow";
 import {
-  FileText,
-  Image as ImageIcon,
   FileAudio,
-  FileVideo,
   AlertCircle,
   RotateCcw,
   Clock
 } from "lucide-react";
-import { ElementNodeData, Variable, Asset, AudioSettings } from "../../types";
+import { ElementNodeData, Asset } from "../../types";
 import clsx from "clsx";
 import { DatePicker } from "@/components/DatePicker";
 import { RichTextEditor } from "../RichTextEditor";
@@ -34,7 +30,6 @@ import { AssetPreview } from "../AssetPreview";
 import { AudioSettingsModal } from "../modals/AudioSettingsModal";
 import {
   validateCodeSyntax,
-  validateVariableReferences,
   validateTypeAssignments
 } from "../../services/logicService";
 import Prism from "prismjs";
@@ -61,7 +56,6 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
   const [selectedAudioForConfig, setSelectedAudioForConfig] = useState<Asset | null>(
     null
   );
-  const primaryColor = data.color || "#f97316";
 
   const [hoveredSide, setHoveredSide] = useState<
     "top" | "right" | "bottom" | "left" | null
@@ -91,16 +85,8 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
     renderedContentCache.set(data.content, target.innerHTML);
   }, [data.content, editingField]);
 
-  const getBorderClass = (
-    side: "top" | "right" | "bottom" | "left",
-    isConnected: boolean
-  ) => {
-    const isHovered = hoveredSide === side;
-    const color = isConnected
-      ? "bg-blue-400"
-      : isHovered
-      ? "bg-gray-500"
-      : "bg-transparent";
+  const getBorderClass = (side: "top" | "right" | "bottom" | "left") => {
+    const color = hoveredSide === side ? "bg-gray-500" : "bg-transparent";
     return clsx(
       "absolute transition-colors duration-200 pointer-events-none",
       color
@@ -425,52 +411,10 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
           onMouseLeave={() => setHoveredSide(null)}
         />
 
-        {/* Visual Border Indicators */}
-        <div
-          className={clsx(
-            getBorderClass(
-              "top",
-              data.connectedHandles?.includes("target-top") ||
-                data.connectedHandles?.includes("source-top") ||
-                false
-            ),
-            borderPositions.top
-          )}
-        />
-        <div
-          className={clsx(
-            getBorderClass(
-              "right",
-              data.connectedHandles?.includes("target-right") ||
-                data.connectedHandles?.includes("source-right") ||
-                false
-            ),
-            borderPositions.right
-          )}
-        />
-        <div
-          className={clsx(
-            getBorderClass(
-              "bottom",
-              data.connectedHandles?.includes("target-bottom") ||
-                data.connectedHandles?.includes("source-bottom") ||
-                false
-            ),
-            borderPositions.bottom
-          )}
-        />
-        <div
-          className={clsx(
-            getBorderClass(
-              "left",
-              data.connectedHandles?.includes("target-left") ||
-                data.connectedHandles?.includes("source-left") ||
-                false
-            ),
-            borderPositions.left
-          )}
-        />
-
+        {/* Hover indicator for the source handle under the cursor */}
+        {(["top", "right", "bottom", "left"] as const).map((side) => (
+          <div key={side} className={clsx(getBorderClass(side), borderPositions[side])} />
+        ))}
 
         {/* Error Badge */}
         {hasError && (

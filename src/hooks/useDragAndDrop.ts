@@ -24,7 +24,7 @@ export function useDragAndDrop(
     event.dataTransfer.dropEffect = 'move';
   }, []);
 
-  const onNodeDragStop = useCallback((event: React.MouseEvent, node: Node, draggedNodes: Node[]) => {
+  const onNodeDragStop = useCallback((_event: React.MouseEvent, node: Node, draggedNodes: Node[]) => {
       // Check intersection with section nodes to handle grouping
       if (!reactFlowInstance) return;
 

@@ -77,7 +77,7 @@ describe('function calls and arrow functions', () => {
     const expr = parseExpression('apply((a, b) => a + b)');
     const result = evaluate(expr, {
       resolveIdentifier: () => { throw new Error('n/a'); },
-      callFunction: (name, args) => {
+      callFunction: (_name, args) => {
         const fn = args[0] as (...a: unknown[]) => unknown;
         return fn(3, 4);
       },

@@ -24,10 +24,8 @@ const normalizeNodeDimensions = (node: Node): Node => {
   return { ...node, ...(Object.keys(style).length ? { style } : {}) };
 };
 
-// Node components edit via ReactFlow's setNodes, which (in controlled mode)
-// round-trips the store's nodes — i.e. the nodesWithContext wrappers carrying
-// the whole project's variables/assets in `data` — back into state. Strip them
-// before anything is persisted so each node doesn't store a project-wide copy.
+// Saves from before EditorContext copied the project's variables/assets into
+// every node's data; drop those copies when such a board is loaded.
 const stripContext = (nodes: Node[]): AppNode[] =>
   nodes.map(n => {
     if (!n.data || !('variables' in n.data || 'projectAssets' in n.data)) return n as AppNode;
@@ -132,7 +130,7 @@ export function useProjectState(
             const newBoards = [...prev.boards];
             newBoards[boardIndex] = {
                 ...newBoards[boardIndex],
-                nodes: stripContext(nodesToSave),
+                nodes: nodesToSave as AppNode[],
                 edges: edgesToSave
             };
 
@@ -152,7 +150,7 @@ export function useProjectState(
         prevActiveBoardIdRef.current = project.activeBoardId;
     }
 
-  }, [project.activeBoardId, isInitializing, setNodes, setEdges]);
+  }, [project, isInitializing, setNodes, setEdges]);
 
   useEffect(() => {
     if (isInitializing) return;
@@ -172,7 +170,7 @@ export function useProjectState(
           const newBoards = [...prev.boards];
           newBoards[boardIndex] = {
               ...newBoards[boardIndex],
-              nodes: stripContext(nodesToSave),
+              nodes: nodesToSave as AppNode[],
               edges: edgesToSave
           };
 
@@ -208,7 +206,7 @@ export function useProjectState(
         const newBoards = [...prev.boards];
         newBoards[boardIndex] = {
             ...newBoards[boardIndex],
-            nodes: stripContext(nodesToSave),
+            nodes: nodesToSave as AppNode[],
             edges: edgesToSave
         };
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Trash2, Palette, ChevronRight } from 'lucide-react';
+import { Palette, ChevronRight } from 'lucide-react';
 
 export interface ContextMenuOption {
   label?: string;

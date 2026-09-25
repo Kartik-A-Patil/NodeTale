@@ -1,4 +1,4 @@
-import React, { memo, useState } from 'react';
+import { memo, useState } from 'react';
 import { Handle, Position, NodeProps, useReactFlow, useStore } from 'reactflow';
 import { useEditor } from '../../editor/EditorContext';
 import { Forward, Link as LinkIcon } from 'lucide-react';

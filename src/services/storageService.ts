@@ -32,10 +32,6 @@ export const loadProject = async (projectIdOrName: string): Promise<Project | nu
   return getStorageAdapter().loadProject(projectIdOrName);
 };
 
-export const getAllProjects = async (): Promise<Project[]> => {
-  return getStorageAdapter().getAllProjects();
-};
-
 export const getProjectSummaries = async (): Promise<ProjectSummary[]> => {
   return getStorageAdapter().getProjectSummaries();
 };
