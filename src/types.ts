@@ -52,12 +52,11 @@ export interface Branch {
   condition: string;
 }
 
-// variables/projectAssets are injected at render/runtime time, never persisted.
+// Project variables/assets reach node components through EditorContext, not
+// node data (saves from before that may still carry copies; stripped at load).
 export interface BaseNodeData {
   label: string;
   color?: string;
-  variables?: Variable[];
-  projectAssets?: Asset[];
   connectedHandles?: string[];
 }
 

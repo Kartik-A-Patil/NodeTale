@@ -1,34 +1,17 @@
 import React, { memo, useState } from "react";
-import { NodeProps, useReactFlow } from "reactflow";
+import { NodeProps } from "reactflow";
+import { useEditor } from "../../editor/EditorContext";
 import { AnnotationNodeData } from "../../types";
 import { nodePropsEqual } from "./nodePropsEqual";
 
 const AnnotationNode = ({ id, data,selected }: NodeProps<AnnotationNodeData>) => {
-  const { setNodes } = useReactFlow();
+  const { updateNodeData } = useEditor();
   const [editingField, setEditingField] = useState<"label" | "content" | null>(
     null
   );
 
-  // Only store asset IDs in node data
-  const handleChange = (field: string, value: string) => {
-    setNodes((nds) =>
-      nds.map((node) => {
-        if (node.id === id) {
-          // If updating assets, ensure only IDs are stored
-          if (field === 'assets') {
-            return {
-              ...node,
-              data: { ...node.data, assets: value }
-            };
-          }
-          return {
-            ...node,
-            data: { ...node.data, [field]: value }
-          };
-        }
-        return node;
-      })
-    );
+  const handleChange = (field: "label" | "content", value: string) => {
+    updateNodeData(id, { [field]: value }, `${id}:${field}`);
   };
 
   const arrowDirection = data.arrowDirection || "top-left";

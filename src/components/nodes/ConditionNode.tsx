@@ -1,9 +1,10 @@
 import { memo, useState, useMemo, useCallback } from "react";
-import { Handle, Position, NodeProps, useReactFlow, useStore, ReactFlowState } from "reactflow";
+import { Handle, Position, NodeProps, useStore, ReactFlowState } from "reactflow";
 import { ConditionNodeData, Branch, Variable } from "../../types";
 import { X, AlertCircle } from "lucide-react";
 import clsx from "clsx";
 import { nodePropsEqual } from "./nodePropsEqual";
+import { useEditor } from "../../editor/EditorContext";
 
 const ConditionInput = ({
   value,
@@ -105,7 +106,7 @@ const ConditionInput = ({
 };
 
 const ConditionNode = ({ id, data, selected }: NodeProps<ConditionNodeData>) => {
-  const { setNodes } = useReactFlow();
+  const { variables, updateNodeData } = useEditor();
   const connectionNodeId = useStore((state) => state.connectionNodeId);
   // Only this node's connected branch handles matter; subscribing to the whole
   // edge list re-rendered every condition node on any edge change.
@@ -125,7 +126,6 @@ const ConditionNode = ({ id, data, selected }: NodeProps<ConditionNodeData>) => 
     { id: "false", label: "Else", condition: "" }
   ];
 
-  const variables = data.variables || [];
 
   const validateCondition = (condition: string) => {
     if (!condition || condition === "true") return true;
@@ -158,15 +158,8 @@ const ConditionNode = ({ id, data, selected }: NodeProps<ConditionNodeData>) => 
     );
   }, [branches, variables]);
 
-  const updateBranches = (newBranches: Branch[]) => {
-    setNodes((nds) =>
-      nds.map((node) => {
-        if (node.id === id) {
-          return { ...node, data: { ...node.data, branches: newBranches } };
-        }
-        return node;
-      })
-    );
+  const updateBranches = (newBranches: Branch[], mergeKey?: string) => {
+    updateNodeData(id, { branches: newBranches }, mergeKey);
   };
 
   const removeBranch = (idx: number) => {
@@ -178,7 +171,8 @@ const ConditionNode = ({ id, data, selected }: NodeProps<ConditionNodeData>) => 
   const editBranch = (idx: number, val: string) => {
     const newBranches = [...branches];
     newBranches[idx] = { ...newBranches[idx], condition: val };
-    updateBranches(newBranches);
+    // Typing a condition undoes as one step.
+    updateBranches(newBranches, `${id}:branch:${newBranches[idx].id}`);
   };
 
   const getBorderClass = (isConnected: boolean) => {

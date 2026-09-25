@@ -42,7 +42,6 @@ interface UseMenuOptionsProps {
     nodes: AppNode[];
     edges: Edge[];
     updateNodeData: (id: string, data: any) => void;
-    updateNode: (id: string, patch: Partial<AppNode>) => void;
     deleteNode: (id: string, deleteChildren?: boolean) => void;
     setJumpClipboard: (data: { id: string; label: string } | null) => void;
     jumpClipboard: { id: string; label: string } | null;
@@ -51,7 +50,7 @@ interface UseMenuOptionsProps {
     updateEdgeData: (id: string, data: any) => void;
     deleteEdge: (id: string) => void;
     addNode: (type: any, position?: { x: number, y: number }, extraData?: any) => void;
-    addAsset: (asset: Asset) => void;
+    assets: Asset[];
     setShowAssetSelectorModal: (show: boolean) => void;
     setSelectedNodeForAsset: (id: string | null) => void;
     reactFlowInstance: ReactFlowInstance | null;
@@ -63,7 +62,6 @@ export function useMenuOptions({
     nodes,
     edges,
     updateNodeData,
-    updateNode,
     deleteNode,
     setJumpClipboard,
     jumpClipboard,
@@ -72,7 +70,7 @@ export function useMenuOptions({
     updateEdgeData,
     deleteEdge,
     addNode,
-    addAsset,
+    assets,
     setShowAssetSelectorModal,
     setSelectedNodeForAsset,
     reactFlowInstance,
@@ -241,10 +239,9 @@ export function useMenuOptions({
         }
 
         if (node && isElementNode(node)) {
-             const projectAssets = (node.data.projectAssets as Asset[]) || [];
              const nodeAssetIds = node.data.assets || [];
              const nodeAssets = nodeAssetIds
-               .map((assetId: string) => projectAssets.find((a) => a.id === assetId))
+               .map((assetId: string) => assets.find((a) => a.id === assetId))
                .filter(Boolean) as Asset[];
 
              const submenuItems: ContextMenuOption[] = [
@@ -261,13 +258,6 @@ export function useMenuOptions({
              // Add remove options for each asset
              if (nodeAssets.length > 0) {
                 nodeAssets.forEach((asset) => {
-                    const getAssetIcon = () => {
-                        if (asset.type === 'image') return <ImageIcon size={14} />;
-                        if (asset.type === 'video') return <FileVideo size={14} />;
-                        if (asset.type === 'audio') return <FileAudio size={14} />;
-                        return <ImageIcon size={14} />;
-                    };
-
                     submenuItems.push({
                         label: `Remove ${asset.name}`,
                         icon: <X size={14} />,
@@ -441,7 +431,7 @@ export function useMenuOptions({
     }
 
     return [];
-    }, [menu, nodes, edges, updateNodeData, deleteNode, setJumpClipboard, jumpClipboard, updateEdgeLabel, updateEdgeColor, updateEdgeData, deleteEdge, addNode, reactFlowInstance, setShowAssetSelectorModal, setSelectedNodeForAsset, startPlayFromNode]);
+    }, [menu, nodes, edges, updateNodeData, deleteNode, setJumpClipboard, jumpClipboard, updateEdgeLabel, updateEdgeColor, updateEdgeData, deleteEdge, addNode, assets, reactFlowInstance, setShowAssetSelectorModal, setSelectedNodeForAsset, startPlayFromNode]);
 
   return getMenuOptions;
 }

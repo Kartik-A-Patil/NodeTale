@@ -3,6 +3,7 @@ import { ReactFlowInstance, Node } from 'reactflow';
 import { AppNode } from '../types';
 import { CommandContext, Command } from '../editor/commands/types';
 import { addElementsCommand } from '../editor/commands/addElementsCommand';
+import { withDefaultZIndex } from '../core/nodes/nodeRegistry';
 import { moveNodesCommand, NodeMove, NodeTransform } from '../editor/commands/moveNodeCommand';
 
 export function useDragAndDrop(
@@ -128,7 +129,7 @@ export function useDragAndDrop(
         },
       } as AppNode;
 
-      executeCommand(addElementsCommand(ctx, [newNode]));
+      executeCommand(addElementsCommand(ctx, [withDefaultZIndex(newNode)]));
     },
     [reactFlowInstance, reactFlowWrapper, ctx, executeCommand]
   );

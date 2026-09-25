@@ -11,6 +11,7 @@ import { reconnectEdgeCommand } from './reconnectEdgeCommand';
 import { deleteEdgeCommand } from './deleteEdgeCommand';
 import { updateNodeCommand } from './updateNodeCommand';
 import { updateEdgeCommand } from './updateEdgeCommand';
+import { mergeCommands } from './types';
 
 // A fake CommandContext that mirrors real React's setState timing: setNodes/
 // setEdges queue their updater rather than applying it immediately, and ctx's own
@@ -246,6 +247,29 @@ describe('updateNodeCommand', () => {
 
     cmd.undo();
     expect(getNodes()[0].data.label).toBe('A');
+  });
+});
+
+describe('mergeCommands', () => {
+  it('undoes a typing burst to the original value and redoes to the final one', () => {
+    const { ctx, getNodes } = makeCtx([node('a', { data: { label: 'A', content: '' } })], []);
+    const typed = ['Ab', 'Abc', 'Abcd'].map((label) =>
+      updateNodeCommand(ctx, 'a', (n) => ({ ...n, data: { ...n.data, label } }), 'a:label')
+    );
+    let step = typed[0];
+    typed.forEach((cmd, i) => {
+      cmd.execute();
+      getNodes(); // flush, as React would between keystrokes
+      if (i > 0) step = mergeCommands(step, cmd);
+    });
+    expect(getNodes()[0].data.label).toBe('Abcd');
+
+    step.undo();
+    expect(getNodes()[0].data.label).toBe('A');
+
+    step.execute();
+    expect(getNodes()[0].data.label).toBe('Abcd');
+    expect(step.mergeKey).toBe('a:label');
   });
 });
 

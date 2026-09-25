@@ -6,11 +6,13 @@ import { Command, CommandContext } from './types';
 export function updateEdgeCommand(
   ctx: CommandContext,
   edgeId: string,
-  applyPatch: (edge: Edge) => Edge
+  applyPatch: (edge: Edge) => Edge,
+  mergeKey?: string
 ): Command {
   let before: Edge | undefined;
 
   return {
+    mergeKey,
     execute() {
       ctx.setEdges(eds =>
         eds.map(e => {

@@ -1,8 +1,9 @@
 import { memo, useCallback, useMemo } from 'react';
-import { useStore, getBezierPath, getStraightPath, getSmoothStepPath, EdgeProps, Node, Position, EdgeLabelRenderer, useReactFlow, ReactFlowState } from 'reactflow';
+import { useStore, getBezierPath, getStraightPath, getSmoothStepPath, EdgeProps, Node, Position, EdgeLabelRenderer, ReactFlowState } from 'reactflow';
 import { X } from 'lucide-react';
 import { getEdgeParams, HandlePoint, NodeGeometry } from '../../utils/EdgeUtils';
 import { Branch } from '../../types';
+import { useEditor } from '../../editor/EditorContext';
 
 type EndpointGeometry = NodeGeometry & { type?: string; branches?: Branch[] };
 
@@ -52,7 +53,7 @@ function FloatingEdge({ id, source, target, sourceHandleId, markerEnd, style, se
   // to edges whose own endpoints changed.
   const sourceNode = useStore(useCallback((s: ReactFlowState) => toGeometry(s.nodeInternals.get(source)), [source]), sameGeometry);
   const targetNode = useStore(useCallback((s: ReactFlowState) => toGeometry(s.nodeInternals.get(target)), [target]), sameGeometry);
-  const { setEdges } = useReactFlow();
+  const { updateEdge } = useEditor();
 
   // Ensure label used in textarea is a string to satisfy its value prop typing
   const labelText = typeof label === 'string' ? label : '';
@@ -106,15 +107,11 @@ function FloatingEdge({ id, source, target, sourceHandleId, markerEnd, style, se
   }
 
   const updateLabel = (newLabel: string) => {
-    setEdges((eds) => eds.map((e) => (e.id === id ? { ...e, label: newLabel } : e)));
+    updateEdge(id, (e) => ({ ...e, label: newLabel }), `${id}:label`);
   };
 
   const removeLabel = () => {
-    setEdges((eds) => eds.map((e) => (
-      e.id === id
-        ? { ...e, label: '', data: { ...(e.data || {}), labelEnabled: false } }
-        : e
-    )));
+    updateEdge(id, (e) => ({ ...e, label: '', data: { ...(e.data || {}), labelEnabled: false } }));
   };
 
   return (

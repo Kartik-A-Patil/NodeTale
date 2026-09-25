@@ -1,11 +1,13 @@
 import React, { memo, useState } from 'react';
 import { Handle, Position, NodeProps, useReactFlow, useStore } from 'reactflow';
+import { useEditor } from '../../editor/EditorContext';
 import { Forward, Link as LinkIcon } from 'lucide-react';
 import { JumpNodeData } from '../../types';
 import { nodePropsEqual } from './nodePropsEqual';
 
 const JumpNode = ({ id, data, selected }: NodeProps<JumpNodeData>) => {
-  const { setNodes, getNodes } = useReactFlow();
+  const { getNodes } = useReactFlow();
+  const { updateNodeData } = useEditor();
   const connectionNodeId = useStore((state) => state.connectionNodeId);
   const isTarget = connectionNodeId && connectionNodeId !== id;
 
@@ -20,21 +22,7 @@ const JumpNode = ({ id, data, selected }: NodeProps<JumpNodeData>) => {
         return;
       }
       
-      setNodes((nds) =>
-        nds.map((node) => {
-          if (node.id === id) {
-            return {
-              ...node,
-              data: { 
-                  ...node.data, 
-                  jumpTargetId: targetId,
-                  jumpTargetLabel: target?.data.label || 'Unknown'
-              },
-            };
-          }
-          return node;
-        })
-      );
+      updateNodeData(id, { jumpTargetId: targetId, jumpTargetLabel: target.data.label || 'Unknown' });
       setIsEditing(false);
   };
 

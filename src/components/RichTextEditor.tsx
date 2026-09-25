@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import Prism from "prismjs";
 import "prismjs/components/prism-javascript";
-import { Variable } from "../types";
 import { sanitizeDocument } from "../utils/html";
 // Note: syntax highlighting in the editor was removed to avoid duplicated markup glitches
 // when switching between edit/view states. Highlighting now happens only in the read-only view.
@@ -96,13 +95,11 @@ const HIGHLIGHT_DEBOUNCE_MS = 400;
 export const RichTextEditor = ({
   initialValue,
   onChange,
-  onBlur,
-  variables
+  onBlur
 }: {
   initialValue: string;
   onChange: (val: string) => void;
   onBlur: () => void;
-  variables?: Variable[];
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
   const [activeFormats, setActiveFormats] = useState<string[]>([]);

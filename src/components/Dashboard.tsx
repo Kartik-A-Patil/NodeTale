@@ -80,7 +80,7 @@ export const Dashboard = () => {
     setIsCreating(false);
     setNewProjectName('');
     setNewProjectImage(null);
-    navigate(`/${newProject.name}`);
+    navigate(`/${newProject.id}`);
   };
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
@@ -392,7 +392,7 @@ export const Dashboard = () => {
             <ProjectCard 
                 key={project.id}
                 project={project}
-                onClick={() => navigate(`/${project.name}`)}
+                onClick={() => navigate(`/${project.id}`)}
                 onDelete={(e) => handleDelete(project.id, e)}
                 onDuplicate={(e) => handleDuplicate(project, e)}
               onRename={(e) => handleRename(project, e)}

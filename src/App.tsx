@@ -30,6 +30,7 @@ import { EditorAction } from './editor/shortcuts/types';
 import { Asset } from './types';
 import { useShortcuts } from './editor/shortcuts/useShortcuts';
 import { CommandPalette } from './components/CommandPalette';
+import { EditorContext } from './editor/EditorContext';
 
 // memo: rendered inside ReactFlow, which re-renders with the editor on every drag frame.
 const CustomControls = React.memo(({ isPanMode, setIsPanMode }: { isPanMode: boolean, setIsPanMode: (v: boolean) => void }) => {
@@ -91,7 +92,6 @@ function ProjectEditor() {
   const {
     nodes,
     edges,
-    nodesWithContext,
     setNodes,
     setEdges,
     onNodesChange,
@@ -103,6 +103,7 @@ function ProjectEditor() {
     deleteEdge,
     updateNodeData,
     updateNode,
+    updateEdge,
     updateEdgeData,
     updateEdgeColor,
     updateEdgeLabel,
@@ -111,6 +112,7 @@ function ProjectEditor() {
     isInitializing,
     lastSaved,
     saveNow,
+    getLiveProject,
     copySelected,
     pasteClipboard,
     jumpClipboard,
@@ -151,27 +153,25 @@ function ProjectEditor() {
     dragStartRef
   );
 
-  // Memoize addAsset callback
-  const addAsset = useCallback((asset: any) => {
-    setProject(prev => ({
-      ...prev,
-      assets: [...prev.assets, asset]
-    }));
-  }, [setProject]);
+  const editorContext = useMemo(
+    () => ({ variables: project.variables, assets: project.assets, updateNodeData, updateNode, updateEdge }),
+    [project.variables, project.assets, updateNodeData, updateNode, updateEdge]
+  );
 
   const onToolbarAddNode = useCallback((type: Parameters<typeof addNode>[0]) => addNode(type), [addNode]);
   const onToolbarPlay = useCallback(() => { setPlayStartNodeId(null); setIsPlaying(true); }, []);
-  const onToolbarExport = useCallback(() => exportProject(project), [project]);
+  const onToolbarExport = useCallback(() => exportProject(getLiveProject()), [getLiveProject]);
 
   const startPlayFromNode = React.useCallback((nodeId: string) => {
       setPlayStartNodeId(nodeId);
       setIsPlaying(true);
   }, []);
 
-  const canPlay = React.useMemo(() => {
-      const board = project.boards.find(b => b.id === project.activeBoardId) || project.boards[0];
-      return board && board.nodes.some(n => n.data.label.toLowerCase() === 'start');
-  }, [project.boards, project.activeBoardId]);
+  // Snapshot of the live canvas taken when Play starts.
+  const playProject = useMemo(() => (isPlaying ? getLiveProject() : null), [isPlaying, getLiveProject]);
+
+  // From the live canvas, not project.boards (which lags until autosave).
+  const canPlay = nodes.some(n => typeof n.data?.label === 'string' && n.data.label.toLowerCase() === 'start');
 
   // Every editor action — keyboard shortcut and/or command palette entry.
   // Migrated from a single scattered keydown handler (Phase 8): one list drives
@@ -204,8 +204,8 @@ function ProjectEditor() {
     { id: 'deselect', label: 'Deselect', category: 'Edit', keys: { key: 'Escape' }, run: deselectAll },
     { id: 'validate', label: 'Validate Project', category: 'File', run: () => window.dispatchEvent(new CustomEvent('nodetale:show-problems')) },
     { id: 'play', label: 'Run Story', category: 'Story', run: () => { setPlayStartNodeId(null); setIsPlaying(true); }, enabled: canPlay },
-    { id: 'export', label: 'Export Project', category: 'File', run: () => exportProject(project) },
-  ], [undo, redo, canUndo, canRedo, selectedNodes, ctx, executeCommand, saveNow, copySelected, cutSelected, pasteClipboard, selectAll, deselectAll, canPlay, project]);
+    { id: 'export', label: 'Export Project', category: 'File', run: onToolbarExport },
+  ], [undo, redo, canUndo, canRedo, selectedNodes, ctx, executeCommand, saveNow, copySelected, cutSelected, pasteClipboard, selectAll, deselectAll, canPlay, onToolbarExport]);
 
   useShortcuts(editorActions);
 
@@ -226,7 +226,6 @@ function ProjectEditor() {
       nodes,
       edges,
       updateNodeData,
-      updateNode,
       deleteNode,
       setJumpClipboard,
       jumpClipboard,
@@ -235,7 +234,7 @@ function ProjectEditor() {
       updateEdgeData,
       deleteEdge,
       addNode,
-      addAsset,
+      assets: project.assets,
       setShowAssetSelectorModal,
       setSelectedNodeForAsset,
       reactFlowInstance,
@@ -288,6 +287,7 @@ function ProjectEditor() {
   }
 
   return (
+    <EditorContext.Provider value={editorContext}>
     <div className="flex h-screen w-screen bg-[#121212] text-zinc-100 overflow-hidden">
       
       <SidebarLeft project={project} setProject={setProject} />
@@ -315,7 +315,7 @@ function ProjectEditor() {
           {viewMode === 'flow' ? (
             <ReactFlow
             key={project.activeBoardId}
-            nodes={nodesWithContext}
+            nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
@@ -352,7 +352,7 @@ function ProjectEditor() {
           </ReactFlow>
           ) : (
             <TimelineView 
-              nodes={nodesWithContext} 
+              nodes={nodes} 
               onNodeClick={(nodeId) => {
                 setViewMode('flow');
                 setTimeout(() => {
@@ -389,7 +389,7 @@ function ProjectEditor() {
       </div>
 
       {isPlaying && (
-          <PlayMode project={project} startNodeId={playStartNodeId} onClose={() => { setIsPlaying(false); setPlayStartNodeId(null); }} />
+          <PlayMode project={playProject!} startNodeId={playStartNodeId} onClose={() => { setIsPlaying(false); setPlayStartNodeId(null); }} />
       )}
 
       <CommandPalette
@@ -434,6 +434,7 @@ function ProjectEditor() {
           />
       )}
     </div>
+    </EditorContext.Provider>
   );
 }
 
