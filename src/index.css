@@ -2,6 +2,44 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Design tokens (see PRODUCT.md). OKLCH components, so Tailwind's nt-* colors
+   (tailwind.config.js) support opacity modifiers like bg-nt-raised/60.
+   Dark neutrals are tinted slightly toward the brand's orange hue. */
+:root {
+  --nt-bg: 0.165 0.006 55;
+  --nt-surface: 0.2 0.007 55;
+  --nt-raised: 0.245 0.008 55;
+  --nt-line: 0.31 0.009 55;
+  --nt-line-strong: 0.52 0.01 55;
+  --nt-ink: 0.95 0.004 55;
+  --nt-ink-2: 0.81 0.007 55;
+  --nt-ink-3: 0.68 0.009 55;
+  --nt-accent: 0.72 0.17 50;
+  --nt-accent-ink: 0.22 0.04 50;
+  --nt-focus: 0.8 0.12 230;
+  --nt-danger: 0.7 0.17 25;
+  --nt-success: 0.78 0.14 155;
+  /* Branch palette: Okabe-Ito (colour-blind safe), ordered away from the accent.
+     Always paired with a letter or shape, never colour alone. */
+  --nt-branch-0: 0.735 0.117 236.2;
+  --nt-branch-1: 0.62 0.13 165.5;
+  --nt-branch-2: 0.753 0.158 76.8;
+  --nt-branch-3: 0.679 0.118 346.3;
+  --nt-branch-4: 0.621 0.17 47.5;
+  --nt-branch-5: 0.532 0.131 244;
+  --nt-branch-6: 0.902 0.172 105;
+  --nt-branch-7: 0.792 0 90;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Editor canvas (moved from inline <style> blocks so they are parsed once, not per node) */
 .is-connecting .react-flow__handle-source {
     pointer-events: none !important;
@@ -69,3 +107,7 @@
   display: block;
 }
 
+
+/* Keyboard focus ring for interactive SVG items in the story views (outline is unreliable on SVG). */
+.nt-svg-item .nt-focus-ring { display: none; }
+.nt-svg-item:focus-visible > .nt-focus-ring { display: inline; }

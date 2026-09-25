@@ -569,4 +569,4 @@ const finalizeAndSaveImportedProject = async (importedProject: Project) => {
   return newProject;
 };
 
-
+export default Dashboard;
