@@ -9,7 +9,7 @@ import ReactFlow, {
   ReactFlowInstance,
   PanOnScrollMode,
   useReactFlow,
-  useViewport,
+  useStore,
 } from 'reactflow';
 import { Hand, MousePointer2, Plus, Minus, Maximize } from 'lucide-react';
 import SidebarLeft from './components/SidebarLeft';
@@ -31,9 +31,11 @@ import { Asset } from './types';
 import { useShortcuts } from './editor/shortcuts/useShortcuts';
 import { CommandPalette } from './components/CommandPalette';
 
-const CustomControls = ({ isPanMode, setIsPanMode }: { isPanMode: boolean, setIsPanMode: (v: boolean) => void }) => {
+// memo: rendered inside ReactFlow, which re-renders with the editor on every drag frame.
+const CustomControls = React.memo(({ isPanMode, setIsPanMode }: { isPanMode: boolean, setIsPanMode: (v: boolean) => void }) => {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
-  const { zoom } = useViewport();
+  // Only the zoom level is shown; useViewport() also changes on every pan frame.
+  const zoomPercent = useStore((s) => Math.round(s.transform[2] * 100));
 
   return (
     <Controls 
@@ -48,7 +50,7 @@ const CustomControls = ({ isPanMode, setIsPanMode }: { isPanMode: boolean, setIs
       </ControlButton>
       
       <div className="flex items-center justify-center w-14 h-9 text-xs font-medium text-zinc-400 bg-zinc-800 border border-zinc-700 rounded-md shadow-sm select-none">
-        {Math.round(zoom * 100)}%
+        {zoomPercent}%
       </div>
 
       <ControlButton onClick={() => zoomIn({ duration: 300 })} className="!w-9 !h-9 !bg-zinc-800 !border !border-zinc-700 !text-zinc-400 hover:!text-zinc-100 !rounded-md !shadow-sm !flex !items-center !justify-center !p-0" title="Zoom In">
@@ -64,7 +66,7 @@ const CustomControls = ({ isPanMode, setIsPanMode }: { isPanMode: boolean, setIs
       </ControlButton>
     </Controls>
   );
-};
+});
 
 function ProjectEditor() {
   const { projectId } = useParams();
@@ -130,20 +132,17 @@ function ProjectEditor() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const selectedNodes = useMemo(() => nodes.filter(n => n.selected), [selectedKey]);
 
-  // Memoize context menu handlers to avoid rerendering
-  const contextMenu = useContextMenu(selectedNodes);
-  const menu = contextMenu.menu;
-  const setMenu = contextMenu.setMenu;
-  const onNodeContextMenu = useCallback(contextMenu.onNodeContextMenu, [contextMenu]);
+  // The hooks' callbacks are already stable; pass them through directly. (Wrapping
+  // them in useCallback keyed on the hooks' return objects — new every render —
+  // changed their identity each render, and ReactFlow hands onEdgeContextMenu to
+  // every edge, so every edge re-rendered whenever the editor did.)
+  const { menu, setMenu, onNodeContextMenu, onEdgeContextMenu: openEdgeMenu, onPaneContextMenu, onPaneClick } = useContextMenu(selectedNodes);
   const onEdgeContextMenu = useCallback((event: React.MouseEvent, edge: any) => {
-    contextMenu.onEdgeContextMenu(event, edge);
+    openEdgeMenu(event, edge);
     setEdges((eds) => eds.map((e) => e.id === edge.id ? { ...e, selected: false } : e));
-  }, [contextMenu, setEdges]);
-  const onPaneContextMenu = useCallback(contextMenu.onPaneContextMenu, [contextMenu]);
-  const onPaneClick = useCallback(contextMenu.onPaneClick, [contextMenu]);
+  }, [openEdgeMenu, setEdges]);
 
-  // Memoize drag and drop handlers
-  const dragDropHandlers = useDragAndDrop(
+  const { onDragOver, onNodeDragStop, onDrop } = useDragAndDrop(
     nodes,
     ctx,
     reactFlowInstance,
@@ -151,9 +150,6 @@ function ProjectEditor() {
     executeCommand,
     dragStartRef
   );
-  const onDragOver = useCallback(dragDropHandlers.onDragOver, [dragDropHandlers]);
-  const onNodeDragStop = useCallback(dragDropHandlers.onNodeDragStop, [dragDropHandlers]);
-  const onDrop = useCallback(dragDropHandlers.onDrop, [dragDropHandlers]);
 
   // Memoize addAsset callback
   const addAsset = useCallback((asset: any) => {

@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { htmlToText } from '../../utils/html';
 import { AppNode, isElementNode } from '@/types';
 import { Clock } from 'lucide-react';
 
@@ -30,12 +31,6 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ nodes, onNodeClick }
       hour: 'numeric',
       minute: 'numeric',
     }).format(date);
-  };
-
-  const stripHtml = (html: string) => {
-    const tmp = document.createElement('div');
-    tmp.innerHTML = html;
-    return tmp.textContent || tmp.innerText || '';
   };
 
   return (
@@ -91,7 +86,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ nodes, onNodeClick }
                       
                       {node.data.content && (
                         <p className="text-sm text-zinc-400 line-clamp-3 leading-relaxed">
-                          {stripHtml(node.data.content)}
+                          {htmlToText(node.data.content)}
                         </p>
                       )}
                     </div>

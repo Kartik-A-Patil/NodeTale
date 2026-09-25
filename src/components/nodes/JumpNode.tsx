@@ -2,6 +2,7 @@ import React, { memo, useState } from 'react';
 import { Handle, Position, NodeProps, useReactFlow, useStore } from 'reactflow';
 import { Forward, Link as LinkIcon } from 'lucide-react';
 import { JumpNodeData } from '../../types';
+import { nodePropsEqual } from './nodePropsEqual';
 
 const JumpNode = ({ id, data, selected }: NodeProps<JumpNodeData>) => {
   const { setNodes, getNodes } = useReactFlow();
@@ -105,4 +106,4 @@ const JumpNode = ({ id, data, selected }: NodeProps<JumpNodeData>) => {
   );
 };
 
-export default memo(JumpNode);
+export default memo(JumpNode, nodePropsEqual);

@@ -1,8 +1,9 @@
-import { memo, useState, useMemo } from "react";
-import { Handle, Position, NodeProps, useReactFlow, useStore } from "reactflow";
+import { memo, useState, useMemo, useCallback } from "react";
+import { Handle, Position, NodeProps, useReactFlow, useStore, ReactFlowState } from "reactflow";
 import { ConditionNodeData, Branch, Variable } from "../../types";
 import { X, AlertCircle } from "lucide-react";
 import clsx from "clsx";
+import { nodePropsEqual } from "./nodePropsEqual";
 
 const ConditionInput = ({
   value,
@@ -106,7 +107,15 @@ const ConditionInput = ({
 const ConditionNode = ({ id, data, selected }: NodeProps<ConditionNodeData>) => {
   const { setNodes } = useReactFlow();
   const connectionNodeId = useStore((state) => state.connectionNodeId);
-  const edges = useStore((state) => state.edges);
+  // Only this node's connected branch handles matter; subscribing to the whole
+  // edge list re-rendered every condition node on any edge change.
+  const connectedHandles = useStore(
+    useCallback(
+      (state: ReactFlowState) =>
+        state.edges.filter((e) => e.source === id).map((e) => e.sourceHandle).join('\u0000'),
+      [id]
+    )
+  );
   const isTarget = connectionNodeId && connectionNodeId !== id;
 
   const [hoveredSide, setHoveredSide] = useState<"left" | null>(null);
@@ -230,9 +239,7 @@ const ConditionNode = ({ id, data, selected }: NodeProps<ConditionNodeData>) => 
             const isElse = branch.label === "Else";
             const isIf = branch.label === "If";
 
-            const isConnected = edges.some(
-              (edge) => edge.source === id && edge.sourceHandle === branch.id
-            );
+            const isConnected = connectedHandles.split('\u0000').includes(branch.id);
             return (
               <div
                 key={branch.id}
@@ -303,4 +310,4 @@ const ConditionNode = ({ id, data, selected }: NodeProps<ConditionNodeData>) => 
   );
 };
 
-export default memo(ConditionNode);
+export default memo(ConditionNode, nodePropsEqual);

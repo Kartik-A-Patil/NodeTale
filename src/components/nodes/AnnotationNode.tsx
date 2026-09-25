@@ -1,6 +1,7 @@
 import React, { memo, useState } from "react";
 import { NodeProps, useReactFlow } from "reactflow";
 import { AnnotationNodeData } from "../../types";
+import { nodePropsEqual } from "./nodePropsEqual";
 
 const AnnotationNode = ({ id, data,selected }: NodeProps<AnnotationNodeData>) => {
   const { setNodes } = useReactFlow();
@@ -145,4 +146,4 @@ const AnnotationNode = ({ id, data,selected }: NodeProps<AnnotationNodeData>) =>
   );
 };
 
-export default memo(AnnotationNode);
+export default memo(AnnotationNode, nodePropsEqual);

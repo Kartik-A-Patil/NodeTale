@@ -29,6 +29,7 @@ import clsx from "clsx";
 import { DatePicker } from "@/components/DatePicker";
 import { RichTextEditor } from "../RichTextEditor";
 import JumpTargetBadge from "./JumpTargetBadge";
+import { sanitizeHtml } from "../../utils/html";
 import { AssetPreview } from "../AssetPreview";
 import { AudioSettingsModal } from "../modals/AudioSettingsModal";
 import {
@@ -38,22 +39,14 @@ import {
 } from "../../services/logicService";
 import Prism from "prismjs";
 import "prismjs/components/prism-javascript";
+import { nodePropsEqual } from "./nodePropsEqual";
 
-const sanitizeContent = (html: string) => {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html || "", "text/html");
-
-  doc.querySelectorAll("script, style").forEach((el) => el.remove());
-  doc.body.querySelectorAll("*").forEach((el) => {
-    Array.from(el.attributes).forEach((attr) => {
-      if (attr.name.toLowerCase().startsWith("on")) {
-        el.removeAttribute(attr.name);
-      }
-    });
-  });
-
-  return doc.body.innerHTML;
-};
+// Rendered (sanitized + Prism-highlighted) content by source HTML. With viewport
+// culling, nodes remount as they scroll into view; this skips re-parsing and
+// re-highlighting content that has been rendered before.
+// ponytail: FIFO cap, not LRU; plenty for a board's worth of nodes.
+const RENDER_CACHE_LIMIT = 1000;
+const renderedContentCache = new Map<string, string>();
 
 const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
   const { setNodes } = useReactFlow();
@@ -83,9 +76,17 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
       return;
     }
 
-    const sanitized = sanitizeContent(data.content);
-    target.innerHTML = sanitized;
+    const cached = renderedContentCache.get(data.content);
+    if (cached !== undefined) {
+      target.innerHTML = cached;
+      return;
+    }
+    target.innerHTML = sanitizeHtml(data.content);
     Prism.highlightAllUnder(target);
+    if (renderedContentCache.size >= RENDER_CACHE_LIMIT) {
+      renderedContentCache.delete(renderedContentCache.keys().next().value!);
+    }
+    renderedContentCache.set(data.content, target.innerHTML);
   }, [data.content, editingField]);
 
   const getBorderClass = (
@@ -530,4 +531,4 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
   );
 };
 
-export default memo(ElementNode);
+export default memo(ElementNode, nodePropsEqual);

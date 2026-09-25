@@ -2,6 +2,7 @@ import React, { memo, useState } from 'react';
 import { NodeProps, NodeResizeControl, useReactFlow } from 'reactflow';
 import { SectionNodeData } from '../../types';
 import JumpTargetBadge from './JumpTargetBadge';
+import { nodePropsEqual } from './nodePropsEqual';
 
 const SectionNode = ({ id, data, selected }: NodeProps<SectionNodeData>) => {
   const { setNodes } = useReactFlow();
@@ -106,4 +107,4 @@ const SectionNode = ({ id, data, selected }: NodeProps<SectionNodeData>) => {
   );
 };
 
-export default memo(SectionNode);
+export default memo(SectionNode, nodePropsEqual);

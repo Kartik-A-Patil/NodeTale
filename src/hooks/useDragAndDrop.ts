@@ -1,4 +1,4 @@
-import React,{ useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { ReactFlowInstance, Node } from 'reactflow';
 import { AppNode } from '../types';
 import { CommandContext, Command } from '../editor/commands/types';
@@ -6,13 +6,18 @@ import { addElementsCommand } from '../editor/commands/addElementsCommand';
 import { moveNodesCommand, NodeMove, NodeTransform } from '../editor/commands/moveNodeCommand';
 
 export function useDragAndDrop(
-    nodes: AppNode[],
+    nodes: Node[],
     ctx: CommandContext,
     reactFlowInstance: ReactFlowInstance | null,
     reactFlowWrapper: React.RefObject<HTMLDivElement | null>,
     executeCommand: (command: Command) => void,
     dragStartRef: React.MutableRefObject<(({ id: string } & NodeTransform)[]) | null>
 ) {
+  // Read at drag stop through a ref: depending on `nodes` gave onNodeDragStop a
+  // new identity on every drag frame.
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
@@ -32,7 +37,7 @@ export function useDragAndDrop(
       // Or if it's a standalone node, check if it's moved in
 
       // Get all section nodes
-      const sectionNodes = nodes.filter(n => n.type === 'sectionNode' && n.id !== node.id);
+      const sectionNodes = nodesRef.current.filter(n => n.type === 'sectionNode' && n.id !== node.id);
 
       // Simple intersection check
       const nodeRect = {
@@ -93,7 +98,7 @@ export function useDragAndDrop(
 
       if (moves.length === 0) return;
       executeCommand(moveNodesCommand(ctx, moves));
-  }, [nodes, reactFlowInstance, ctx, executeCommand, dragStartRef]);
+  }, [reactFlowInstance, ctx, executeCommand, dragStartRef]);
 
   const onDrop = useCallback(
     (event: React.DragEvent) => {

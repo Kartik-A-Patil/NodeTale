@@ -3,6 +3,7 @@ import { NodeProps, useReactFlow, NodeResizeControl } from 'reactflow';
 import { CommentNodeData } from '../../types';
 import { RichTextEditor } from '../RichTextEditor';
 import JumpTargetBadge from './JumpTargetBadge';
+import { nodePropsEqual } from './nodePropsEqual';
 
 const CommentNode = ({ id, data, selected }: NodeProps<CommentNodeData>) => {
   const { setNodes } = useReactFlow();
@@ -130,4 +131,4 @@ const CommentNode = ({ id, data, selected }: NodeProps<CommentNodeData>) => {
   );
 };
 
-export default memo(CommentNode);
+export default memo(CommentNode, nodePropsEqual);
