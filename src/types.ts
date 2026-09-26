@@ -129,11 +129,7 @@ export interface Project {
 
 // Lightweight metadata for listing UI (e.g. the Dashboard) without loading
 // each project's full boards/nodes/edges.
-export interface ProjectSummary {
-  id: string;
-  name: string;
-  modifiedAt?: number;
-  coverImage?: string;
-  boardCount: number;
-  assetCount: number;
-}
+// Built by utils/projectSummary (shared with the Electron main process).
+// stats/thumbnail are optional: summaries saved before they existed lack them
+// until the store upgrade (web) or index rebuild (Electron) backfills them.
+export type { ProjectSummaryData as ProjectSummary, ProjectStats, ProjectThumbnail } from './utils/projectSummary';

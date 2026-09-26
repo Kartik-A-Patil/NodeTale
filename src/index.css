@@ -111,3 +111,8 @@
 /* Keyboard focus ring for interactive SVG items in the story views (outline is unreliable on SVG). */
 .nt-svg-item .nt-focus-ring { display: none; }
 .nt-svg-item:focus-visible > .nt-focus-ring { display: inline; }
+
+/* Native dialogs: dim + blur-free backdrop; short fade/scale in (instant with reduced motion). */
+.nt-dialog::backdrop { background: oklch(0.1 0.005 55 / 0.7); }
+.nt-dialog[open] { animation: nt-dialog-in 180ms cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes nt-dialog-in { from { opacity: 0; transform: translateY(6px) scale(0.98); } }

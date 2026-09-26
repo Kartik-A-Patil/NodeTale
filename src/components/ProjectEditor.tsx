@@ -29,6 +29,7 @@ import { AppNode, Asset } from '../types';
 import { useShortcuts } from '../editor/shortcuts/useShortcuts';
 import { CommandPalette } from './CommandPalette';
 import { EditorContext } from '../editor/EditorContext';
+import { markProjectOpened } from '../utils/localPrefs';
 
 // memo: rendered inside ReactFlow, which re-renders with the editor on every drag frame.
 const CustomControls = React.memo(({ isPanMode, setIsPanMode }: { isPanMode: boolean, setIsPanMode: (v: boolean) => void }) => {
@@ -132,6 +133,11 @@ function ProjectEditor() {
   // Keyed on the selected ids, not `nodes`: a drag changes `nodes` every frame,
   // and a fresh array here would rebuild editorActions (re-binding the global
   // keydown listener) and the context-menu callbacks on every frame.
+  // For the dashboard's "Recently opened" sort (per device).
+  React.useEffect(() => {
+    if (!isInitializing && project.id) markProjectOpened(project.id);
+  }, [isInitializing, project.id]);
+
   const selectedKey = nodes.filter(n => n.selected).map(n => n.id).join(',');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const selectedNodes = useMemo(() => nodes.filter(n => n.selected), [selectedKey]);

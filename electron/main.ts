@@ -5,6 +5,7 @@ import fs from 'fs/promises'
 import { existsSync, mkdirSync } from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
+import { buildProjectSummary } from '../src/utils/projectSummary'
 
 // GPU: Let Chromium use hardware acceleration by default.
 // Only fall back to software rendering if GPU actually crashes at runtime.
@@ -156,14 +157,8 @@ app.whenReady().then(() => {
   // as a project.
   const summariesPath = path.join(userDataPath, 'project-summaries.json');
 
-  const toSummary = (project: any) => ({
-    id: project.id,
-    name: project.name,
-    modifiedAt: project.modifiedAt,
-    coverImage: project.coverImage,
-    boardCount: Array.isArray(project.boards) ? project.boards.length : 0,
-    assetCount: Array.isArray(project.assets) ? project.assets.length : 0,
-  });
+  const toSummary = (project: any) => buildProjectSummary(project);
+
 
   // Single in-memory cache, shared by every handler below and mutated
   // synchronously before any await — concurrent autosave/manual-save calls
@@ -339,7 +334,8 @@ app.whenReady().then(() => {
 
   ipcMain.handle('storage:get-project-summaries', async () => {
       const summaries = await loadSummariesCache();
-      if (summaries.length > 0) return summaries;
+      // Summaries written before stats/thumbnails existed are rebuilt once.
+      if (summaries.length > 0 && summaries.every((s) => s.stats)) return summaries;
 
       // Empty index: either a fresh install (nothing to summarize, fine) or an
       // upgrade from before this index existed. Either way, build once from
