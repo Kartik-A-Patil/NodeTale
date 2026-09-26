@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Project, ElementNodeData, Asset } from "../types";
 import { replaceVariablesInText } from "../services/logicService";
+import { sanitizeHtml } from "../utils/html";
 import { usePlayModeLogic } from "../hooks/usePlayMode";
 import { PlayControls } from "./playmode/PlayControls";
 import { DebugOverlay } from "./playmode/DebugOverlay";
@@ -103,10 +104,11 @@ const PlayMode: React.FC<PlayModeProps> = ({
   const audioAssets = assets.filter((a) => a.type === "audio");
 
   // Content processing
-  const processedContent = replaceVariablesInText(
+  // Imported projects can carry arbitrary HTML; never render it unsanitized.
+  const processedContent = sanitizeHtml(replaceVariablesInText(
     elementData.content,
     runtimeVars
-  );
+  ));
 
   return (
     <div className="fixed inset-0 z-50 bg-black text-zinc-200 font-sans select-none">

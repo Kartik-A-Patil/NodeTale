@@ -33,7 +33,21 @@ export const getStorageAdapter = (): StorageAdapter => {
   return storageInstance;
 };
 
+let migration: Promise<void> | null = null;
+
 /**
- * Call after migrate() resolves to suppress pre-migration warnings.
+ * Runs the storage migration once per page load, however many times it's
+ * called (StrictMode runs App's effect twice; two concurrent migrations would
+ * each rewrite the same projects). Resolves even if migration fails, so the
+ * app can still start.
  */
-export const markMigrationComplete = () => { migrationComplete = true; };
+export const runStorageMigration = (): Promise<void> => {
+  if (!migration) {
+    const adapter = storageInstance ?? getStorageAdapter();
+    migration = adapter
+      .migrate()
+      .catch((err) => console.error('[Storage] Migration failed', err))
+      .finally(() => { migrationComplete = true; });
+  }
+  return migration;
+};

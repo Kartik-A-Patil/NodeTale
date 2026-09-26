@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import Prism from "prismjs";
 import "prismjs/components/prism-javascript";
-import { Variable } from "../types";
+import { sanitizeDocument } from "../utils/html";
 // Note: syntax highlighting in the editor was removed to avoid duplicated markup glitches
 // when switching between edit/view states. Highlighting now happens only in the read-only view.
 
@@ -39,16 +39,7 @@ const ToolbarButton = ({
 // and (when `highlight`) re-apply Prism + variable highlighting. This used to be
 // 3-4 separate parse/serialize round-trips per keystroke.
 const processHtml = (html: string, highlight: boolean) => {
-  const doc = new DOMParser().parseFromString(html || "", "text/html");
-
-  doc.querySelectorAll("script, style").forEach((el) => el.remove());
-  doc.body.querySelectorAll("*").forEach((el) => {
-    Array.from(el.attributes).forEach((attr) => {
-      if (attr.name.toLowerCase().startsWith("on")) {
-        el.removeAttribute(attr.name);
-      }
-    });
-  });
+  const doc = sanitizeDocument(new DOMParser().parseFromString(html || "", "text/html"));
 
   // Remove previous variable highlight spans so we don't nest them
   doc.querySelectorAll("span[data-variable]").forEach((span) => {
@@ -104,13 +95,11 @@ const HIGHLIGHT_DEBOUNCE_MS = 400;
 export const RichTextEditor = ({
   initialValue,
   onChange,
-  onBlur,
-  variables
+  onBlur
 }: {
   initialValue: string;
   onChange: (val: string) => void;
   onBlur: () => void;
-  variables?: Variable[];
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
   const [activeFormats, setActiveFormats] = useState<string[]>([]);
@@ -159,6 +148,9 @@ export const RichTextEditor = ({
         console.error("Failed to set cursor position", e);
       }
     }
+    // Mount-only: initialValue seeds the uncontrolled contentEditable once;
+    // re-running on later values would clobber what the user is typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const checkFormats = () => {
@@ -257,7 +249,7 @@ export const RichTextEditor = ({
         range.collapse(true);
         sel.removeAllRanges();
         sel.addRange(range);
-      } catch (e) {
+      } catch {
         // Ignore cursor restoration errors
       }
     }

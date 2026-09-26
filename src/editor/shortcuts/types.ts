@@ -2,6 +2,7 @@ export interface ShortcutKeys {
   key: string; // KeyboardEvent.key, e.g. 'z', 'Delete', 'Escape'
   ctrlOrCmd?: boolean; // Ctrl on Windows/Linux, Cmd on macOS
   shift?: boolean;
+  alt?: boolean; // Alt / Option
 }
 
 // A single editor action, usable both as a keyboard shortcut (if `keys` is set)
@@ -14,7 +15,7 @@ export interface ShortcutKeys {
 export interface EditorAction {
   id: string;
   label: string;
-  category: 'Edit' | 'File' | 'Story';
+  category: 'Edit' | 'File' | 'Story' | 'View';
   keys?: ShortcutKeys | ShortcutKeys[];
   run: () => void;
   enabled?: boolean; // defaults to true

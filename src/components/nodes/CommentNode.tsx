@@ -1,37 +1,17 @@
-import React, { memo, useState } from 'react';
-import { NodeProps, useReactFlow, NodeResizeControl } from 'reactflow';
+import { memo, useState } from 'react';
+import { NodeProps, NodeResizeControl } from 'reactflow';
+import { useEditor } from '../../editor/EditorContext';
 import { CommentNodeData } from '../../types';
 import { RichTextEditor } from '../RichTextEditor';
 import JumpTargetBadge from './JumpTargetBadge';
+import { nodePropsEqual } from './nodePropsEqual';
 
 const CommentNode = ({ id, data, selected }: NodeProps<CommentNodeData>) => {
-  const { setNodes } = useReactFlow();
+  const { updateNodeData } = useEditor();
   const [isEditing, setIsEditing] = useState(false);
 
-  // Ensure CommentNode is always at the bottom (z-index -10)
-  React.useEffect(() => {
-    setNodes((nds) =>
-      nds.map((node) => {
-        if (node.id === id && node.zIndex !== -10) {
-          return { ...node, zIndex: -10 };
-        }
-        return node;
-      })
-    );
-  }, [id, setNodes]);
-
   const handleChange = (val: string) => {
-    setNodes((nds) =>
-      nds.map((node) => {
-        if (node.id === id) {
-          return {
-            ...node,
-            data: { ...node.data, text: val },
-          };
-        }
-        return node;
-      })
-    );
+    updateNodeData(id, { text: val }, `${id}:text`);
   };
 
   // Default to dark gray (#27272a) if no color is set
@@ -130,4 +110,4 @@ const CommentNode = ({ id, data, selected }: NodeProps<CommentNodeData>) => {
   );
 };
 
-export default memo(CommentNode);
+export default memo(CommentNode, nodePropsEqual);

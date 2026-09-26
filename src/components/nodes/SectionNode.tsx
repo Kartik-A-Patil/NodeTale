@@ -1,37 +1,17 @@
 import React, { memo, useState } from 'react';
-import { NodeProps, NodeResizeControl, useReactFlow } from 'reactflow';
+import { NodeProps, NodeResizeControl } from 'reactflow';
+import { useEditor } from '../../editor/EditorContext';
 import { SectionNodeData } from '../../types';
 import JumpTargetBadge from './JumpTargetBadge';
+import { nodePropsEqual } from './nodePropsEqual';
 
 const SectionNode = ({ id, data, selected }: NodeProps<SectionNodeData>) => {
-  const { setNodes } = useReactFlow();
+  const { updateNodeData } = useEditor();
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const primaryColor = data.color || '#71717a'; // Default zinc-500
 
-  // Ensure SectionNode is always behind other nodes
-  React.useEffect(() => {
-    setNodes((nds) =>
-      nds.map((node) => {
-        if (node.id === id && node.zIndex !== -1) {
-          return { ...node, zIndex: -1 };
-        }
-        return node;
-      })
-    );
-  }, [id, setNodes]);
-
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setNodes((nds) =>
-      nds.map((node) => {
-        if (node.id === id) {
-          return {
-            ...node,
-            data: { ...node.data, label: e.target.value },
-          };
-        }
-        return node;
-      })
-    );
+    updateNodeData(id, { label: e.target.value }, `${id}:label`);
   };
 
   return (
@@ -106,4 +86,4 @@ const SectionNode = ({ id, data, selected }: NodeProps<SectionNodeData>) => {
   );
 };
 
-export default memo(SectionNode);
+export default memo(SectionNode, nodePropsEqual);

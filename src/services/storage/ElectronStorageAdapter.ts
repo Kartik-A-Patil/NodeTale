@@ -42,7 +42,7 @@ export class ElectronStorageAdapter implements StorageAdapter {
     return typeHint ? `${base}?type=${encodeURIComponent(typeHint)}` : base;
   }
 
-  releaseAssetUrl(url: string): void {
+  releaseAssetUrl(_url: string): void {
     // No-op for file:// URLs
   }
 

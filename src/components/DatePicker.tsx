@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   Calendar as CalendarIcon, 
-  Clock, 
   X, 
   Check,
   ChevronLeft, 

@@ -1,22 +1,16 @@
 import { StorageAdapter, FileOrBlob } from './StorageAdapter';
 import { Project, ProjectSummary } from '../../types';
+import { buildProjectSummary } from '../../utils/projectSummary';
 
 const DB_NAME = 'NodeTaleDB';
-const DB_VERSION = 4;
+const DB_VERSION = 5; // v5: summaries gain stats + graph thumbnail (re-derived on upgrade)
 const PROJECT_STORE = 'projects';
 const ASSET_STORE = 'assets';
 const SUMMARY_STORE = 'project_summaries';
 const STORAGE_VERSION_KEY = 'storage_version';
 const CURRENT_STORAGE_VERSION = 2; // Version 2 implies Blob storage
 
-const toSummary = (project: Project): ProjectSummary => ({
-  id: project.id,
-  name: project.name,
-  modifiedAt: project.modifiedAt,
-  coverImage: project.coverImage,
-  boardCount: Array.isArray(project.boards) ? project.boards.length : 0,
-  assetCount: Array.isArray(project.assets) ? project.assets.length : 0,
-});
+const toSummary = (project: Project): ProjectSummary => buildProjectSummary(project);
 
 export class WebStorageAdapter implements StorageAdapter {
   private dbPromise: Promise<IDBDatabase> | null = null;
@@ -62,11 +56,12 @@ export class WebStorageAdapter implements StorageAdapter {
           store.createIndex('name', 'name', { unique: false });
         }
 
-        // v4: add the summary store, backfilled from existing project records.
+        // v4: add the summary store; v5: re-derive summaries (stats + thumbnail).
+        // Both backfill from existing project records.
         if (!db.objectStoreNames.contains(SUMMARY_STORE)) {
           db.createObjectStore(SUMMARY_STORE, { keyPath: 'id' });
         }
-        if (oldVersion > 0 && oldVersion < 4) {
+        if (oldVersion > 0 && oldVersion < 5) {
           const tx = (event.target as IDBOpenDBRequest).transaction!;
           const projectStore = tx.objectStore(PROJECT_STORE);
           const summaryStore = tx.objectStore(SUMMARY_STORE);

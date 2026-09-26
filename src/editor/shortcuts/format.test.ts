@@ -25,6 +25,12 @@ describe('matchesShortcut', () => {
     expect(matchesShortcut({ key: 'Delete' }, event({ key: 'Delete', ctrlKey: true }))).toBe(false);
   });
 
+  it('matches Alt bindings by physical key (macOS turns Alt+1 into ¡)', () => {
+    const keys = { key: '1', alt: true };
+    expect(matchesShortcut(keys, event({ key: '¡', code: 'Digit1', altKey: true }))).toBe(true);
+    expect(matchesShortcut(keys, event({ key: '1', code: 'Digit1' }))).toBe(false);
+  });
+
   it('is case-insensitive on the key itself', () => {
     expect(matchesShortcut({ key: 'z', ctrlOrCmd: true }, event({ key: 'Z', ctrlKey: true }))).toBe(true);
   });

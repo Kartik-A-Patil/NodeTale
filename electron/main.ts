@@ -5,6 +5,7 @@ import fs from 'fs/promises'
 import { existsSync, mkdirSync } from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
+import { buildProjectSummary } from '../src/utils/projectSummary'
 
 // GPU: Let Chromium use hardware acceleration by default.
 // Only fall back to software rendering if GPU actually crashes at runtime.
@@ -156,14 +157,8 @@ app.whenReady().then(() => {
   // as a project.
   const summariesPath = path.join(userDataPath, 'project-summaries.json');
 
-  const toSummary = (project: any) => ({
-    id: project.id,
-    name: project.name,
-    modifiedAt: project.modifiedAt,
-    coverImage: project.coverImage,
-    boardCount: Array.isArray(project.boards) ? project.boards.length : 0,
-    assetCount: Array.isArray(project.assets) ? project.assets.length : 0,
-  });
+  const toSummary = (project: any) => buildProjectSummary(project);
+
 
   // Single in-memory cache, shared by every handler below and mutated
   // synchronously before any await — concurrent autosave/manual-save calls
@@ -175,7 +170,7 @@ app.whenReady().then(() => {
     if (summariesCache) return summariesCache;
     try {
       summariesCache = JSON.parse(await fs.readFile(summariesPath, 'utf-8'));
-    } catch (e) {
+    } catch {
       summariesCache = [];
     }
     return summariesCache!;
@@ -199,12 +194,12 @@ app.whenReady().then(() => {
         try {
           const content = await fs.readFile(path.join(projectsDir, file), 'utf-8');
           summaries.push(toSummary(JSON.parse(content)));
-        } catch (e) {
+        } catch {
           // skip corrupted
         }
       }
       return summaries;
-    } catch (e) {
+    } catch {
       return [];
     }
   };
@@ -243,7 +238,7 @@ app.whenReady().then(() => {
      const target = path.join(assetsDir, safeId);
      try {
         await fs.unlink(target);
-     } catch (e) {
+     } catch {
         // ignore if missing
      }
   });
@@ -292,7 +287,7 @@ app.whenReady().then(() => {
      try {
          const content = await fs.readFile(idPath, 'utf-8');
          return JSON.parse(content);
-     } catch (e) {
+     } catch {
          // 2. Not found by ID, try scanning for Name
          // This is O(N) but acceptable for number of projects usually < 100 on desktop
          try {
@@ -305,12 +300,12 @@ app.whenReady().then(() => {
                           if (project.name === idOrName) {
                               return project;
                           }
-                      } catch (err) {
+                      } catch {
                           // skip corrupt
                       }
                   }
              }
-         } catch (dirErr) {
+         } catch {
              return null;
          }
          return null;
@@ -326,20 +321,21 @@ app.whenReady().then(() => {
                   try {
                       const content = await fs.readFile(path.join(projectsDir, file), 'utf-8');
                       projects.push(JSON.parse(content));
-                  } catch (e) {
+                  } catch {
                       // skip corrupted
                   }
               }
           }
           return projects;
-      } catch (e) {
+      } catch {
           return [];
       }
   });
 
   ipcMain.handle('storage:get-project-summaries', async () => {
       const summaries = await loadSummariesCache();
-      if (summaries.length > 0) return summaries;
+      // Summaries written before stats/thumbnails existed are rebuilt once.
+      if (summaries.length > 0 && summaries.every((s) => s.stats)) return summaries;
 
       // Empty index: either a fresh install (nothing to summarize, fine) or an
       // upgrade from before this index existed. Either way, build once from
@@ -347,7 +343,7 @@ app.whenReady().then(() => {
       const rebuilt = await buildSummariesFromProjectFiles();
       if (rebuilt.length > 0) {
           summariesCache = rebuilt;
-          try { await persistSummariesCache(); } catch (e) { /* non-fatal — served fresh below regardless */ }
+          try { await persistSummariesCache(); } catch { /* non-fatal — served fresh below regardless */ }
       }
       return rebuilt;
   });
@@ -356,7 +352,7 @@ app.whenReady().then(() => {
       const safeId = path.basename(id);
       try {
           await fs.unlink(path.join(projectsDir, safeId + '.json'));
-      } catch (e) {
+      } catch {
           // ignore
       }
 

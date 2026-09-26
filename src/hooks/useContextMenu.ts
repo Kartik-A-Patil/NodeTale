@@ -1,4 +1,4 @@
-import React,{ useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { Node, Edge } from 'reactflow';
 
 export type MenuState = { 
@@ -12,6 +12,10 @@ export type MenuState = {
 
 export function useContextMenu(selectedNodes: Node[]) {
   const [menu, setMenu] = useState<MenuState>(null);
+  // Read through a ref: ReactFlow passes onNodeContextMenu to every node, so a
+  // callback that changed with the selection re-rendered every node on select.
+  const selectedNodesRef = useRef(selectedNodes);
+  selectedNodesRef.current = selectedNodes;
 
   const onPaneClick = useCallback(() => {
       setMenu(null);
@@ -26,10 +30,10 @@ export function useContextMenu(selectedNodes: Node[]) {
         type: 'node',
         id: node.id,
         label: node.data.label,
-        selectedNodeIds: selectedNodes.map(n => n.id)
+        selectedNodeIds: selectedNodesRef.current.map(n => n.id)
       });
     },
-    [selectedNodes]
+    []
   );
 
   const onEdgeContextMenu = useCallback(

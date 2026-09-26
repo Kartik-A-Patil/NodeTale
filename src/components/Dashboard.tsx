@@ -1,572 +1,303 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Upload, Sparkles, ChevronDown } from 'lucide-react';
-import JSZip from 'jszip';
+import { X } from 'lucide-react';
 import { getProjectSummaries, saveProject, loadProject, deleteProject, checkProjectNameExists } from '../services/storageService';
-import { getStorageAdapter } from '../services/storage';
+import { createExampleProject, importProjectFile } from '../services/projectImport';
 import { Project, ProjectSummary } from '../types';
 import { INITIAL_PROJECT } from '../constants';
-import { DashboardBackground } from './dashboard/DashboardBackground';
-import { ProjectCard } from './dashboard/ProjectCard';
+import { exportProject } from '../utils/projectUtils';
+import { shrinkCoverImage } from '../utils/coverImage';
+import { getLastOpened, useLocalPref } from '../utils/localPrefs';
 import { CreateProjectModal } from './modals/CreateProjectModal';
 import { DeleteProjectModal } from './modals/DeleteProjectModal';
-import { RenameProjectModal } from './modals/RenameProjectModal';
-import nodetaleLogo from '../assets/logo.png';
-import { shrinkCoverImage } from '../utils/coverImage';
+import { Toolbar, SortKey, ViewKey } from './dashboard/Toolbar';
+import { FirstRun } from './dashboard/FirstRun';
+import { ProjectCard, ProjectRow, ProjectItemProps } from './dashboard/ProjectCard';
+import { buttonSecondary, focusRing } from './ui/styles';
 
-export const Dashboard = () => {
-  const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [isCreating, setIsCreating] = useState(false);
-  const [newProjectName, setNewProjectName] = useState('');
-  const [newProjectImage, setNewProjectImage] = useState<string | null>(null);
-  const [error, setError] = useState('');
-  const [activeMenu, setActiveMenu] = useState<string | null>(null);
+type Status = { tone: 'info' | 'success' | 'error'; text: string } | null;
+
+const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+export default function Dashboard() {
   const navigate = useNavigate();
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
-  const [showRenameModal, setShowRenameModal] = useState(false);
-  const [projectToRename, setProjectToRename] = useState<ProjectSummary | null>(null);
-  const [renameProjectName, setRenameProjectName] = useState('');
-  const [renameError, setRenameError] = useState('');
-  const [showCreateDropdown, setShowCreateDropdown] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
+  const [lastOpened, setLastOpened] = useState<Record<string, number>>({});
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useLocalPref<SortKey>('nodetale:dashboard:sort', 'opened');
+  const [view, setView] = useLocalPref<ViewKey>('nodetale:dashboard:view', 'grid');
+  const [creating, setCreating] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<ProjectSummary | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [status, setStatus] = useState<Status>(null);
+  const [exampleBusy, setExampleBusy] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const importRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    loadProjects();
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowCreateDropdown(false);
-      }
-      setActiveMenu(null);
-    };
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
+  const reload = useCallback(async () => {
+    setProjects(await getProjectSummaries());
+    setLastOpened(getLastOpened());
   }, []);
 
-  const loadProjects = async () => {
-    const summaries = await getProjectSummaries();
-    setProjects(summaries);
-  };
+  useEffect(() => {
+    reload().catch((err) => {
+      setProjects([]);
+      setStatus({ tone: 'error', text: `Couldn’t load your stories: ${errorText(err)}` });
+    });
+  }, [reload]);
 
-  const handleCreateProject = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
+  // "/" focuses search (unless already typing somewhere).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (e.key === '/' && !e.metaKey && !e.ctrlKey && !t.closest('input, textarea, [contenteditable=true]')) {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
-    if (!newProjectName.trim()) {
-      setError('Project name is required');
-      return;
-    }
+  const visible = useMemo(() => {
+    if (!projects) return [];
+    const q = query.trim().toLowerCase();
+    const matched = q
+      ? projects.filter((p) => p.name.toLowerCase().includes(q) || p.stats?.boardNames.some((b) => b.toLowerCase().includes(q)))
+      : [...projects];
+    const byName = (a: ProjectSummary, b: ProjectSummary) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+    const byEdited = (a: ProjectSummary, b: ProjectSummary) => (b.modifiedAt ?? 0) - (a.modifiedAt ?? 0);
+    const byOpened = (a: ProjectSummary, b: ProjectSummary) =>
+      (lastOpened[b.id] ?? b.modifiedAt ?? 0) - (lastOpened[a.id] ?? a.modifiedAt ?? 0);
+    return matched.sort(sort === 'name' ? byName : sort === 'modified' ? byEdited : byOpened);
+  }, [projects, query, sort, lastOpened]);
 
-    const exists = await checkProjectNameExists(newProjectName);
-    if (exists) {
-      setError('Project name already exists');
-      return;
-    }
+  // ---------- actions ----------
 
-    const newBoardId = crypto.randomUUID();
-    const newProject: Project = {
+  const open = useCallback((id: string) => navigate(`/${id}`), [navigate]);
+
+  const createBlank = async (name: string, coverImage: string | null): Promise<string | null> => {
+    if (await checkProjectNameExists(name)) return 'You already have a story with that name.';
+    const boardId = crypto.randomUUID();
+    const project: Project = {
       ...INITIAL_PROJECT,
       id: crypto.randomUUID(),
-      name: newProjectName,
-      boards: [{ ...INITIAL_PROJECT.boards[0], id: newBoardId }], // Ensure unique board ID
-      activeBoardId: newBoardId, // Set active board to the new board ID
-      coverImage: newProjectImage || undefined
+      name,
+      boards: [{ ...INITIAL_PROJECT.boards[0], id: boardId }],
+      activeBoardId: boardId,
+      coverImage: coverImage || undefined,
     };
-    
-    console.log('[Dashboard] Creating project:', newProject.name, 'Active Board ID:', newProject.activeBoardId, 'Boards:', newProject.boards.length, 'Board nodes:', newProject.boards[0].nodes.length, 'Board edges:', newProject.boards[0].edges.length);
-
-    await saveProject(newProject);
-    await loadProjects();
-    setIsCreating(false);
-    setNewProjectName('');
-    setNewProjectImage(null);
-    navigate(`/${newProject.name}`);
+    await saveProject(project);
+    setCreating(false);
+    open(project.id);
+    return null;
   };
 
-  const handleDelete = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setProjectToDelete(id);
-    setShowDeleteModal(true);
-    setActiveMenu(null);
+  const addExample = async () => {
+    setExampleBusy(true);
+    setStatus({ tone: 'info', text: 'Adding the example story…' });
+    try {
+      const project = await createExampleProject();
+      await reload();
+      setStatus({ tone: 'success', text: `Added “${project.name}”.` });
+    } catch (err) {
+      setStatus({ tone: 'error', text: `Couldn’t add the example: ${errorText(err)}` });
+    } finally {
+      setExampleBusy(false);
+    }
+  };
+
+  const importFile = async (file: File) => {
+    setStatus({ tone: 'info', text: `Importing ${file.name}…` });
+    try {
+      const project = await importProjectFile(file);
+      await reload();
+      setStatus({ tone: 'success', text: `Imported “${project.name}”.` });
+    } catch (err) {
+      setStatus({ tone: 'error', text: `Couldn’t import ${file.name}: ${errorText(err)}` });
+    }
+  };
+
+  /** Load the full project, apply a change, save, refresh the list. */
+  const update = async (id: string, change: (p: Project) => Project) => {
+    const project = await loadProject(id);
+    if (!project) throw new Error('The story could not be loaded');
+    await saveProject(change(project));
+    await reload();
+  };
+
+  const rename = async (summary: ProjectSummary, name: string): Promise<string | null> => {
+    if (name !== summary.name && (await checkProjectNameExists(name))) return 'Another story already has that name.';
+    try {
+      await update(summary.id, (p) => ({ ...p, name }));
+      return null;
+    } catch (err) {
+      return errorText(err);
+    }
+  };
+
+  const duplicate = async (summary: ProjectSummary) => {
+    const project = await loadProject(summary.id);
+    if (!project) return;
+    let name = `${project.name} (Copy)`;
+    for (let n = 2; await checkProjectNameExists(name); n++) name = `${project.name} (Copy ${n})`;
+    await saveProject({ ...project, id: crypto.randomUUID(), name });
+    await reload();
+    setStatus({ tone: 'success', text: `Duplicated as “${name}”.` });
+  };
+
+  const exportJson = async (summary: ProjectSummary) => {
+    const project = await loadProject(summary.id);
+    if (project) exportProject(project);
   };
 
   const confirmDelete = async () => {
-    if (projectToDelete) {
-      await deleteProject(projectToDelete);
-      loadProjects();
-      setShowDeleteModal(false);
-      setProjectToDelete(null);
-    }
+    if (!deleteTarget) return;
+    const name = deleteTarget.name;
+    await deleteProject(deleteTarget.id);
+    setDeleteTarget(null);
+    await reload();
+    setStatus({ tone: 'success', text: `Deleted “${name}”.` });
   };
 
-  const handleDuplicate = async (summary: ProjectSummary, e: React.MouseEvent) => {
-    e.stopPropagation();
-    // The list only holds lightweight summaries now — duplicating needs the
-    // full project body, so load it on demand rather than spreading a summary
-    // (which would silently drop every board/node/edge/variable/asset).
-    const project = await loadProject(summary.id);
-    if (!project) return;
-
-    let newName = `${project.name} (Copy)`;
-    let counter = 1;
-    while (await checkProjectNameExists(newName)) {
-      counter++;
-      newName = `${project.name} (Copy ${counter})`;
-    }
-
-    const newProject: Project = {
-      ...project,
-      id: crypto.randomUUID(),
-      name: newName,
-    };
-
-    await saveProject(newProject);
-    loadProjects();
-  };
-
-  const handleRename = (summary: ProjectSummary, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setProjectToRename(summary);
-    setRenameProjectName(summary.name);
-    setRenameError('');
-    setShowRenameModal(true);
-    setActiveMenu(null);
-  };
-
-  const submitRename = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!projectToRename) return;
-    setRenameError('');
-
-    const trimmedName = renameProjectName.trim();
-    if (!trimmedName) {
-      setRenameError('Project name is required');
-      return;
-    }
-
-    if (trimmedName !== projectToRename.name) {
-      const exists = await checkProjectNameExists(trimmedName);
-      if (exists) {
-        setRenameError('Project name already exists');
-        return;
-      }
-    }
-
-    // Same as duplicate: need the full project to re-save it without dropping
-    // its content — a summary only carries id/name/counts/thumbnail.
-    const project = await loadProject(projectToRename.id);
-    if (!project) {
-      setRenameError('Project could not be loaded');
-      return;
-    }
-    const updatedProject: Project = { ...project, name: trimmedName };
-    await saveProject(updatedProject);
-    await loadProjects();
-    setShowRenameModal(false);
-    setProjectToRename(null);
-    setRenameProjectName('');
-  };
-
-  const closeRenameModal = () => {
-    setShowRenameModal(false);
-    setProjectToRename(null);
-    setRenameProjectName('');
-    setRenameError('');
-  };
-
-  const handleCreateExampleProject = async () => {
-      try {
-      // Use document.baseURI for reliable resolution in all environments
-      // (file:// in Electron prod, http:// in dev/web)
-      const baseUrl = new URL('./', document.baseURI).href;
-      
-      const res = await fetch(`${baseUrl}assets/Example_Project/Project.json`);
-      if (!res.ok) throw new Error('Could not load Example Project');
-      const project = await res.json();
-      
-      const adapter = getStorageAdapter();
-      const assetsBaseUrl = `${baseUrl}assets/Example_Project/`;
-
-      // 1. Process Assets and 2. Cover Image, all fetched concurrently
-      const assetPromises = (project.assets || []).map(async (asset: any) => {
-          if (asset.url && !asset.url.startsWith('data:')) {
-             const assetRes = await fetch(assetsBaseUrl + asset.url);
-             if (assetRes.ok) {
-                 const blob = await assetRes.blob();
-                 // Save with preferredId = asset.id to maintain link
-                 await adapter.saveAsset(blob, asset.id);
-                 // Clear URL as it is now managed by storage
-                 asset.url = '';
-             }
-          }
-      });
-      // The cover is stored as a thumbnail-sized data URL; the shipped file is
-      // a full-resolution PNG.
-      const coverPromise = (async () => {
-          if (!project.coverImage || project.coverImage.startsWith('data:')) return;
-          const coverRes = await fetch(assetsBaseUrl + project.coverImage);
-          project.coverImage = coverRes.ok ? await shrinkCoverImage(await coverRes.blob()) : '';
-      })();
-      await Promise.all([...assetPromises, coverPromise]);
-
-      // 3. Process Embedded Images in Nodes
-      // These are problematic. They point to `assets/...`. 
-      // We should ideally extract them and save them as assets, then replace src with generic ID-based URL?
-      // Or if they are simple generic images, maybe just base64 them?
-      // Base64 is easiest to ensure they work everywhere immediately.
-      for (const board of project.boards || []) {
-        for (const node of board.nodes || []) {
-          if (node.data && typeof node.data.content === 'string') {
-             // scan for src="assets/..."
-             const regex = /src=["'](assets\/[^"']+)["']/g;
-             let content = node.data.content;
-             let match;
-             // We need to async replace.
-             // Simplest way: find all matches, fetch them, convert to base64, replace.
-             const replacements: {match: string, replacement: string}[] = [];
-             
-             while ((match = regex.exec(content)) !== null) {
-                 const fullMatch = match[0];
-                 const relativePath = match[1];
-                 try {
-                     const imgRes = await fetch(assetsBaseUrl + relativePath);
-                     if (imgRes.ok) {
-                         const blob = await imgRes.blob();
-                         const base64 = await new Promise<string>((resolve) => {
-                             const reader = new FileReader();
-                             reader.onload = () => resolve(reader.result as string);
-                             reader.readAsDataURL(blob);
-                         });
-                         replacements.push({ match: fullMatch, replacement: `src="${base64}"` });
-                     }
-                 } catch (e) {
-                     console.warn('Failed to embed example image', relativePath);
-                 }
-             }
-             
-             for (const rep of replacements) {
-                 content = content.replace(rep.match, rep.replacement);
-             }
-             node.data.content = content;
-          }
-        }
-      }
-
-      // Ensure unique name
-      let newName = project.name || 'Example Project';
-      let counter = 1;
-      while (await checkProjectNameExists(newName)) {
-        newName = `Example Project (${counter++})`;
-      }
-      const newProject = {
-        ...project,
-        id: crypto.randomUUID(),
-        name: newName,
-      };
-      await saveProject(newProject);
-      await loadProjects();
-    } catch (err) {
-      alert('Failed to add Example Project: ' + err);
-    }
-  };
-
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const isZip = file.name.toLowerCase().endsWith('.zip');
-
-    if (isZip) {
-      importZipProject(file)
-        .then(() => loadProjects())
-        .catch((err) => {
-        console.error('[Dashboard] Zip import failed', err);
-        alert('Failed to import project: ' + err);
-        });
-    } else {
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        try {
-          const importedProject = JSON.parse(event.target?.result as string) as Project;
-          await finalizeAndSaveImportedProject(importedProject);
-          await loadProjects();
-        } catch (err) {
-          alert('Failed to import project: ' + err);
-        }
-      };
-      reader.readAsText(file);
-    }
-
-    // Allow re-importing the same file after this run
-    e.target.value = '';
-  };
-
-  const handleCoverImageUpdate = async (projectId: string, file: File) => {
+  const actionsFor = (p: ProjectSummary) => ({
+    onOpen: () => open(p.id),
+    onRename: () => setRenamingId(p.id),
+    onDuplicate: () => duplicate(p),
+    onExport: () => exportJson(p),
+    onChangeCover: async (file: File) => {
       const coverImage = await shrinkCoverImage(file);
-      // Needs the full project (a summary only has id/name/counts/thumbnail)
-      // to re-save without dropping its content.
-      const project = await loadProject(projectId);
-      if (project) {
-          await saveProject({ ...project, coverImage });
-          loadProjects();
-      }
+      await update(p.id, (proj) => ({ ...proj, coverImage }));
+    },
+    onRemoveCover: p.coverImage ? () => update(p.id, (proj) => ({ ...proj, coverImage: undefined })) : undefined,
+    onDelete: () => setDeleteTarget(p),
+  });
+
+  // Arrow keys move between stories; F2 renames, Delete deletes.
+  const onListKeyDown = (e: React.KeyboardEvent) => {
+    const target = e.target as HTMLElement;
+    const index = target.dataset.projectIndex;
+    if (index === undefined) return;
+    const i = Number(index);
+    const items = [...(listRef.current?.querySelectorAll<HTMLElement>('[data-project-index]') || [])];
+    const columns = view === 'grid' ? items.filter((el) => el.offsetTop === items[0]?.offsetTop).length || 1 : 1;
+    const move = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: columns, ArrowUp: -columns }[e.key as string];
+    if (move !== undefined) {
+      e.preventDefault();
+      items[Math.max(0, Math.min(items.length - 1, i + move))]?.focus();
+    } else if (e.key === 'F2') {
+      e.preventDefault();
+      setRenamingId(visible[i]?.id ?? null);
+    } else if (e.key === 'Delete') {
+      e.preventDefault();
+      if (visible[i]) setDeleteTarget(visible[i]);
+    }
   };
+
+  // ---------- render ----------
+
+  const hasProjects = !!projects && projects.length > 0;
+  const Item = view === 'grid' ? ProjectCard : ProjectRow;
+  const itemProps = (p: ProjectSummary, index: number): ProjectItemProps => ({
+    project: p,
+    index,
+    renaming: renamingId === p.id,
+    onRenameSubmit: (name) => rename(p, name),
+    onRenameDone: () => setRenamingId(null),
+    actions: actionsFor(p),
+  });
 
   return (
-    <div className="min-h-screen bg-[#0c0c0f] text-zinc-100 px-6 py-10 relative overflow-hidden">
-      <DashboardBackground />
-      
-      <div className="max-w-6xl mx-auto relative z-10">
-        <header
-          className="flex flex-col gap-4 mb-10 rounded-2xl border border-white/15 bg-gradient-to-br from-white/12 via-white/8 to-white/4 backdrop-blur-xl shadow-[0_18px_60px_rgba(0,0,0,0.45)] ring-1 ring-white/10 px-5 py-6 sm:px-6"
-          style={{ boxShadow: '0 18px 60px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -1px 0 rgba(255,255,255,0.04)' }}
-        >
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <img src={nodetaleLogo} alt="Nodetale" className="h-12 w-auto drop-shadow-[0_6px_20px_rgba(0,0,0,0.35)]" />
-            <div className="flex gap-2 sm:gap-3">
-              <label className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg cursor-pointer transition-colors text-sm font-medium text-zinc-200">
-                <Upload size={16} />
-                Import
-                <input type="file" accept=".json,.zip" onChange={handleImport} className="hidden" />
-              </label>
-              <div className="relative" ref={dropdownRef}>
-                <button 
-                  onClick={() => setShowCreateDropdown(!showCreateDropdown)}
-                  className="flex items-center gap-2 px-5 py-2 bg-orange-500 hover:bg-orange-400 text-black font-semibold rounded-lg transition-colors shadow-sm"
-                >
-                  <Plus size={18} />
-                  Create Project
-                  <ChevronDown size={16} className={`transition-transform ${showCreateDropdown ? 'rotate-180' : ''}`} />
-                </button>
-                {showCreateDropdown && (
-                  <div className="absolute top-full mt-2 right-0 bg-[#1a1a1f] border border-white/15 rounded-lg shadow-lg py-2 min-w-[200px] z-50">
-                    <button
-                      onClick={() => {
-                        setIsCreating(true);
-                        setShowCreateDropdown(false);
-                      }}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-colors text-zinc-200"
-                    >
-                      <Plus size={16} />
-                      New Project
-                    </button>
-                    <button
-                      onClick={() => {
-                        handleCreateExampleProject();
-                        setShowCreateDropdown(false);
-                      }}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-colors text-zinc-200"
-                    >
-                      <Sparkles size={16} />
-                      Example Project
-                    </button>
-                  </div>
-                )}
+    <div className="min-h-screen bg-nt-bg text-nt-ink">
+      <Toolbar
+        ref={searchRef}
+        query={query}
+        onQuery={setQuery}
+        sort={sort}
+        onSort={setSort}
+        view={view}
+        onView={setView}
+        showCollectionControls={hasProjects}
+        onImport={importFile}
+        onNewBlank={() => setCreating(true)}
+        onNewExample={addExample}
+        exampleBusy={exampleBusy}
+      />
+
+      <div role="status" aria-live="polite" className="mx-auto max-w-7xl px-4 sm:px-6">
+        {status && (
+          <div className={`mt-4 flex items-center gap-3 rounded-md border px-3 py-2 text-sm ${
+            status.tone === 'error' ? 'border-nt-danger/50 bg-nt-danger/10 text-nt-ink' : 'border-nt-line bg-nt-surface text-nt-ink-2'
+          }`}>
+            <span className="flex-1">{status.text}</span>
+            <button type="button" onClick={() => setStatus(null)} aria-label="Dismiss" className={`rounded p-1 text-nt-ink-3 hover:text-nt-ink ${focusRing}`}>
+              <X size={14} />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {projects === null ? (
+        <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6" aria-busy="true" aria-label="Loading stories">
+          <div className="mb-6 h-6 w-32 animate-pulse rounded bg-nt-surface" />
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-5">
+            {Array.from({ length: 6 }, (_, i) => (
+              <div key={i} className="overflow-hidden rounded-lg border border-nt-line bg-nt-surface">
+                <div className="aspect-[16/10] animate-pulse bg-nt-raised/40" />
+                <div className="space-y-2 p-4">
+                  <div className="h-3.5 w-2/3 animate-pulse rounded bg-nt-raised" />
+                  <div className="h-3 w-1/2 animate-pulse rounded bg-nt-raised/70" />
+                </div>
               </div>
+            ))}
+          </div>
+        </main>
+      ) : !hasProjects ? (
+        <main>
+          <FirstRun onExample={addExample} exampleBusy={exampleBusy} onBlank={() => setCreating(true)} onImport={() => importRef.current?.click()} />
+          <input ref={importRef} type="file" accept=".json,.zip" className="hidden" tabIndex={-1}
+            onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) importFile(f); }} />
+        </main>
+      ) : (
+        <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+          <div className="mb-5 flex items-baseline gap-3">
+            <h1 className="text-lg font-semibold text-nt-ink">Stories</h1>
+            <span className="text-sm text-nt-ink-3">
+              {query ? `${visible.length} of ${projects.length}` : projects.length}
+            </span>
+          </div>
+
+          {visible.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-nt-line px-6 py-12 text-center">
+              <p className="text-sm text-nt-ink-2">No stories match “{query}”.</p>
+              <button type="button" className={`${buttonSecondary} mt-4`} onClick={() => setQuery('')}>Clear search</button>
             </div>
-          </div>
-        </header>
-
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 px-1">
-          <div>
-            <h1 className="text-2xl font-semibold text-white tracking-tight">My Projects</h1>
-            <p className="text-zinc-500 text-sm mt-1">Clean, aligned overview of your interactive stories.</p>
-          </div>
-          <span className="text-xs text-zinc-500 bg-white/5 px-3 py-1 rounded-full border border-white/10 self-start sm:self-auto">{projects.length} project{projects.length === 1 ? '' : 's'}</span>
-        </div>
-
-        <CreateProjectModal 
-            isOpen={isCreating}
-            onClose={() => setIsCreating(false)}
-            onSubmit={handleCreateProject}
-            projectName={newProjectName}
-            setProjectName={setNewProjectName}
-            projectImage={newProjectImage}
-            setProjectImage={setNewProjectImage}
-            error={error}
-            setError={setError}
-        />
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {projects.map((project) => (
-            <ProjectCard 
-                key={project.id}
-                project={project}
-                onClick={() => navigate(`/${project.name}`)}
-                onDelete={(e) => handleDelete(project.id, e)}
-                onDuplicate={(e) => handleDuplicate(project, e)}
-              onRename={(e) => handleRename(project, e)}
-                onCoverImageUpdate={(file) => handleCoverImageUpdate(project.id, file)}
-                isMenuOpen={activeMenu === project.id}
-                onToggleMenu={(e) => {
-                    e.stopPropagation();
-                    setActiveMenu(activeMenu === project.id ? null : project.id);
-                }}
-            />
-          ))}
-          
-          {projects.length === 0 && (
-            <div className="col-span-full flex flex-col items-center justify-center py-28 text-zinc-500 border border-dashed border-white/10 rounded-2xl bg-white/5 backdrop-blur-sm">
-              <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-5">
-                  <Sparkles size={28} className="text-orange-400/70" />
-              </div>
-              <h3 className="text-xl font-semibold text-zinc-200 mb-2">No projects yet</h3>
-              <p className="text-zinc-500 mb-8 max-w-md text-center">
-                  Start a fresh board or import an existing narrative to see it here.
-              </p>
-              <button 
-                  onClick={() => setIsCreating(true)}
-                  className="px-5 py-2.5 bg-orange-500 hover:bg-orange-400 text-black font-semibold rounded-lg transition-colors flex items-center gap-2"
-              >
-                  <Plus size={18} /> Create first project
-              </button>
+          ) : (
+            <div ref={listRef} onKeyDown={onListKeyDown}>
+              {view === 'grid' ? (
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-5">
+                  {visible.map((p, i) => <Item key={p.id} {...itemProps(p, i)} />)}
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-lg border border-nt-line">
+                  <div aria-hidden className="hidden grid-cols-[88px_minmax(0,2fr)_minmax(0,1.4fr)_9rem_auto] gap-4 border-b border-nt-line bg-nt-surface px-3 py-2 text-xs font-medium text-nt-ink-3 md:grid">
+                    <span />
+                    <span>Name · boards</span>
+                    <span>Size</span>
+                    <span>Last edited</span>
+                    <span className="w-8" />
+                  </div>
+                  <ul>{visible.map((p, i) => <Item key={p.id} {...itemProps(p, i)} />)}</ul>
+                </div>
+              )}
             </div>
           )}
-        </div>
+        </main>
+      )}
 
-        <DeleteProjectModal 
-            isOpen={showDeleteModal}
-            onClose={() => setShowDeleteModal(false)}
-            onConfirm={confirmDelete}
-        />
-
-        <RenameProjectModal 
-            isOpen={showRenameModal}
-            onClose={closeRenameModal}
-            onSubmit={submitRename}
-            projectName={renameProjectName}
-            setProjectName={setRenameProjectName}
-            error={renameError}
-            setError={setRenameError}
-        />
-      </div>
+      <CreateProjectModal open={creating} onClose={() => setCreating(false)} onCreate={createBlank} />
+      <DeleteProjectModal projectName={deleteTarget?.name ?? null} onClose={() => setDeleteTarget(null)} onConfirm={confirmDelete} />
     </div>
   );
-};
-
-// -------- Helpers for imports --------
-
-const EXTENSION_MIME: Record<string, string> = {
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  png: 'image/png',
-  gif: 'image/gif',
-  webp: 'image/webp',
-  svg: 'image/svg+xml',
-  mp3: 'audio/mpeg',
-  wav: 'audio/wav',
-  ogg: 'audio/ogg',
-  webm: 'video/webm',
-  mp4: 'video/mp4',
-  mov: 'video/quicktime',
-  m4a: 'audio/mp4',
-};
-
-const getMimeFromPath = (path: string) => {
-  const ext = path.split('.').pop()?.toLowerCase() || '';
-  return EXTENSION_MIME[ext] || 'application/octet-stream';
-};
-
-const readZipEntryAsDataUrl = async (zip: JSZip, path: string): Promise<string | null> => {
-  const normalized = path.startsWith('/') ? path.slice(1) : path;
-  const file = zip.file(normalized);
-  if (!file) return null;
-  const base64 = await file.async('base64');
-  const mime = getMimeFromPath(normalized);
-  return `data:${mime};base64,${base64}`;
-};
-
-const rehydrateAssetsFromZip = async (project: Project, zip: JSZip) => {
-  const adapter = getStorageAdapter();
-  // Parallel: each asset is an independent unzip + IndexedDB write.
-  await Promise.all(project.assets.map(async (asset) => {
-    if (asset.url && !asset.url.startsWith('data:')) {
-      // It's a path in the zip (e.g. "assets/foo.png")
-      const normalized = asset.url.startsWith('/') ? asset.url.slice(1) : asset.url;
-      const file = zip.file(normalized);
-      if (file) {
-        // Read as Blob for web or ArrayBuffer for generic usage (adapter handles Blob)
-        const blob = await file.async('blob');
-        // Save using the SAME ID to preserve references in nodes
-        await adapter.saveAsset(blob, asset.id);
-        asset.url = ''; // Clear URL in model as it's now managed by storage
-      }
-    }
-  }));
-};
-
-const rehydrateCoverFromZip = async (project: Project, zip: JSZip) => {
-  if (project.coverImage && !project.coverImage.startsWith('data:')) {
-    const normalized = project.coverImage.startsWith('/') ? project.coverImage.slice(1) : project.coverImage;
-    const file = zip.file(normalized);
-    project.coverImage = file ? await shrinkCoverImage(await file.async('blob')) : '';
-  }
-};
-
-const rehydrateEmbeddedImages = async (project: Project, zip: JSZip) => {
-  const embeddedRegex = /src=["'](embedded\/[^"']+)["']/g;
-
-  for (const board of project.boards) {
-    for (const node of board.nodes) {
-      const nodeData = node.data as { content?: string };
-      const content = nodeData?.content;
-      if (typeof content !== 'string') continue;
-
-      let newContent = content;
-      let match: RegExpExecArray | null;
-      while ((match = embeddedRegex.exec(content)) !== null) {
-        const relPath = match[1];
-        const dataUrl = await readZipEntryAsDataUrl(zip, relPath);
-        if (dataUrl) {
-          newContent = newContent.replace(match[0], `src="${dataUrl}"`);
-        }
-      }
-      nodeData.content = newContent;
-    }
-  }
-};
-
-const importZipProject = async (file: File) => {
-  const zip = await JSZip.loadAsync(file);
-  const projectFile = zip.file('Project.json');
-  if (!projectFile) throw new Error('Project.json not found in ZIP');
-
-  const projectJson = await projectFile.async('string');
-  const importedProject = JSON.parse(projectJson) as Project;
-
-  if (!importedProject.boards || !importedProject.name) {
-    throw new Error('Invalid project format');
-  }
-
-  await Promise.all([
-    rehydrateAssetsFromZip(importedProject, zip),
-    rehydrateCoverFromZip(importedProject, zip),
-    rehydrateEmbeddedImages(importedProject, zip),
-  ]);
-
-  await finalizeAndSaveImportedProject(importedProject);
-};
-
-const finalizeAndSaveImportedProject = async (importedProject: Project) => {
-  // Ensure unique name without losing board/node references
-  let newName = importedProject.name;
-  if (await checkProjectNameExists(newName)) {
-    newName = `${newName} (Imported)`;
-    let counter = 1;
-    while (await checkProjectNameExists(newName)) {
-      counter++;
-      newName = `${importedProject.name} (Imported ${counter})`;
-    }
-  }
-
-  const newProject: Project = {
-    ...importedProject,
-    id: crypto.randomUUID(),
-    name: newName,
-  };
-
-  await saveProject(newProject);
-  return newProject;
-};
-
-
+}
