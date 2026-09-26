@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Project, AppNode } from '../types';
 import { INITIAL_PROJECT } from '../constants';
 import { saveProject, loadProject } from '../services/storageService';
-import { Node, Edge } from 'reactflow';
+import { Node, Edge, MarkerType } from 'reactflow';
+import { withDefaultZIndex } from '../core/nodes/nodeRegistry';
 import { computeBoardHash, hashString } from '../utils/contentHash';
 
 const isDev = import.meta.env.DEV;
@@ -23,16 +24,25 @@ const normalizeNodeDimensions = (node: Node): Node => {
   return { ...node, ...(Object.keys(style).length ? { style } : {}) };
 };
 
-// Node components edit via ReactFlow's setNodes, which (in controlled mode)
-// round-trips the store's nodes — i.e. the nodesWithContext wrappers carrying
-// the whole project's variables/assets in `data` — back into state. Strip them
-// before anything is persisted so each node doesn't store a project-wide copy.
+// Saves from before EditorContext copied the project's variables/assets into
+// every node's data; drop those copies when such a board is loaded.
 const stripContext = (nodes: Node[]): AppNode[] =>
   nodes.map(n => {
     if (!n.data || !('variables' in n.data || 'projectAssets' in n.data)) return n as AppNode;
     const { variables: _v, projectAssets: _a, ...data } = n.data;
     return { ...n, data } as AppNode;
   });
+
+// Brings a stored board up to what the editor expects, once at load (these used
+// to be enforced by per-node mount effects and a forever-running edge effect).
+const normalizeBoard = (nodes: Node[], edges: Edge[]): { nodes: Node[]; edges: Edge[] } => ({
+  nodes: stripContext(nodes).map(n => normalizeNodeDimensions(withDefaultZIndex(n as AppNode))),
+  edges: edges.map(e =>
+    e.type === 'floating' && (e.animated || !e.markerEnd)
+      ? { ...e, animated: false, markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 20 } }
+      : e
+  ),
+});
 
 const projectMetaHash = (project: Project): string =>
   hashString(JSON.stringify({
@@ -41,6 +51,7 @@ const projectMetaHash = (project: Project): string =>
     assets: project.assets,
     folders: project.folders,
     coverImage: project.coverImage,
+    simulationPresets: project.simulationPresets,
   }));
 
 const computeDirtyHash = (nodes: Node[], edges: Edge[], project: Project): string =>
@@ -82,11 +93,11 @@ export function useProjectState(
 
           const activeBoard = savedProject.boards.find(b => b.id === savedProject.activeBoardId) || savedProject.boards[0];
           if (activeBoard) {
-            const normalizedNodes = stripContext(activeBoard.nodes).map(n => normalizeNodeDimensions(n as any));
-            setNodes(normalizedNodes as any);
-            setEdges(activeBoard.edges);
+            const board = normalizeBoard(activeBoard.nodes, activeBoard.edges);
+            setNodes(board.nodes);
+            setEdges(board.edges);
             hasLoadedInitialDataRef.current = true;
-            lastSavedHashRef.current = computeDirtyHash(normalizedNodes, activeBoard.edges, savedProject);
+            lastSavedHashRef.current = computeDirtyHash(board.nodes, board.edges, savedProject);
           }
           prevActiveBoardIdRef.current = savedProject.activeBoardId;
         } else {
@@ -120,7 +131,7 @@ export function useProjectState(
             const newBoards = [...prev.boards];
             newBoards[boardIndex] = {
                 ...newBoards[boardIndex],
-                nodes: stripContext(nodesToSave),
+                nodes: nodesToSave as AppNode[],
                 edges: edgesToSave
             };
 
@@ -131,16 +142,16 @@ export function useProjectState(
 
         const activeBoard = project.boards.find(b => b.id === project.activeBoardId) || project.boards[0];
         if (activeBoard) {
-          const normalizedNodes = stripContext(activeBoard.nodes).map(n => normalizeNodeDimensions(n as any));
-          setNodes(normalizedNodes as any);
-          setEdges(activeBoard.edges);
-          lastSavedHashRef.current = computeDirtyHash(normalizedNodes, activeBoard.edges, project);
+          const board = normalizeBoard(activeBoard.nodes, activeBoard.edges);
+          setNodes(board.nodes);
+          setEdges(board.edges);
+          lastSavedHashRef.current = computeDirtyHash(board.nodes, board.edges, project);
         }
 
         prevActiveBoardIdRef.current = project.activeBoardId;
     }
 
-  }, [project.activeBoardId, isInitializing, setNodes, setEdges]);
+  }, [project, isInitializing, setNodes, setEdges]);
 
   useEffect(() => {
     if (isInitializing) return;
@@ -160,7 +171,7 @@ export function useProjectState(
           const newBoards = [...prev.boards];
           newBoards[boardIndex] = {
               ...newBoards[boardIndex],
-              nodes: stripContext(nodesToSave),
+              nodes: nodesToSave as AppNode[],
               edges: edgesToSave
           };
 
@@ -196,7 +207,7 @@ export function useProjectState(
         const newBoards = [...prev.boards];
         newBoards[boardIndex] = {
             ...newBoards[boardIndex],
-            nodes: stripContext(nodesToSave),
+            nodes: nodesToSave as AppNode[],
             edges: edgesToSave
         };
 
@@ -208,5 +219,20 @@ export function useProjectState(
         return newProject;
     });
   }, [isInitializing]);
-  return { project, setProject, isInitializing, lastSaved, saveNow };
+  // The project with the active board replaced by the live canvas. `project`
+  // itself only picks up canvas edits on autosave (2.5s later), so anything
+  // reading it on demand (Play, Export) must use this instead.
+  const projectRef = useRef(project);
+  projectRef.current = project;
+  const getLiveProject = useCallback((): Project => {
+    const current = projectRef.current;
+    return {
+      ...current,
+      boards: current.boards.map(b =>
+        b.id === current.activeBoardId ? { ...b, nodes: nodesRef.current as AppNode[], edges: edgesRef.current } : b
+      ),
+    };
+  }, []);
+
+  return { project, setProject, isInitializing, lastSaved, saveNow, getLiveProject };
 }

@@ -52,13 +52,11 @@ export interface Branch {
   condition: string;
 }
 
-// variables/projectAssets are injected at render/runtime time, never persisted.
+// Project variables/assets reach node components through EditorContext, not
+// node data (saves from before that may still carry copies; stripped at load).
 export interface BaseNodeData {
   label: string;
   color?: string;
-  variables?: Variable[];
-  projectAssets?: Asset[];
-  connectedHandles?: string[];
 }
 
 export interface ElementNodeData extends BaseNodeData {
@@ -107,10 +105,6 @@ export const isConditionNode = (node: AppNode): node is AppNode & { data: Condit
   node.type === 'conditionNode';
 export const isJumpNode = (node: AppNode): node is AppNode & { data: JumpNodeData } =>
   node.type === 'jumpNode';
-export const isCommentNode = (node: AppNode): node is AppNode & { data: CommentNodeData } =>
-  node.type === 'commentNode';
-export const isSectionNode = (node: AppNode): node is AppNode & { data: SectionNodeData } =>
-  node.type === 'sectionNode';
 export const isAnnotationNode = (node: AppNode): node is AppNode & { data: AnnotationNodeData } =>
   node.type === 'annotationNode';
 
@@ -131,15 +125,20 @@ export interface Project {
   folders: Folder[];
   coverImage?: string;
   modifiedAt?: number;
+  /** Named starting-value scenarios for the Variables simulator. */
+  simulationPresets?: SimulationPreset[];
+}
+
+export interface SimulationPreset {
+  id: string;
+  name: string;
+  /** Overrides by variable name; variables not listed use their declared value. */
+  values: Record<string, unknown>;
 }
 
 // Lightweight metadata for listing UI (e.g. the Dashboard) without loading
 // each project's full boards/nodes/edges.
-export interface ProjectSummary {
-  id: string;
-  name: string;
-  modifiedAt?: number;
-  coverImage?: string;
-  boardCount: number;
-  assetCount: number;
-}
+// Built by utils/projectSummary (shared with the Electron main process).
+// stats/thumbnail are optional: summaries saved before they existed lack them
+// until the store upgrade (web) or index rebuild (Electron) backfills them.
+export type { ProjectSummaryData as ProjectSummary, ProjectStats, ProjectThumbnail } from './utils/projectSummary';

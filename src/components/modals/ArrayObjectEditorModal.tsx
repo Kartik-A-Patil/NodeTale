@@ -228,7 +228,7 @@ export const ArrayObjectEditorModal: React.FC<ArrayObjectEditorModalProps> = ({
                     <p className="text-xs text-zinc-600 mt-1">Click "Add Key" to create one</p>
                   </div>
                 ) : (
-                  Object.entries((value as ObjectValue).keys).map(([key, meta], idx) => (
+                  Object.entries((value as ObjectValue).keys).map(([key, meta]) => (
                     <div key={key} className="space-y-2 p-4 group border-b border-zinc-700/50 last:border-0">
                       <div className="flex items-center gap-2.5">
                         <input

@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Asset, AudioSettings } from '../../types';
-import { X, Play, Pause, RotateCcw, Clock, FileAudio, Loader2 as Loader } from 'lucide-react';
+import { X, Play, Pause, RotateCcw, Clock, Loader2 as Loader } from 'lucide-react';
 import { useAssetUrl } from '../../hooks/useAssetUrl';
 
 interface AudioSettingsModalProps {

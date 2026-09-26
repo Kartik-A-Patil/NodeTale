@@ -1,7 +1,7 @@
 import React from 'react';
 import { Asset } from '../types';
 import { useAssetUrl } from '../hooks/useAssetUrl';
-import { FileVideo, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { FileVideo, Loader2 } from 'lucide-react';
 
 interface AssetPreviewProps {
   asset: Asset;
@@ -10,7 +10,7 @@ interface AssetPreviewProps {
 }
 
 export const AssetPreview: React.FC<AssetPreviewProps> = ({ asset, className, imgClassName }) => {
-  const { url: cachedUrl, isLoading, error } = useAssetUrl(asset.id, asset.type);
+  const { url: cachedUrl, isLoading } = useAssetUrl(asset.id, asset.type);
   
   // Prefer cached URL (Storage), fallback to asset.url (Legacy/Remote)
   const displayUrl = cachedUrl || asset.url;

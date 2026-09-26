@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Variable, VariableType, ArrayValue, ObjectValue } from "../../types";
-import { ChevronRight, X } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 
 interface DebugOverlayProps {
   variables: Variable[];

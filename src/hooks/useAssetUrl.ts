@@ -39,7 +39,7 @@ export const useAssetUrl = (assetId: string | null | undefined, typeHint?: strin
         }
         currentUrlRef.current = result;
         setUrl(result);
-      } catch (err) {
+      } catch {
         if (!cancelled && retryCount < 1) {
           retryCount++;
           setTimeout(load, 500);

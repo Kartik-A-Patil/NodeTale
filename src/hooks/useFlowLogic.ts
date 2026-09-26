@@ -61,7 +61,7 @@ export function useFlowLogic(projectIdOrName?: string) {
     }));
   }, []);
 
-    const { project, setProject, isInitializing, lastSaved, saveNow } = useProjectState(nodes, edges, setNodes, setEdges, projectIdOrName);
+    const { project, setProject, isInitializing, lastSaved, saveNow, getLiveProject } = useProjectState(nodes, edges, setNodes, setEdges, projectIdOrName);
 
     // Clipboard for copy/paste (stores nodes + edges snapshot)
     const clipboardRef = useRef<{ nodes: AppNode[]; edges: Edge[] } | null>(null);
@@ -112,55 +112,18 @@ export function useFlowLogic(projectIdOrName?: string) {
         execute(addElementsCommand(ctx, newNodes, newEdges, true));
     }, [ctx, execute]);
 
-  // Migration for edge design
-  useEffect(() => {
-      if (!isInitializing && edges.length > 0) {
-          const needsUpdate = edges.some(e => e.type === 'floating' && (e.animated || !e.markerEnd));
-          if (needsUpdate) {
-              setEdges(eds => eds.map(e => {
-                  if (e.type === 'floating') {
-                      return {
-                          ...e,
-                          animated: false,
-                          markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 20 }
-                      };
-                  }
-                  return e;
-              }));
-          }
-      }
-  }, [isInitializing, edges, setEdges]);
-
-  // Cache for memoized nodes
-  const nodeWrapperCache = useRef(new WeakMap<AppNode, AppNode>());
-
-  // Inject variables into nodes for highlighting
-  const nodesWithContext = useMemo(() => {
-    return nodes.map(node => {
-      const cached = nodeWrapperCache.current.get(node as AppNode);
-      if (cached && cached.data.variables === project.variables) {
-        return cached;
-      }
-
-      const newNode = {
-        ...node,
-        data: {
-          ...node.data,
-          variables: project.variables,
-          projectAssets: project.assets
-        }
-      };
-      nodeWrapperCache.current.set(node as AppNode, newNode as AppNode);
-      return newNode;
-    });
-  }, [nodes, project.variables]);
-
-  const updateNodeData = useCallback((id: string, data: any) => {
-    execute(updateNodeCommand(ctx, id, (n) => ({ ...n, data: { ...n.data, ...data } })));
+  // mergeKey: pass `${id}:${field}` for continuous edits (typing) so they undo
+  // as one step — see useCommandHistory.
+  const updateNodeData = useCallback((id: string, data: Record<string, unknown>, mergeKey?: string) => {
+    execute(updateNodeCommand(ctx, id, (n) => ({ ...n, data: { ...n.data, ...data } }), mergeKey));
   }, [ctx, execute]);
 
-  const updateNode = useCallback((id: string, patch: Partial<AppNode>) => {
-      execute(updateNodeCommand(ctx, id, (n) => ({ ...n, ...patch })));
+  const updateNode = useCallback((id: string, patch: Partial<AppNode>, mergeKey?: string) => {
+      execute(updateNodeCommand(ctx, id, (n) => ({ ...n, ...patch }) as AppNode, mergeKey));
+  }, [ctx, execute]);
+
+  const updateEdge = useCallback((id: string, applyPatch: (edge: Edge) => Edge, mergeKey?: string) => {
+      execute(updateEdgeCommand(ctx, id, applyPatch, mergeKey));
   }, [ctx, execute]);
 
   const updateEdgeData = useCallback((id: string, data: any) => {
@@ -244,7 +207,6 @@ export function useFlowLogic(projectIdOrName?: string) {
   return {
     nodes,
     edges,
-    nodesWithContext,
     setNodes,
     setEdges,
     onNodesChange,
@@ -256,6 +218,7 @@ export function useFlowLogic(projectIdOrName?: string) {
     deleteEdge,
     updateNodeData,
     updateNode,
+    updateEdge,
     updateEdgeData,
     updateEdgeColor,
     updateEdgeLabel,
@@ -264,6 +227,7 @@ export function useFlowLogic(projectIdOrName?: string) {
     isInitializing,
     lastSaved,
     saveNow,
+    getLiveProject,
     copySelected,
     pasteClipboard,
     jumpClipboard,

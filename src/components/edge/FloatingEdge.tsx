@@ -1,22 +1,64 @@
-import { useCallback, useMemo } from 'react';
-import { useStore, getBezierPath, getStraightPath, getSmoothStepPath, EdgeProps, Node, Position, EdgeLabelRenderer, useReactFlow } from 'reactflow';
+import { memo, useCallback, useMemo } from 'react';
+import { useStore, getBezierPath, getStraightPath, getSmoothStepPath, EdgeProps, Node, Position, EdgeLabelRenderer, ReactFlowState } from 'reactflow';
 import { X } from 'lucide-react';
-import { getEdgeParams } from '../../utils/EdgeUtils';
+import { getEdgeParams, HandlePoint, NodeGeometry } from '../../utils/EdgeUtils';
+import { Branch } from '../../types';
+import { useEditor } from '../../editor/EditorContext';
 
-function FloatingEdge({ id, source, target, sourceHandleId, targetHandleId, markerEnd, style, selected, data, label, labelStyle }: EdgeProps) {
-  const sourceNode = useStore(useCallback((store) => store.nodeInternals.get(source), [source]));
-  const targetNode = useStore(useCallback((store) => store.nodeInternals.get(target), [target]));
-  const { setEdges } = useReactFlow();
+type EndpointGeometry = NodeGeometry & { type?: string; branches?: Branch[] };
+
+const toGeometry = (node: Node | undefined): EndpointGeometry | null =>
+  node
+    ? {
+        type: node.type,
+        x: node.positionAbsolute?.x ?? 0,
+        y: node.positionAbsolute?.y ?? 0,
+        width: node.width ?? 0,
+        height: node.height ?? 0,
+        // Only condition sources route by branch (see getBranchHandle)
+        branches: node.type === 'conditionNode' ? node.data?.branches : undefined,
+      }
+    : null;
+
+const sameGeometry = (a: EndpointGeometry | null, b: EndpointGeometry | null) =>
+  a === b ||
+  (!!a && !!b && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height &&
+    a.type === b.type && a.branches === b.branches);
+
+const DEFAULT_BRANCHES: Branch[] = [
+  { id: 'true', label: 'If', condition: 'true' },
+  { id: 'false', label: 'Else', condition: '' },
+];
+
+// Condition nodes are the one source with fixed handles: one per branch row on
+// the right edge. Every other endpoint floats to whichever side faces the other node.
+const getBranchHandle = (node: EndpointGeometry, handleId: string | null | undefined): HandlePoint | undefined => {
+  if (node.type !== 'conditionNode') return undefined;
+  const width = node.width > 0 ? node.width : 240;
+  const branches = node.branches || DEFAULT_BRANCHES;
+  const branchIndex = branches.findIndex((b) => b.id === handleId);
+  if (branchIndex !== -1) {
+    const headerHeight = 5;
+    const rowHeight = 47;
+    return { x: node.x + width, y: node.y + headerHeight + branchIndex * rowHeight + rowHeight / 2, position: Position.Right };
+  }
+  // Fallback if branch not found
+  return { x: node.x + width, y: node.y + (node.height > 0 ? node.height : 100) / 2, position: Position.Right };
+};
+
+function FloatingEdge({ id, source, target, sourceHandleId, markerEnd, style, selected, data, label, labelStyle }: EdgeProps) {
+  // ReactFlow rebuilds every node's internals object on each nodes update, so
+  // selecting the node itself re-rendered every edge on every drag frame.
+  // Selecting just the geometry (compared field-by-field) limits re-renders
+  // to edges whose own endpoints changed.
+  const sourceNode = useStore(useCallback((s: ReactFlowState) => toGeometry(s.nodeInternals.get(source)), [source]), sameGeometry);
+  const targetNode = useStore(useCallback((s: ReactFlowState) => toGeometry(s.nodeInternals.get(target)), [target]), sameGeometry);
+  const { updateEdge } = useEditor();
 
   // Ensure label used in textarea is a string to satisfy its value prop typing
   const labelText = typeof label === 'string' ? label : '';
 
-  // Hooks must run unconditionally on every render (Rules of Hooks) — this was
-  // previously below the `!sourceNode || !targetNode` early return, so it was
-  // skipped whenever an edge's endpoint node was transiently missing (e.g.
-  // during a board switch or node deletion), which can corrupt React's hook
-  // call order for this component. labelText only depends on the `label` prop,
-  // not on sourceNode/targetNode, so it's safe to compute before the guard.
+  // Must stay above the early return below (Rules of Hooks).
   const measuredWidth = useMemo(() => {
     const text = (labelText || 'Type label..').toString();
     const lines = text.split(/\r?\n/);
@@ -33,70 +75,10 @@ function FloatingEdge({ id, source, target, sourceHandleId, targetHandleId, mark
     return null;
   }
 
-  // Helper to get handle position if node is not floating
-  const getHandlePosition = (node: Node, handleId: string | null | undefined, type: 'source' | 'target') => {
-      // Nodes should be floating for target to allow dynamic connection points (connect to any side)
-      if (['elementNode', 'componentNode', 'conditionNode', 'jumpNode'].includes(node.type || '') && type === 'target') return undefined;
-
-      // Try to get exact handle bounds first
-      const handleBounds = (node as any)[Symbol.for('__reactFlowHandleBounds')] || (node as any).handleBounds;
-      
-      if (handleBounds) {
-          const handles = type === 'source' ? handleBounds.source : handleBounds.target;
-          if (handles && handles.length > 0) {
-              const handle = handleId ? handles.find((h: any) => h.id === handleId) : handles[0];
-              if (handle) {
-                  return {
-                      x: (node.positionAbsolute?.x ?? 0) + handle.x + handle.width / 2,
-                      y: (node.positionAbsolute?.y ?? 0) + handle.y + handle.height / 2,
-                      position: handle.position
-                  };
-              }
-          }
-      }
-
-      if (node.type === 'conditionNode') {
-          if (type === 'source') {
-               // Try to calculate position based on branch index
-               const branches = (node.data && node.data.branches) || [
-                   { id: 'true', label: 'If', condition: 'true' },
-                   { id: 'false', label: 'Else', condition: '' }
-               ];
-
-               if (Array.isArray(branches)) {
-                   const branchIndex = branches.findIndex((b: any) => b.id === handleId);
-                   if (branchIndex !== -1) {
-                       const headerHeight = 5; // Header (~33px) + py-1 (4px) + border (1px)
-                       const rowHeight = 47; // h-10 is 40px
-                       const yOffset = headerHeight + (branchIndex * rowHeight) + (rowHeight / 2);
-                       return {
-                           x: (node.positionAbsolute?.x ?? 0) + ((node.width && node.width > 0) ? node.width : 240),
-                           y: (node.positionAbsolute?.y ?? 0) + yOffset,
-                           position: Position.Right
-                       };
-                   }
-               }
-
-               // Fallback if branch not found
-               return {
-                   x: (node.positionAbsolute?.x ?? 0) + ((node.width && node.width > 0) ? node.width : 240),
-                   y: (node.positionAbsolute?.y ?? 0) + ((node.height && node.height > 0) ? node.height : 100) / 2,
-                   position: Position.Right
-               };
-          }
-      }
-
-      return undefined;
-  };
-
-  const sourceHandlePos = getHandlePosition(sourceNode as unknown as Node, sourceHandleId, 'source');
-  const targetHandlePos = getHandlePosition(targetNode as unknown as Node, targetHandleId, 'target');
-
   const { sx, sy, tx, ty, sourcePos, targetPos } = getEdgeParams(
-      sourceNode as unknown as Node, 
-      targetNode as unknown as Node,
-      sourceHandlePos,
-      targetHandlePos
+      sourceNode,
+      targetNode,
+      getBranchHandle(sourceNode, sourceHandleId),
   );
 
   const pathType = data?.pathType || 'bezier';
@@ -125,15 +107,11 @@ function FloatingEdge({ id, source, target, sourceHandleId, targetHandleId, mark
   }
 
   const updateLabel = (newLabel: string) => {
-    setEdges((eds) => eds.map((e) => (e.id === id ? { ...e, label: newLabel } : e)));
+    updateEdge(id, (e) => ({ ...e, label: newLabel }), `${id}:label`);
   };
 
   const removeLabel = () => {
-    setEdges((eds) => eds.map((e) => (
-      e.id === id
-        ? { ...e, label: '', data: { ...(e.data || {}), labelEnabled: false } }
-        : e
-    )));
+    updateEdge(id, (e) => ({ ...e, label: '', data: { ...(e.data || {}), labelEnabled: false } }));
   };
 
   return (
@@ -216,4 +194,9 @@ function FloatingEdge({ id, source, target, sourceHandleId, targetHandleId, mark
   );
 }
 
-export default FloatingEdge;
+// ReactFlow also passes its own computed sourceX/targetX/... and handler props,
+// which this edge ignores (it computes floating geometry itself). Compare only
+// the props actually used, so unrelated changes don't re-render it.
+const USED_PROPS = ['id', 'source', 'target', 'sourceHandleId', 'markerEnd', 'style', 'selected', 'data', 'label', 'labelStyle'] as const;
+
+export default memo(FloatingEdge, (a, b) => USED_PROPS.every((k) => a[k] === b[k]));

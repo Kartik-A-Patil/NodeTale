@@ -1,5 +1,7 @@
 import React from 'react';
-import { Play, Download, PlusCircle, GitFork, ArrowRightCircle, MessageSquare, Copy, X, LayoutGrid, Calendar, Undo, Redo, Layout, AlertTriangle } from 'lucide-react';
+import { ViewSwitcher } from './views/ViewSwitcher';
+import { ViewMode } from './views/viewModes';
+import { Play, Download, PlusCircle, GitFork, ArrowRightCircle, MessageSquare, Copy, X, Undo, Redo, Layout, AlertTriangle } from 'lucide-react';
 
 interface TopToolbarProps {
   onAddNode: (type: 'elementNode' | 'conditionNode' | 'jumpNode' | 'commentNode' | 'sectionNode') => void;
@@ -8,8 +10,8 @@ interface TopToolbarProps {
   lastSaved: Date | null;
   jumpClipboard: { id: string; label: string } | null;
   setJumpClipboard: (val: { id: string; label: string } | null) => void;
-  viewMode: 'flow' | 'timeline';
-  onViewModeChange: (mode: 'flow' | 'timeline') => void;
+  viewMode: ViewMode;
+  onViewModeChange: (mode: ViewMode) => void;
   onUndo: () => void;
   onRedo: () => void;
   canUndo: boolean;
@@ -44,22 +46,7 @@ export const TopToolbar = React.memo(({
   return (
     <div className="h-14 bg-[#18181b] border-b border-[#27272a] flex items-center justify-between px-4 z-10 shrink-0">
       <div className="flex items-center gap-4">
-          <div className="flex bg-zinc-900/50 rounded-lg p-1 border border-zinc-800">
-            <button 
-                onClick={() => onViewModeChange('flow')}
-                className={`p-1.5 rounded-md transition-all ${viewMode === 'flow' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
-                title="Flow View"
-            >
-                <LayoutGrid size={16} />
-            </button>
-            <button 
-                onClick={() => onViewModeChange('timeline')}
-                className={`p-1.5 rounded-md transition-all ${viewMode === 'timeline' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
-                title="Timeline View"
-            >
-                <Calendar size={16} />
-            </button>
-          </div>
+          <ViewSwitcher value={viewMode} onChange={onViewModeChange} />
 
           <div className="flex bg-zinc-900/50 rounded-lg p-1 border border-zinc-800">
             <button 

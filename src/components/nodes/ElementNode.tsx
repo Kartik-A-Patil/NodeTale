@@ -3,7 +3,6 @@ import React, {
   useState,
   useRef,
   useEffect,
-  useCallback,
   useMemo,
   useDeferredValue
 } from "react";
@@ -16,47 +15,38 @@ import {
   NodeResizeControl
 } from "reactflow";
 import {
-  FileText,
-  Image as ImageIcon,
   FileAudio,
-  FileVideo,
   AlertCircle,
   RotateCcw,
   Clock
 } from "lucide-react";
-import { ElementNodeData, Variable, Asset, AudioSettings } from "../../types";
+import { ElementNodeData, Asset } from "../../types";
 import clsx from "clsx";
 import { DatePicker } from "@/components/DatePicker";
 import { RichTextEditor } from "../RichTextEditor";
 import JumpTargetBadge from "./JumpTargetBadge";
+import { sanitizeHtml } from "../../utils/html";
 import { AssetPreview } from "../AssetPreview";
 import { AudioSettingsModal } from "../modals/AudioSettingsModal";
 import {
   validateCodeSyntax,
-  validateVariableReferences,
   validateTypeAssignments
 } from "../../services/logicService";
 import Prism from "prismjs";
 import "prismjs/components/prism-javascript";
+import { nodePropsEqual } from "./nodePropsEqual";
+import { useEditor } from "../../editor/EditorContext";
 
-const sanitizeContent = (html: string) => {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html || "", "text/html");
-
-  doc.querySelectorAll("script, style").forEach((el) => el.remove());
-  doc.body.querySelectorAll("*").forEach((el) => {
-    Array.from(el.attributes).forEach((attr) => {
-      if (attr.name.toLowerCase().startsWith("on")) {
-        el.removeAttribute(attr.name);
-      }
-    });
-  });
-
-  return doc.body.innerHTML;
-};
+// Rendered (sanitized + Prism-highlighted) content by source HTML. With viewport
+// culling, nodes remount as they scroll into view; this skips re-parsing and
+// re-highlighting content that has been rendered before.
+// ponytail: FIFO cap, not LRU; plenty for a board's worth of nodes.
+const RENDER_CACHE_LIMIT = 1000;
+const renderedContentCache = new Map<string, string>();
 
 const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
-  const { setNodes } = useReactFlow();
+  const { getNode } = useReactFlow();
+  const { variables, assets: projectAssets, updateNodeData, updateNode } = useEditor();
   const connectionNodeId = useStore((state) => state.connectionNodeId);
   const isTarget = connectionNodeId && connectionNodeId !== id;
 
@@ -66,7 +56,6 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
   const [selectedAudioForConfig, setSelectedAudioForConfig] = useState<Asset | null>(
     null
   );
-  const primaryColor = data.color || "#f97316";
 
   const [hoveredSide, setHoveredSide] = useState<
     "top" | "right" | "bottom" | "left" | null
@@ -83,21 +72,21 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
       return;
     }
 
-    const sanitized = sanitizeContent(data.content);
-    target.innerHTML = sanitized;
+    const cached = renderedContentCache.get(data.content);
+    if (cached !== undefined) {
+      target.innerHTML = cached;
+      return;
+    }
+    target.innerHTML = sanitizeHtml(data.content);
     Prism.highlightAllUnder(target);
+    if (renderedContentCache.size >= RENDER_CACHE_LIMIT) {
+      renderedContentCache.delete(renderedContentCache.keys().next().value!);
+    }
+    renderedContentCache.set(data.content, target.innerHTML);
   }, [data.content, editingField]);
 
-  const getBorderClass = (
-    side: "top" | "right" | "bottom" | "left",
-    isConnected: boolean
-  ) => {
-    const isHovered = hoveredSide === side;
-    const color = isConnected
-      ? "bg-blue-400"
-      : isHovered
-      ? "bg-gray-500"
-      : "bg-transparent";
+  const getBorderClass = (side: "top" | "right" | "bottom" | "left") => {
+    const color = hoveredSide === side ? "bg-gray-500" : "bg-transparent";
     return clsx(
       "absolute transition-colors duration-200 pointer-events-none",
       color
@@ -110,18 +99,9 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
     bottom: "-bottom-[8px] left-[4px] right-[4px] h-[8px] rounded-b-lg",
     left: "top-[4px] -left-2 bottom-[4px] w-[8px] rounded-l-lg"
   };
-  const handleChange = (field: string, value: any) => {
-    setNodes((nds) =>
-      nds.map((node) => {
-        if (node.id === id) {
-          return {
-            ...node,
-            data: { ...node.data, [field]: value }
-          };
-        }
-        return node;
-      })
-    );
+  // Typing in the label/content merges into one undo step per burst.
+  const handleChange = (field: "label" | "content" | "date", value: unknown) => {
+    updateNodeData(id, { [field]: value }, field === "date" ? undefined : `${id}:${field}`);
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -134,7 +114,6 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
       const { type, id: assetId } = JSON.parse(json);
       if (type === "asset") {
         const currentAssets = data.assets || [];
-        const projectAssets = (data.projectAssets as Asset[]) || [];
         const nodeAssets = currentAssets
           .map((id) => projectAssets.find((a) => a.id === id))
           .filter((a): a is Asset => a !== undefined);
@@ -154,18 +133,10 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
         if (isVisual && hasVisual) return;
 
         // Update assets AND reset height to auto to fit new content
-        setNodes((nds) =>
-          nds.map((n) => {
-            if (n.id === id) {
-              return {
-                ...n,
-                style: { ...n.style, height: undefined },
-                data: { ...n.data, assets: [...currentAssets, assetId] }
-              };
-            }
-            return n;
-          })
-        );
+        updateNode(id, {
+          style: { ...getNode(id)?.style, height: undefined },
+          data: { ...data, assets: [...currentAssets, assetId] }
+        });
       }
     } catch (err) {
       console.error("Failed to parse drop data", err);
@@ -178,7 +149,6 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
   };
 
   // Only store asset IDs in node data
-  const projectAssets = (data.projectAssets as Asset[]) || [];
   const nodeAssetIds = data.assets || [];
   const nodeAssets = nodeAssetIds
     .map((assetId) => projectAssets.find((a) => a.id === assetId))
@@ -200,7 +170,7 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
       for (const block of doc.querySelectorAll("pre")) {
         const codeText = block.textContent || "";
         if (!validateCodeSyntax(codeText).valid) return true;
-        if (!validateTypeAssignments(codeText, data.variables || []).valid) return true;
+        if (!validateTypeAssignments(codeText, variables).valid) return true;
       }
     } catch (err) {
       // Parser error - not critical for display
@@ -208,7 +178,7 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
     }
 
     return false;
-  }, [deferredContent, data.variables]);
+  }, [deferredContent, variables]);
 
   return (
     <>
@@ -351,7 +321,6 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
                 initialValue={data.content || ""}
                 onChange={(val) => handleChange("content", val)}
                 onBlur={() => setEditingField(null)}
-                variables={data.variables}
               />
             ) : (
               <div className="relative w-full">
@@ -442,52 +411,10 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
           onMouseLeave={() => setHoveredSide(null)}
         />
 
-        {/* Visual Border Indicators */}
-        <div
-          className={clsx(
-            getBorderClass(
-              "top",
-              data.connectedHandles?.includes("target-top") ||
-                data.connectedHandles?.includes("source-top") ||
-                false
-            ),
-            borderPositions.top
-          )}
-        />
-        <div
-          className={clsx(
-            getBorderClass(
-              "right",
-              data.connectedHandles?.includes("target-right") ||
-                data.connectedHandles?.includes("source-right") ||
-                false
-            ),
-            borderPositions.right
-          )}
-        />
-        <div
-          className={clsx(
-            getBorderClass(
-              "bottom",
-              data.connectedHandles?.includes("target-bottom") ||
-                data.connectedHandles?.includes("source-bottom") ||
-                false
-            ),
-            borderPositions.bottom
-          )}
-        />
-        <div
-          className={clsx(
-            getBorderClass(
-              "left",
-              data.connectedHandles?.includes("target-left") ||
-                data.connectedHandles?.includes("source-left") ||
-                false
-            ),
-            borderPositions.left
-          )}
-        />
-
+        {/* Hover indicator for the source handle under the cursor */}
+        {(["top", "right", "bottom", "left"] as const).map((side) => (
+          <div key={side} className={clsx(getBorderClass(side), borderPositions[side])} />
+        ))}
 
         {/* Error Badge */}
         {hasError && (
@@ -505,23 +432,9 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
           asset={selectedAudioForConfig}
           settings={data.audioSettings?.[selectedAudioForConfig.id] || { loop: false, delay: 0 }}
           onSave={(settings) => {
-            setNodes((nds) =>
-              nds.map((node) => {
-                if (node.id === id) {
-                  return {
-                    ...node,
-                    data: {
-                      ...node.data,
-                      audioSettings: {
-                        ...(node.data.audioSettings || {}),
-                        [selectedAudioForConfig.id]: settings
-                      }
-                    }
-                  };
-                }
-                return node;
-              })
-            );
+            updateNodeData(id, {
+              audioSettings: { ...(data.audioSettings || {}), [selectedAudioForConfig.id]: settings }
+            });
           }}
           onClose={() => setSelectedAudioForConfig(null)}
         />
@@ -530,4 +443,4 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
   );
 };
 
-export default memo(ElementNode);
+export default memo(ElementNode, nodePropsEqual);

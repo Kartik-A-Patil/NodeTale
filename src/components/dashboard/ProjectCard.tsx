@@ -1,143 +1,87 @@
-import React, { useRef } from 'react';
-import { MoreVertical, Image as ImageIcon, Copy, Trash2, FileText, Calendar, Layers, Edit3 } from 'lucide-react';
+import { memo } from 'react';
 import { ProjectSummary } from '../../types';
+import { formatRelativeTime } from '../../utils/localPrefs';
+import { focusRing } from '../ui/styles';
+import { GraphThumbnail } from './GraphThumbnail';
+import { EditableTitle } from './EditableTitle';
+import { ProjectActions, ProjectActionsMenu } from './ProjectActionsMenu';
 
-interface ProjectCardProps {
+export interface ProjectItemProps {
   project: ProjectSummary;
-  onClick: () => void;
-  onDelete: (e: React.MouseEvent) => void;
-  onDuplicate: (e: React.MouseEvent) => void;
-  onRename: (e: React.MouseEvent) => void;
-  onCoverImageUpdate: (file: File) => void;
-  isMenuOpen: boolean;
-  onToggleMenu: (e: React.MouseEvent) => void;
+  index: number;
+  renaming: boolean;
+  onRenameSubmit: (name: string) => Promise<string | null>;
+  onRenameDone: () => void;
+  actions: ProjectActions;
 }
 
-export const ProjectCard: React.FC<ProjectCardProps> = ({
-  project,
-  onClick,
-  onDelete,
-  onDuplicate,
-  onRename,
-  onCoverImageUpdate,
-  isMenuOpen,
-  onToggleMenu
-}) => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-  const handleCardClick = () => {
-    if (isMenuOpen) return;
-    onClick();
-  };
+export const projectStatsText = (p: ProjectSummary) =>
+  p.stats
+    ? [plural(p.stats.scenes, 'scene'), plural(p.stats.endings, 'ending'), plural(p.boardCount, 'board')].join(' · ')
+    : plural(p.boardCount, 'board');
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      onCoverImageUpdate(file);
-    }
-    // Reset input
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
+const editedText = (p: ProjectSummary) => (p.modifiedAt ? `Edited ${formatRelativeTime(p.modifiedAt)}` : 'Not saved yet');
 
-  const triggerImageUpload = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    fileInputRef.current?.click();
-    // We don't close the menu here immediately because the file dialog opens
-  };
+// Canvas-like dot grid behind thumbnails, echoing the editor.
+const dotGrid = 'bg-nt-bg bg-[radial-gradient(oklch(var(--nt-line))_1px,transparent_1px)] bg-[length:14px_14px]';
 
-  return (
-    <div 
-      onClick={handleCardClick}
-      className="group relative flex flex-col h-60 bg-white/5 border border-white/10 rounded-xl hover:border-white/20 hover:-translate-y-0.5 cursor-pointer transition-all duration-200 overflow-hidden backdrop-blur-sm"
-    >
-      <input 
-          type="file" 
-          ref={fileInputRef} 
-          className="hidden" 
-          accept="image/*" 
-          onChange={handleImageUpload}
-          onClick={(e) => e.stopPropagation()}
-      />
+/** Stretched "open" button: the whole item is clickable; keyboard focus lands here. */
+const OpenButton = ({ project, index, onOpen, rounded }: { project: ProjectSummary; index: number; onOpen: () => void; rounded: string }) => (
+  <button
+    type="button"
+    data-project-index={index}
+    onClick={onOpen}
+    aria-label={`Open ${project.name}. ${projectStatsText(project)}. ${editedText(project)}`}
+    className={`absolute inset-0 z-0 ${rounded} ${focusRing} focus-visible:outline-offset-0`}
+  />
+);
 
-      {/* Cover Image Area */}
-        <div className="h-32 bg-zinc-900/40 relative overflow-hidden transition-all duration-200">
-          {project.coverImage ? (
-              <img 
-                src={project.coverImage} 
-                alt={project.name} 
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
-              />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-zinc-700 bg-zinc-900/40">
-              <FileText size={40} className="opacity-50" />
-              </div>
-          )}
-          
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-      </div>
-          
-      {/* Dropdown Menu Trigger */}
-        <div className={`absolute top-3 right-3 transition-all duration-150 z-20 ${isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-          <button 
-              onClick={onToggleMenu}
-            className={`p-1.5 rounded-lg text-zinc-200 backdrop-blur-md border border-white/10 shadow-lg transition-colors ${isMenuOpen ? 'bg-white/10 border-white/20' : 'bg-black/40 hover:bg-black/60'}`}
-          >
-              <MoreVertical size={16} />
-          </button>
-          
-          {isMenuOpen && (
-              <div className="absolute right-0 top-9 w-48 bg-[#0f0f13] border border-white/10 rounded-lg shadow-2xl z-30 py-1.5 animate-in fade-in zoom-in-95 duration-200 ease-out origin-top-right">
-                  <button 
-                      onClick={triggerImageUpload}
-                      className="w-full text-left px-4 py-2.5 text-sm text-zinc-300 hover:bg-white/5 hover:text-white flex items-center gap-2.5 transition-colors"
-                  >
-                      <ImageIcon size={14} className="text-zinc-500" /> Change Cover
-                  </button>
-                    <button 
-                      onClick={onRename}
-                      className="w-full text-left px-4 py-2.5 text-sm text-zinc-300 hover:bg-white/5 hover:text-white flex items-center gap-2.5 transition-colors"
-                    >
-                      <Edit3 size={14} className="text-zinc-500" /> Rename
-                    </button>
-                  <button 
-                      onClick={onDuplicate}
-                      className="w-full text-left px-4 py-2.5 text-sm text-zinc-300 hover:bg-white/5 hover:text-white flex items-center gap-2.5 transition-colors"
-                  >
-                      <Copy size={14} className="text-zinc-500" /> Duplicate
-                  </button>
-                  <div className="h-px bg-white/10 my-1.5 mx-2" />
-                  <button 
-                      onClick={onDelete}
-                      className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-red-900/20 hover:text-red-300 flex items-center gap-2.5 transition-colors"
-                  >
-                      <Trash2 size={14} /> Delete
-                  </button>
-              </div>
-          )}
-      </div>
-
-      <div className="p-5 flex-1 flex flex-col justify-between relative">
-          <div>
-            <h3 className="text-lg font-semibold mb-1 truncate text-zinc-100 group-hover:text-white transition-colors">{project.name}</h3>
-            <div className="flex items-center gap-3 text-xs text-zinc-500">
-                <span className="flex items-center gap-1">
-                    <Calendar size={12} />
-                    {project.modifiedAt ? new Date(project.modifiedAt).toLocaleDateString() : '—'}
-                </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 mt-3 pt-3 border-t border-white/10">
-            <div className="flex items-center gap-1.5 text-xs text-zinc-300 bg-white/5 px-2 py-1 rounded-md">
-                <Layers size={12} />
-                <span>{project.boardCount} Board{project.boardCount !== 1 ? 's' : ''}</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-xs text-zinc-300 bg-white/5 px-2 py-1 rounded-md">
-                <FileText size={12} />
-                <span>{project.assetCount} Asset{project.assetCount !== 1 ? 's' : ''}</span>
-            </div>
-          </div>
+export const ProjectCard = memo(({ project, index, renaming, onRenameSubmit, onRenameDone, actions }: ProjectItemProps) => (
+  <article className="group relative flex flex-col rounded-lg border border-nt-line bg-nt-surface transition-colors duration-150 hover:border-nt-line-strong">
+    <OpenButton project={project} index={index} onOpen={actions.onOpen} rounded="rounded-lg" />
+    <div className={`pointer-events-none relative aspect-[16/10] overflow-hidden rounded-t-[7px] border-b border-nt-line ${dotGrid}`}>
+      {project.coverImage && <img src={project.coverImage} alt="" className="absolute inset-0 h-full w-full object-cover opacity-20" />}
+      <div className="absolute inset-0 p-4">
+        <GraphThumbnail thumbnail={project.thumbnail} />
       </div>
     </div>
-  );
-};
+    <div className="flex items-start gap-1 py-3 pl-4 pr-2">
+      <div className="pointer-events-none min-w-0 flex-1">
+        <h3 className={`relative ${renaming ? 'pointer-events-auto z-10' : ''}`}>
+          <EditableTitle name={project.name} editing={renaming} onSubmit={onRenameSubmit} onDone={onRenameDone}
+            className="block truncate text-sm font-semibold text-nt-ink" />
+        </h3>
+        <p className="mt-1 truncate text-xs text-nt-ink-3">{projectStatsText(project)}</p>
+        <p className="mt-0.5 text-xs text-nt-ink-3">{editedText(project)}</p>
+      </div>
+      <div className="relative z-10">
+        <ProjectActionsMenu name={project.name} actions={actions} />
+      </div>
+    </div>
+  </article>
+));
+
+export const ProjectRow = memo(({ project, index, renaming, onRenameSubmit, onRenameDone, actions }: ProjectItemProps) => (
+  <li className="group relative grid grid-cols-[88px_minmax(0,1fr)_auto] items-center gap-4 border-b border-nt-line px-3 py-2.5 transition-colors duration-150 last:border-b-0 hover:bg-nt-surface md:grid-cols-[88px_minmax(0,2fr)_minmax(0,1.4fr)_9rem_auto]">
+    <OpenButton project={project} index={index} onOpen={actions.onOpen} rounded="rounded-md" />
+    <div className={`pointer-events-none relative h-[52px] overflow-hidden rounded border border-nt-line ${dotGrid}`}>
+      {project.coverImage && <img src={project.coverImage} alt="" className="absolute inset-0 h-full w-full object-cover opacity-20" />}
+      <div className="absolute inset-0 p-1.5"><GraphThumbnail thumbnail={project.thumbnail} size="row" /></div>
+    </div>
+    <div className="pointer-events-none min-w-0">
+      <div className={`relative ${renaming ? 'pointer-events-auto z-10' : ''}`}>
+        <EditableTitle name={project.name} editing={renaming} onSubmit={onRenameSubmit} onDone={onRenameDone}
+          className="block truncate text-sm font-semibold text-nt-ink" />
+      </div>
+      <p className="mt-0.5 truncate text-xs text-nt-ink-3 md:hidden">{projectStatsText(project)} · {editedText(project)}</p>
+      <p className="mt-0.5 hidden truncate text-xs text-nt-ink-3 md:block">{project.stats?.boardNames.join(', ')}</p>
+    </div>
+    <p className="pointer-events-none hidden truncate text-xs text-nt-ink-2 md:block">{projectStatsText(project)}</p>
+    <p className="pointer-events-none hidden text-xs text-nt-ink-3 md:block">{editedText(project)}</p>
+    <div className="relative z-10">
+      <ProjectActionsMenu name={project.name} actions={actions} />
+    </div>
+  </li>
+));

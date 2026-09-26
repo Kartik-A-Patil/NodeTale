@@ -114,3 +114,11 @@ export const executeNode = (node: AppNode, ctx: NodeExecutionContext): NodeExecu
   const entry = nodeRegistry[node.type as NodeTypeKey];
   return entry?.execute?.(node, ctx) ?? {};
 };
+
+// Comment and section nodes always sit behind other nodes. Applied wherever
+// nodes enter the editor (load, toolbar drop, addNode) — previously each of
+// those nodes forced it with a mount effect that re-set the whole node array.
+export const withDefaultZIndex = (node: AppNode): AppNode => {
+  const zIndex = nodeRegistry[node.type as NodeTypeKey]?.defaultZIndex;
+  return zIndex === undefined || node.zIndex === zIndex ? node : { ...node, zIndex };
+};

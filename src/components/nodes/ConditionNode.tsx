@@ -1,8 +1,10 @@
-import { memo, useState, useMemo } from "react";
-import { Handle, Position, NodeProps, useReactFlow, useStore } from "reactflow";
+import { memo, useMemo, useCallback } from "react";
+import { Handle, Position, NodeProps, useStore, ReactFlowState } from "reactflow";
 import { ConditionNodeData, Branch, Variable } from "../../types";
 import { X, AlertCircle } from "lucide-react";
 import clsx from "clsx";
+import { nodePropsEqual } from "./nodePropsEqual";
+import { useEditor } from "../../editor/EditorContext";
 
 const ConditionInput = ({
   value,
@@ -103,61 +105,61 @@ const ConditionInput = ({
   );
 };
 
+const DEFAULT_BRANCHES: Branch[] = [
+  { id: "true", label: "If", condition: "true" },
+  { id: "false", label: "Else", condition: "" }
+];
+
+// Flags conditions that reference identifiers that aren't project variables.
+const validateCondition = (condition: string, variables: Variable[]) => {
+  if (!condition || condition === "true") return true;
+
+  const regex =
+    /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\b\d+(?:\.\d+)?\b|[a-zA-Z_$][a-zA-Z0-9_$]*)/g;
+  const tokens = condition.match(regex) || [];
+
+  const keywords = ["true", "false", "null", "undefined", "NaN", "Infinity"];
+
+  for (const token of tokens) {
+    // Skip strings
+    if (/^["'].*["']$/.test(token)) continue;
+    // Skip numbers
+    if (/^\d+(\.\d+)?$/.test(token)) continue;
+
+    // Check identifiers
+    if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(token)) {
+      if (keywords.includes(token)) continue;
+      if (variables.some((v) => v.name === token)) continue;
+      return false; // Unknown variable
+    }
+  }
+  return true;
+};
+
 const ConditionNode = ({ id, data, selected }: NodeProps<ConditionNodeData>) => {
-  const { setNodes } = useReactFlow();
+  const { variables, updateNodeData } = useEditor();
   const connectionNodeId = useStore((state) => state.connectionNodeId);
-  const edges = useStore((state) => state.edges);
+  // Only this node's connected branch handles matter; subscribing to the whole
+  // edge list re-rendered every condition node on any edge change.
+  const connectedHandles = useStore(
+    useCallback(
+      (state: ReactFlowState) =>
+        state.edges.filter((e) => e.source === id).map((e) => e.sourceHandle).join('\u0000'),
+      [id]
+    )
+  );
   const isTarget = connectionNodeId && connectionNodeId !== id;
 
-  const [hoveredSide, setHoveredSide] = useState<"left" | null>(null);
-
-  const branches = data.branches || [
-    { id: "true", label: "If", condition: "true" },
-    { id: "false", label: "Else", condition: "" }
-  ];
-
-  const variables = data.variables || [];
-
-  const validateCondition = (condition: string) => {
-    if (!condition || condition === "true") return true;
-
-    const regex =
-      /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\b\d+(?:\.\d+)?\b|[a-zA-Z_$][a-zA-Z0-9_$]*)/g;
-    const tokens = condition.match(regex) || [];
-
-    const keywords = ["true", "false", "null", "undefined", "NaN", "Infinity"];
-
-    for (const token of tokens) {
-      // Skip strings
-      if (/^["'].*["']$/.test(token)) continue;
-      // Skip numbers
-      if (/^\d+(\.\d+)?$/.test(token)) continue;
-
-      // Check identifiers
-      if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(token)) {
-        if (keywords.includes(token)) continue;
-        if (variables.some((v) => v.name === token)) continue;
-        return false; // Unknown variable
-      }
-    }
-    return true;
-  };
+  const branches = data.branches || DEFAULT_BRANCHES;
 
   const hasError = useMemo(() => {
     return branches.some(
-      (b) => b.label !== "Else" && !validateCondition(b.condition)
+      (b) => b.label !== "Else" && !validateCondition(b.condition, variables)
     );
   }, [branches, variables]);
 
-  const updateBranches = (newBranches: Branch[]) => {
-    setNodes((nds) =>
-      nds.map((node) => {
-        if (node.id === id) {
-          return { ...node, data: { ...node.data, branches: newBranches } };
-        }
-        return node;
-      })
-    );
+  const updateBranches = (newBranches: Branch[], mergeKey?: string) => {
+    updateNodeData(id, { branches: newBranches }, mergeKey);
   };
 
   const removeBranch = (idx: number) => {
@@ -169,20 +171,8 @@ const ConditionNode = ({ id, data, selected }: NodeProps<ConditionNodeData>) => 
   const editBranch = (idx: number, val: string) => {
     const newBranches = [...branches];
     newBranches[idx] = { ...newBranches[idx], condition: val };
-    updateBranches(newBranches);
-  };
-
-  const getBorderClass = (isConnected: boolean) => {
-    const isHovered = hoveredSide === "left";
-    const color = isConnected
-      ? "bg-blue-400"
-      : isHovered
-      ? "bg-gray-500"
-      : "bg-transparent";
-    return clsx(
-      "absolute transition-colors duration-200 pointer-events-none",
-      color
-    );
+    // Typing a condition undoes as one step.
+    updateBranches(newBranches, `${id}:branch:${newBranches[idx].id}`);
   };
 
   return (
@@ -209,14 +199,6 @@ const ConditionNode = ({ id, data, selected }: NodeProps<ConditionNodeData>) => 
         }}
       />
 
-      {/* Visual Border Indicator */}
-      <div
-        className={clsx(
-          getBorderClass(data.connectedHandles?.includes("target") || false),
-          "top-[4px] -left-2 bottom-[4px] w-[8px] rounded-l-lg"
-        )}
-      />
-
       <div className="relative flex bg-zinc-800/60 rounded-md">
         <div
           className="w-5 rounded-l-md"
@@ -230,9 +212,7 @@ const ConditionNode = ({ id, data, selected }: NodeProps<ConditionNodeData>) => 
             const isElse = branch.label === "Else";
             const isIf = branch.label === "If";
 
-            const isConnected = edges.some(
-              (edge) => edge.source === id && edge.sourceHandle === branch.id
-            );
+            const isConnected = connectedHandles.split('\u0000').includes(branch.id);
             return (
               <div
                 key={branch.id}
@@ -303,4 +283,4 @@ const ConditionNode = ({ id, data, selected }: NodeProps<ConditionNodeData>) => 
   );
 };
 
-export default memo(ConditionNode);
+export default memo(ConditionNode, nodePropsEqual);

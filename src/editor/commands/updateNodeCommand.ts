@@ -7,11 +7,13 @@ import { Command, CommandContext } from './types';
 export function updateNodeCommand(
   ctx: CommandContext,
   nodeId: string,
-  applyPatch: (node: AppNode) => AppNode
+  applyPatch: (node: AppNode) => AppNode,
+  mergeKey?: string
 ): Command {
   let before: AppNode | undefined;
 
   return {
+    mergeKey,
     execute() {
       ctx.setNodes(nds =>
         nds.map(n => {
