@@ -159,6 +159,8 @@ export const NodeTooltip = ({ node, extra }: { node: GraphNode; extra?: React.Re
 
 interface ViewFrameProps {
   title: string;
+  /** Replaces the visible title (kept for screen readers) with a tab bar. */
+  tabs?: React.ReactNode;
   summary?: React.ReactNode;
   legend?: React.ReactNode;
   onFit?: () => void;
@@ -173,13 +175,21 @@ interface ViewFrameProps {
 const iconButton =
   'flex h-8 w-8 items-center justify-center rounded-md border border-nt-line bg-nt-surface text-nt-ink-2 transition-colors duration-150 hover:bg-nt-raised hover:text-nt-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-nt-focus';
 
-export const ViewFrame = ({ title, summary, legend, onFit, onZoom, aside, asideClassName = 'w-64', frameRef, children }: ViewFrameProps) => (
+export const ViewFrame = ({ title, tabs, summary, legend, onFit, onZoom, aside, asideClassName = 'w-64', frameRef, children }: ViewFrameProps) => (
   <section aria-label={title} className="absolute inset-0 flex flex-col bg-nt-bg text-nt-ink">
     <header className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-nt-line px-5 py-3">
-      <div className="min-w-0">
-        <h2 className="text-sm font-semibold text-nt-ink">{title}</h2>
-        {summary && <p className="text-xs text-nt-ink-3">{summary}</p>}
-      </div>
+      {tabs ? (
+        <div className="flex min-w-0 items-end gap-5 self-stretch pt-1">
+          <h2 className="sr-only">{title}</h2>
+          {tabs}
+          {summary && <p className="hidden truncate pb-0.5 text-xs text-nt-ink-3 lg:block">{summary}</p>}
+        </div>
+      ) : (
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-nt-ink">{title}</h2>
+          {summary && <p className="text-xs text-nt-ink-3">{summary}</p>}
+        </div>
+      )}
       {legend && <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-nt-ink-2">{legend}</div>}
       {(onFit || onZoom) && (
         <div className="ml-auto flex gap-1.5">

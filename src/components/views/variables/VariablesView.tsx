@@ -2,7 +2,7 @@ import { useDeferredValue, useMemo, useRef, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { Project, SimulationPreset } from '../../../types';
 import { StoryGraph } from '../../../core/graph/storyGraph';
-import { analyzeStates, createSimulator, formatValue, valuesEqual, branchLabel, Values } from '../../../core/sim/simulate';
+import { analyzeStates, createSimulator, formatValue, branchLabel, Values } from '../../../core/sim/simulate';
 import { buildStateTree, pathTo, DEFAULT_TREE_BUDGET } from '../../../core/sim/stateTree';
 import { findProblems } from '../../../core/sim/problems';
 import { useLocalPref } from '../../../utils/localPrefs';
@@ -23,13 +23,12 @@ interface VariablesViewProps {
   onUpdateProject: (update: (project: Project) => Project) => void;
 }
 
-const WATCH_DEFAULT = 3;
-
 export default function VariablesView({ graph, project, onFocusNode, onUpdateProject }: VariablesViewProps) {
   const [tab, setTab] = useLocalPref<Tab>('nodetale:variables:tab', 'tree');
   const [overrides, setOverrides] = useState<Values>({});
   const [activePresetId, setActivePresetId] = useState<string | null>(null);
-  const [watchChoice, setWatchChoice] = useState<string[] | null>(null);
+  // Opt-in: boxes show only what changed unless the author watches a variable.
+  const [watch, setWatch] = useState<string[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [budget, setBudget] = useState(DEFAULT_TREE_BUDGET);
   const controlsRef = useRef<{ fit: () => void; zoomBy: (k: number) => void } | null>(null);
@@ -42,14 +41,6 @@ export default function VariablesView({ graph, project, onFocusNode, onUpdatePro
   const problems = useMemo(() => findProblems(project, graph, analysis), [project, graph, analysis]);
   const tree = useMemo(() => (tab === 'tree' ? buildStateTree(sim, initial, budget) : null), [tab, sim, initial, budget]);
 
-  // Watch the variables the story actually changes, unless the author picked.
-  const watch = useMemo(() => {
-    if (watchChoice) return watchChoice;
-    const changing = sim.variables.filter((v) =>
-      [...analysis.byNode.values()].some((e) => e.states.some((s) => !valuesEqual(s[v.name], initial[v.name])))
-    );
-    return (changing.length ? changing : sim.variables).slice(0, WATCH_DEFAULT).map((v) => v.name);
-  }, [watchChoice, sim, analysis, initial]);
 
   const presets = project.simulationPresets ?? [];
   const selectPreset = (id: string | null) => {
@@ -83,21 +74,26 @@ export default function VariablesView({ graph, project, onFocusNode, onUpdatePro
     { id: 'compare', text: 'Compare paths' },
     { id: 'usage', text: 'Where used' },
   ];
+  const hasErrors = problems.some((p) => p.severity === 'error');
   const tabBar = (
-    <div role="tablist" aria-label="Variables" className="flex rounded-md border border-nt-line bg-nt-bg p-0.5">
-      {tabs.map((t) => (
-        <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
-          className={`rounded px-2.5 py-1 text-xs font-medium transition-colors duration-150 ${focusRing} ${
-            tab === t.id ? 'bg-nt-raised text-nt-ink' : 'text-nt-ink-3 hover:text-nt-ink-2'
-          } ${t.id === 'problems' && problems.some((p) => p.severity === 'error') && tab !== t.id ? 'text-nt-danger' : ''}`}>
-          {t.text}
-        </button>
-      ))}
+    <div role="tablist" aria-label="Variables" className="-mb-3 flex gap-5">
+      {tabs.map((t) => {
+        const active = tab === t.id;
+        return (
+          <button key={t.id} type="button" role="tab" aria-selected={active} onClick={() => setTab(t.id)}
+            className={`relative pb-3 text-sm transition-colors duration-150 ${focusRing} ${
+              active ? 'font-semibold text-nt-ink' : `font-medium ${t.id === 'problems' && hasErrors ? 'text-nt-danger' : 'text-nt-ink-3'} hover:text-nt-ink-2`
+            }`}>
+            {t.text}
+            {active && <span aria-hidden className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-nt-accent" />}
+          </button>
+        );
+      })}
     </div>
   );
 
   const summary = tab === 'tree' && tree
-    ? `${tree.size} ${tree.size === 1 ? 'state' : 'states'} from Start${tree.truncated ? ' so far' : ''}${watch.length ? ` · watching ${watch.join(', ')}` : ''}`
+    ? `${tree.size} ${tree.size === 1 ? 'state' : 'states'} from Start${tree.truncated ? ' so far' : ''}${watch.length ? ` · showing ${watch.join(', ')}` : ''}`
     : tab === 'problems' ? `${problems.length} found with these starting values`
     : tab === 'compare' ? 'Two outcomes, side by side'
     : `${project.variables.length} ${project.variables.length === 1 ? 'variable' : 'variables'}`;
@@ -155,7 +151,7 @@ export default function VariablesView({ graph, project, onFocusNode, onUpdatePro
         onDeletePreset={deletePreset}
         watch={watch}
         setByStart={graph.startId ? graph.variableUse.get(graph.startId)?.set ?? new Set() : new Set()}
-        onToggleWatch={(name) => setWatchChoice(watch.includes(name) ? watch.filter((w) => w !== name) : [...watch, name])}
+        onToggleWatch={(name) => setWatch(watch.includes(name) ? watch.filter((w) => w !== name) : [...watch, name])}
       />
     </>
   );
@@ -163,8 +159,8 @@ export default function VariablesView({ graph, project, onFocusNode, onUpdatePro
   return (
     <ViewFrame
       title="Variables"
+      tabs={tabBar}
       summary={summary}
-      legend={tabBar}
       onFit={tab === 'tree' ? () => controlsRef.current?.fit() : undefined}
       onZoom={tab === 'tree' ? (k) => controlsRef.current?.zoomBy(k) : undefined}
       aside={aside}

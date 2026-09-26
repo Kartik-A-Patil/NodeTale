@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Edge } from 'reactflow';
 import { AppNode, Project } from '../../types';
-import { buildStoryGraph, PATH_CAP } from './storyGraph';
+import { buildStoryGraph } from './storyGraph';
 
 const el = (id: string, label = id, content = ''): AppNode =>
   ({ id, type: 'elementNode', position: { x: 0, y: 0 }, data: { label, content } }) as AppNode;
@@ -26,17 +26,14 @@ describe('buildStoryGraph', () => {
     expect(g.branchOf.get('b')).toBe(0);
     expect(g.branchOf.get('c')).toBe(1);
     expect(g.branchOf.get('end')).toBe('shared');
-    expect(g.pathsFromStart.get('end')).toBe(2);
-    expect(g.pathsToEnd.get('s')).toBe(2);
   });
 
-  it('marks loops as back-edges and keeps path counts finite', () => {
+  it('marks loops as back-edges', () => {
     const g = buildStoryGraph(project(
       [el('s', 'Start'), el('a'), el('end')],
       [edge('s', 'a'), edge('a', 's'), edge('a', 'end')],
     ));
     expect([...g.backEdges].map((l) => `${l.source}->${l.target}`)).toEqual(['a->s']);
-    expect(g.pathsToEnd.get('s')).toBe(1);
   });
 
   it('follows condition branches by handle and reports unconnected branches as dead ends', () => {
@@ -64,18 +61,5 @@ describe('buildStoryGraph', () => {
     expect(use.shown).toEqual(new Set(['gold']));
     expect(use.set).toEqual(new Set(['gold', 'key']));
     expect(use.checked).toEqual(new Set(['gold', 'hasMap']));
-  });
-
-  it('caps path counts', () => {
-    // 20 sequential diamonds -> 2^20 routes
-    const nodes = [el('s', 'Start')];
-    const edges: Edge[] = [];
-    let prev = 's';
-    for (let i = 0; i < 20; i++) {
-      nodes.push(el(`l${i}`), el(`r${i}`), el(`j${i}`));
-      edges.push(edge(prev, `l${i}`), edge(prev, `r${i}`), edge(`l${i}`, `j${i}`), edge(`r${i}`, `j${i}`));
-      prev = `j${i}`;
-    }
-    expect(buildStoryGraph(project(nodes, edges)).pathsToEnd.get('s')).toBe(PATH_CAP);
   });
 });

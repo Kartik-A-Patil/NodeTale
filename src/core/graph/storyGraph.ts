@@ -64,14 +64,9 @@ export interface StoryGraph {
   forkId: string | null;
   branchRoots: { target: string; label: string }[];
   branchOf: Map<string, BranchTag>;
-  /** Distinct routes (ignoring loops) from Start to each node / from each node to any ending. Capped. */
-  pathsFromStart: Map<string, number>;
-  pathsToEnd: Map<string, number>;
   variableUse: Map<string, VariableUse>;
 }
 
-export const PATH_CAP = 10_000;
-const cap = (n: number) => Math.min(n, PATH_CAP);
 
 const DEFAULT_BRANCHES: Branch[] = [
   { id: 'true', label: 'If', condition: 'true' },
@@ -212,48 +207,7 @@ export function buildStoryGraph(project: Project): StoryGraph {
 
   const forward = (id: string) => out.get(id)!.filter((l) => !backEdges.has(l));
 
-  // Topological order of the reachable DAG (reverse DFS postorder).
-  const topo: string[] = [];
-  {
-    const done = new Set<string>();
-    const visit = (root: string) => {
-      const stack: { id: string; i: number }[] = [{ id: root, i: 0 }];
-      done.add(root);
-      while (stack.length) {
-        const top = stack[stack.length - 1];
-        const links = forward(top.id);
-        if (top.i < links.length) {
-          const next = links[top.i++].target;
-          if (!done.has(next)) {
-            done.add(next);
-            stack.push({ id: next, i: 0 });
-          }
-        } else {
-          topo.push(top.id);
-          stack.pop();
-        }
-      }
-    };
-    if (startId) visit(startId);
-    topo.reverse();
-  }
-
   const endings = order.filter((id) => nodes.get(id)!.type === 'elementNode' && out.get(id)!.length === 0);
-  const endingSet = new Set(endings);
-
-  const pathsFromStart = new Map<string, number>();
-  if (startId) pathsFromStart.set(startId, 1);
-  for (const id of topo) {
-    const here = pathsFromStart.get(id) ?? 0;
-    for (const l of forward(id)) pathsFromStart.set(l.target, cap((pathsFromStart.get(l.target) ?? 0) + here));
-  }
-  const pathsToEnd = new Map<string, number>();
-  for (let i = topo.length - 1; i >= 0; i--) {
-    const id = topo[i];
-    let total = endingSet.has(id) ? 1 : 0;
-    for (const l of forward(id)) total = cap(total + (pathsToEnd.get(l.target) ?? 0));
-    pathsToEnd.set(id, total);
-  }
 
   // Branches: the first node with more than one way forward splits the story.
   let forkId: string | null = null;
@@ -310,8 +264,6 @@ export function buildStoryGraph(project: Project): StoryGraph {
     forkId,
     branchRoots,
     branchOf,
-    pathsFromStart,
-    pathsToEnd,
     variableUse: collectVariableUse(project, nodes),
   };
 }
