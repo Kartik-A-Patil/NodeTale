@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
-import { StoryGraph, VariableUse } from '../../core/graph/storyGraph';
-import { Variable } from '../../types';
-import { EmptyView, FocusNode, LegendItem, ViewFrame, truncate } from './shared';
+import { StoryGraph, VariableUse } from '../../../core/graph/storyGraph';
+import { Variable } from '../../../types';
+import { EmptyView, FocusNode, LegendItem, truncate } from '../shared';
+import { StateAnalysis, summarizeValues } from '../../../core/sim/simulate';
 
 type Issue = 'undeclared' | 'unused' | 'never-read' | 'initial-only' | null;
 
@@ -39,7 +40,9 @@ const Marks = ({ use, name }: { use: VariableUse | undefined; name: string }) =>
 const describe = (use: VariableUse | undefined, name: string) =>
   [use?.set.has(name) && 'set', use?.checked.has(name) && 'checked', use?.shown.has(name) && 'shown in text'].filter(Boolean).join(', ');
 
-export default function VariableTracker({ graph, variables, onFocusNode }: { graph: StoryGraph; variables: Variable[]; onFocusNode: FocusNode }) {
+// Where each variable is set, checked and shown, scene by scene, plus the range
+// of values it takes across the simulated story.
+export function UsageMatrix({ graph, variables, analysis, onFocusNode }: { graph: StoryGraph; variables: Variable[]; analysis: StateAnalysis; onFocusNode: FocusNode }) {
   const { rows, columns } = useMemo(() => {
     const uses = graph.variableUse;
     const touching = (id: string) => {
@@ -73,8 +76,10 @@ export default function VariableTracker({ graph, variables, onFocusNode }: { gra
     return { rows, columns };
   }, [graph, variables]);
 
-  const problems = rows.filter((r) => r.issue === 'undeclared' || r.issue === 'unused' || r.issue === 'never-read').length;
-  const summary = `${variables.length} ${variables.length === 1 ? 'variable' : 'variables'} · used in ${columns.length} ${columns.length === 1 ? 'scene' : 'scenes'}${problems ? ` · ${problems} to review` : ''}`;
+  const ranges = useMemo(() => {
+    const all = [...analysis.byNode.values()];
+    return new Map(variables.map((v) => [v.name, summarizeValues(all.flatMap((e) => e.states.map((st) => st[v.name])), all.some((e) => e.truncated))]));
+  }, [analysis, variables]);
   const legend = (
     <>
       <LegendItem swatch={<rect x="2" y="2" width="10" height="10" rx="2" fill="oklch(var(--nt-accent))" />}>set in a script</LegendItem>
@@ -85,17 +90,15 @@ export default function VariableTracker({ graph, variables, onFocusNode }: { gra
 
   if (rows.length === 0) {
     return (
-      <ViewFrame title="Variables">
         <EmptyView title="No variables yet">
           Add variables in the sidebar, then set them in a scene’s code block and check them in a Branch. This view shows where each one is set, checked and shown, and flags ones that are never used.
         </EmptyView>
-      </ViewFrame>
     );
   }
 
   return (
-    <ViewFrame title="Variables" summary={summary} legend={legend}>
       <div className="h-full overflow-auto">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 px-4 py-2.5 text-xs text-nt-ink-2">{legend}</div>
         <table className="border-separate border-spacing-0 text-xs">
           <thead>
             <tr>
@@ -122,6 +125,9 @@ export default function VariableTracker({ graph, variables, onFocusNode }: { gra
                 <th scope="row" className="sticky left-0 z-10 border-b border-r border-nt-line bg-nt-bg px-4 py-2 text-left font-normal group-hover:bg-nt-surface">
                   <div className="font-mono text-[12.5px] text-nt-ink">{row.name}</div>
                   <div className="text-nt-ink-3">{row.variable ? valuePreview(row.variable) : 'undeclared'}</div>
+                  {row.variable && ranges.get(row.name) && !ranges.get(row.name)!.fixed && (
+                    <div className="text-nt-ink-3">during story: <span className="font-mono text-nt-ink-2">{ranges.get(row.name)!.text}</span></div>
+                  )}
                   {row.issue && <div className={`mt-0.5 ${ISSUE_TEXT[row.issue].tone}`}>{ISSUE_TEXT[row.issue].text}</div>}
                 </th>
                 {columns.map((id) => {
@@ -151,6 +157,5 @@ export default function VariableTracker({ graph, variables, onFocusNode }: { gra
           </p>
         )}
       </div>
-    </ViewFrame>
   );
 }

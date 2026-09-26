@@ -51,6 +51,7 @@ const projectMetaHash = (project: Project): string =>
     assets: project.assets,
     folders: project.folders,
     coverImage: project.coverImage,
+    simulationPresets: project.simulationPresets,
   }));
 
 const computeDirtyHash = (nodes: Node[], edges: Edge[], project: Project): string =>

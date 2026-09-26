@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { select } from 'd3-selection';
 import 'd3-transition'; // augments Selection with interrupt/transition, which d3-zoom's types expect
-import { zoom, zoomIdentity, ZoomBehavior, ZoomTransform } from 'd3-zoom';
+import { zoom, zoomIdentity, zoomTransform, ZoomBehavior, ZoomTransform } from 'd3-zoom';
 import { ZoomIn, ZoomOut, Scan } from 'lucide-react';
 import { BranchTag, branchLetter, GraphNode } from '../../core/graph/storyGraph';
 import { htmlToText } from '../../utils/html';
@@ -100,7 +100,16 @@ export function useZoomPan(
     if (svgRef.current && behaviorRef.current) select(svgRef.current).call(behaviorRef.current.scaleBy, factor);
   }, [svgRef]);
 
-  return { fit, zoomBy };
+  /** Pan (keeping the zoom, but at least `minScale`) so a content point sits in the middle. */
+  const centerOn = useCallback((x: number, y: number, minScale = 0.8) => {
+    const svg = svgRef.current;
+    const behavior = behaviorRef.current;
+    if (!svg || !behavior) return;
+    const k = Math.max(zoomTransform(svg).k, minScale);
+    select(svg).call(behavior.transform, zoomIdentity.translate(svg.clientWidth / 2 - x * k, svg.clientHeight / 2 - y * k).scale(k));
+  }, [svgRef]);
+
+  return { fit, zoomBy, centerOn };
 }
 
 // ---------- tooltip ----------
@@ -155,6 +164,8 @@ interface ViewFrameProps {
   onFit?: () => void;
   onZoom?: (factor: number) => void;
   aside?: React.ReactNode;
+  /** Width of the side panel (Tailwind class). */
+  asideClassName?: string;
   frameRef?: React.RefObject<HTMLDivElement | null>;
   children: React.ReactNode;
 }
@@ -162,7 +173,7 @@ interface ViewFrameProps {
 const iconButton =
   'flex h-8 w-8 items-center justify-center rounded-md border border-nt-line bg-nt-surface text-nt-ink-2 transition-colors duration-150 hover:bg-nt-raised hover:text-nt-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-nt-focus';
 
-export const ViewFrame = ({ title, summary, legend, onFit, onZoom, aside, frameRef, children }: ViewFrameProps) => (
+export const ViewFrame = ({ title, summary, legend, onFit, onZoom, aside, asideClassName = 'w-64', frameRef, children }: ViewFrameProps) => (
   <section aria-label={title} className="absolute inset-0 flex flex-col bg-nt-bg text-nt-ink">
     <header className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-nt-line px-5 py-3">
       <div className="min-w-0">
@@ -185,8 +196,9 @@ export const ViewFrame = ({ title, summary, legend, onFit, onZoom, aside, frameR
       )}
     </header>
     <div className="flex min-h-0 flex-1">
-      <div ref={frameRef} className="relative min-w-0 flex-1 overflow-hidden">{children}</div>
-      {aside && <aside className="w-64 shrink-0 overflow-y-auto border-l border-nt-line bg-nt-surface p-4 text-xs">{aside}</aside>}
+      {/* overflow-clip, not hidden: focusing an off-screen SVG item would otherwise scroll this box and misalign the view. */}
+      <div ref={frameRef} className="relative min-w-0 flex-1 overflow-clip">{children}</div>
+      {aside && <aside className={`${asideClassName} shrink-0 overflow-y-auto border-l border-nt-line bg-nt-surface p-4 text-xs`}>{aside}</aside>}
     </div>
   </section>
 );

@@ -353,11 +353,11 @@ function ProjectEditor() {
 
   return (
     <EditorContext.Provider value={editorContext}>
-    <div className="flex h-screen w-screen bg-[#121212] text-zinc-100 overflow-hidden">
+    <div className="flex h-screen w-screen bg-[#121212] text-zinc-100 overflow-clip">
       
       <SidebarLeft project={project} setProject={setProject} />
 
-      <div className={`flex-1 relative flex flex-col h-full ${isConnecting ? 'is-connecting' : ''}`}>
+      <div className={`flex-1 min-w-0 relative flex flex-col h-full ${isConnecting ? 'is-connecting' : ''}`}>
         
         <TopToolbar 
             onAddNode={onToolbarAddNode}
@@ -416,7 +416,7 @@ function ProjectEditor() {
           </ReactFlow>
           ) : (
             <React.Suspense fallback={null}>
-              <StoryViews mode={viewMode} project={viewProject!} onFocusNode={focusNode} />
+              <StoryViews mode={viewMode} project={viewProject!} onFocusNode={focusNode} onUpdateProject={setProject} />
             </React.Suspense>
           )}
 

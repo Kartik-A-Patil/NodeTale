@@ -125,6 +125,15 @@ export interface Project {
   folders: Folder[];
   coverImage?: string;
   modifiedAt?: number;
+  /** Named starting-value scenarios for the Variables simulator. */
+  simulationPresets?: SimulationPreset[];
+}
+
+export interface SimulationPreset {
+  id: string;
+  name: string;
+  /** Overrides by variable name; variables not listed use their declared value. */
+  values: Record<string, unknown>;
 }
 
 // Lightweight metadata for listing UI (e.g. the Dashboard) without loading
