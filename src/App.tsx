@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
-import { getStorageAdapter, markMigrationComplete } from './services/storage';
+import { runStorageMigration } from './services/storage';
 
 // Route-level code splitting: the dashboard doesn't pay for the editor (ReactFlow,
 // Prism, commands) and the editor doesn't pay for the dashboard.
@@ -11,13 +11,7 @@ export default function App() {
   const [isMigrating, setIsMigrating] = useState(true);
 
   React.useEffect(() => {
-    getStorageAdapter().migrate()
-      .then(() => { markMigrationComplete(); setIsMigrating(false); })
-      .catch((err) => {
-        console.error('Migration failed', err);
-        markMigrationComplete(); // Allow app to proceed despite migration failure
-        setIsMigrating(false);
-      });
+    runStorageMigration().then(() => setIsMigrating(false));
   }, []);
 
   if (isMigrating) {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ImagePlus, X } from 'lucide-react';
-import { Dialog } from '../ui/Dialog';
+import { Dialog } from '../ui/NativeDialog';
 import { buttonPrimary, buttonSecondary, buttonGhostIcon, input, focusRing } from '../ui/styles';
 import { shrinkCoverImage } from '../../utils/coverImage';
 

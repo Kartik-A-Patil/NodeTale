@@ -170,7 +170,7 @@ app.whenReady().then(() => {
     if (summariesCache) return summariesCache;
     try {
       summariesCache = JSON.parse(await fs.readFile(summariesPath, 'utf-8'));
-    } catch (e) {
+    } catch {
       summariesCache = [];
     }
     return summariesCache!;
@@ -194,12 +194,12 @@ app.whenReady().then(() => {
         try {
           const content = await fs.readFile(path.join(projectsDir, file), 'utf-8');
           summaries.push(toSummary(JSON.parse(content)));
-        } catch (e) {
+        } catch {
           // skip corrupted
         }
       }
       return summaries;
-    } catch (e) {
+    } catch {
       return [];
     }
   };
@@ -238,7 +238,7 @@ app.whenReady().then(() => {
      const target = path.join(assetsDir, safeId);
      try {
         await fs.unlink(target);
-     } catch (e) {
+     } catch {
         // ignore if missing
      }
   });
@@ -287,7 +287,7 @@ app.whenReady().then(() => {
      try {
          const content = await fs.readFile(idPath, 'utf-8');
          return JSON.parse(content);
-     } catch (e) {
+     } catch {
          // 2. Not found by ID, try scanning for Name
          // This is O(N) but acceptable for number of projects usually < 100 on desktop
          try {
@@ -300,12 +300,12 @@ app.whenReady().then(() => {
                           if (project.name === idOrName) {
                               return project;
                           }
-                      } catch (err) {
+                      } catch {
                           // skip corrupt
                       }
                   }
              }
-         } catch (dirErr) {
+         } catch {
              return null;
          }
          return null;
@@ -321,13 +321,13 @@ app.whenReady().then(() => {
                   try {
                       const content = await fs.readFile(path.join(projectsDir, file), 'utf-8');
                       projects.push(JSON.parse(content));
-                  } catch (e) {
+                  } catch {
                       // skip corrupted
                   }
               }
           }
           return projects;
-      } catch (e) {
+      } catch {
           return [];
       }
   });
@@ -343,7 +343,7 @@ app.whenReady().then(() => {
       const rebuilt = await buildSummariesFromProjectFiles();
       if (rebuilt.length > 0) {
           summariesCache = rebuilt;
-          try { await persistSummariesCache(); } catch (e) { /* non-fatal — served fresh below regardless */ }
+          try { await persistSummariesCache(); } catch { /* non-fatal — served fresh below regardless */ }
       }
       return rebuilt;
   });
@@ -352,7 +352,7 @@ app.whenReady().then(() => {
       const safeId = path.basename(id);
       try {
           await fs.unlink(path.join(projectsDir, safeId + '.json'));
-      } catch (e) {
+      } catch {
           // ignore
       }
 

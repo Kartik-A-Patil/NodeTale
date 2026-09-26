@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Dialog } from '../ui/Dialog';
+import { Dialog } from '../ui/NativeDialog';
 import { buttonDanger, buttonSecondary } from '../ui/styles';
 
 interface DeleteProjectModalProps {
