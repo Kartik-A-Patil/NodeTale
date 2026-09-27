@@ -26,7 +26,7 @@ import { deleteElementsCommand } from '../editor/commands/deleteElementsCommand'
 import { moveNodesCommand, NodeMove } from '../editor/commands/moveNodeCommand';
 import { nodeTypes as initialNodeTypes, edgeTypes as initialEdgeTypes } from './flowConfig';
 import { EditorAction } from '../editor/shortcuts/types';
-import { AppNode, Asset, Board, Project } from '../types';
+import { Asset, Board, Project } from '../models/story';
 import { useShortcuts } from '../editor/shortcuts/useShortcuts';
 import { CommandPalette } from './CommandPalette';
 import { EditorContext } from '../editor/EditorContext';
@@ -34,6 +34,8 @@ import { markProjectOpened, useLocalPref } from '../utils/localPrefs';
 import { validateProject } from '../core/validation/Validator';
 import { autoArrange, align, distribute, AlignMode, Box, Positions } from '../core/layout/arrange';
 import { NodeTypeKey } from '../core/nodes/nodeRegistry';
+import { createId } from '../utils/id';
+import { CanvasNode, toStoryEdge, toStoryNode } from '../adapters/reactFlow';
 
 // Loaded on demand: play mode isn't needed until the author presses Play, and
 // the story views (with d3) until one is opened.
@@ -177,7 +179,7 @@ function ProjectEditor() {
 
   const switchBoard = useCallback((id: string) => setProject((p) => ({ ...p, activeBoardId: id })), [setProject]);
   const addBoard = useCallback(() => {
-    const board: Board = { id: `board-${Date.now()}`, name: 'New board', nodes: [], edges: [] };
+    const board: Board = { id: createId('board'), name: 'New board', nodes: [], edges: [] };
     setProject((p) => ({ ...p, boards: [...p.boards, board], activeBoardId: board.id }));
   }, [setProject]);
 
@@ -201,7 +203,7 @@ function ProjectEditor() {
     for (const n of nodes) {
       const to = positions.get(n.id);
       if (!to || (to.x === n.position.x && to.y === n.position.y)) continue;
-      const extent = (n as AppNode & { extent?: NodeMove['from']['extent'] }).extent;
+      const extent = (n as CanvasNode & { extent?: NodeMove['from']['extent'] }).extent;
       moves.push({ id: n.id, from: { position: n.position, parentNode: n.parentNode, extent }, to: { position: to, parentNode: n.parentNode, extent } });
     }
     if (moves.length) executeCommand(moveNodesCommand(ctx, moves));
@@ -268,7 +270,11 @@ function ProjectEditor() {
   const viewProject = useMemo(
     () => (viewMode === 'flow' ? null : {
       ...project,
-      boards: project.boards.map((b) => (b.id === project.activeBoardId ? { ...b, nodes: nodes as AppNode[], edges } : b)),
+      boards: project.boards.map((b) => (b.id === project.activeBoardId ? {
+        ...b,
+        nodes: nodes.map(n => toStoryNode(n as CanvasNode)),
+        edges: edges.map(toStoryEdge),
+      } : b)),
     }),
     [viewMode, project, nodes, edges]
   );

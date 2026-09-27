@@ -1,5 +1,5 @@
 import { Edge } from 'reactflow';
-import { AppNode } from '../../types';
+import { CanvasNode } from '../../adapters/reactFlow';
 
 export interface Command {
   execute(): void;
@@ -28,8 +28,8 @@ export function mergeCommands(first: Command, last: Command): Command {
 // calls setNodes(...) and then immediately depends on something the updater
 // computed would read stale/uninitialized data.
 export interface CommandContext {
-  setNodes: (nodes: AppNode[] | ((nds: AppNode[]) => AppNode[])) => void;
+  setNodes: (nodes: CanvasNode[] | ((nds: CanvasNode[]) => CanvasNode[])) => void;
   setEdges: (edges: Edge[] | ((eds: Edge[]) => Edge[])) => void;
-  getNodes: () => AppNode[];
+  getNodes: () => CanvasNode[];
   getEdges: () => Edge[];
 }

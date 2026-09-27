@@ -1,5 +1,5 @@
 import { FilePlus2, Upload, ArrowRight } from 'lucide-react';
-import { ProjectThumbnail } from '../../types';
+import { ProjectThumbnail } from '../../models/story';
 import { focusRing } from '../ui/styles';
 import { GraphThumbnail } from './GraphThumbnail';
 

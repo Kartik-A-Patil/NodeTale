@@ -1,6 +1,6 @@
 import { memo, useMemo, useCallback } from "react";
 import { Handle, Position, NodeProps, useStore, ReactFlowState } from "reactflow";
-import { ConditionNodeData, Branch, Variable } from "../../types";
+import { ConditionNodeData, Branch, Variable } from "../../models/story";
 import { X, AlertCircle } from "lucide-react";
 import clsx from "clsx";
 import { nodePropsEqual } from "./nodePropsEqual";

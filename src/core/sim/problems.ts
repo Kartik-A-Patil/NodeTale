@@ -1,4 +1,4 @@
-import { Branch, Project, isConditionNode } from '../../types';
+import { Branch, Project, isConditionNode } from '../../models/story';
 import { StoryGraph } from '../graph/storyGraph';
 import { StateAnalysis, branchLabel } from './simulate';
 

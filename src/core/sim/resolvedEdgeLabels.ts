@@ -1,6 +1,8 @@
-import { Edge, Node } from 'reactflow';
-import { Project, AppNode } from '../../types';
+import { Edge } from 'reactflow';
+import { Project } from '../../models/story';
+import { CanvasNode } from '../../adapters/reactFlow';
 import { createSimulator, resolveVisibleNode } from './simulate';
+import { toStoryEdge, toStoryNode } from '../../adapters/reactFlow';
 
 const LOGIC_NODE_TYPES = new Set(['conditionNode', 'jumpNode']);
 
@@ -16,9 +18,13 @@ interface CacheEntry {
  *  their exact object reference — see computeResolvedEdgeLabels. */
 export type EdgeLabelCache = Map<string, CacheEntry>;
 
-const buildFullProject = (project: Project, nodes: Node[], edges: Edge[]): Project => ({
+const buildFullProject = (project: Project, nodes: CanvasNode[], edges: Edge[]): Project => ({
   ...project,
-  boards: project.boards.map((b) => (b.id === project.activeBoardId ? { ...b, nodes: nodes as AppNode[], edges } : b)),
+  boards: project.boards.map((b) => (b.id === project.activeBoardId ? {
+    ...b,
+    nodes: nodes.map(toStoryNode),
+    edges: edges.map(toStoryEdge),
+  } : b)),
 });
 
 /**
@@ -41,11 +47,8 @@ const buildFullProject = (project: Project, nodes: Node[], edges: Edge[]): Proje
  * touching edge object identity — which is what lets FloatingEdge's memo
  * skip re-rendering edges that aren't actually different.
  *
- * ponytail: `cache` is never pruned of edges that no longer exist, so it
- * grows with every edge ever created in the session. Fine at realistic board
- * sizes (a few thousand entries at most); revisit if that ever matters.
  */
-export function computeResolvedEdgeLabels(nodes: Node[], edges: Edge[], project: Project, cache: EdgeLabelCache): Edge[] {
+export function computeResolvedEdgeLabels(nodes: CanvasNode[], edges: Edge[], project: Project, cache: EdgeLabelCache): Edge[] {
   const nodesById = new Map(nodes.map((n) => [n.id, n]));
   const resolvedTitleByNodeId = new Map<string, string>();
   let sim: ReturnType<typeof createSimulator> | null = null;

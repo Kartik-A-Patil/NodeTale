@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FileArchive, FileJson, Images } from 'lucide-react';
-import { Project } from '../../types';
+import { Project } from '../../models/story';
 import { exportProject, exportProjectAsZip } from '../../utils/projectUtils';
 import { Dialog } from '../ui/NativeDialog';
 import { buttonPrimary, buttonSecondary, focusRing } from '../ui/styles';

@@ -1,4 +1,4 @@
-import { Project, VariableType } from './types';
+import { Project, VariableType } from './models/story';
 
 export const INITIAL_PROJECT: Project = {
   id: 'project-1',

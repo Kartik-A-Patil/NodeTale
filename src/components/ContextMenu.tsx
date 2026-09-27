@@ -1,20 +1,32 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Palette, ChevronRight } from 'lucide-react';
+import React, { useRef } from 'react';
+import { Palette } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
 
-export interface ContextMenuOption {
-  label?: string;
+export type ContextMenuAction = {
+  type?: 'action';
+  label: string;
   onClick?: () => void;
   danger?: boolean;
-  type?: 'action' | 'color-picker' | 'divider' | 'color-grid' | 'icon-row' | 'submenu';
   icon?: React.ReactNode;
-  color?: string; // For preset indicators or initial value
-  onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  colors?: string[];
-  onColorSelect?: (color: string) => void;
-  items?: { icon: React.ReactNode; onClick: () => void; label: string; active?: boolean; preventClose?: boolean }[];
-  submenu?: ContextMenuOption[];
+  color?: string;
   preventClose?: boolean;
-}
+};
+
+export type ContextMenuOption =
+  | ContextMenuAction
+  | { type: 'divider' }
+  | { type: 'color-grid'; color?: string; colors: string[]; onColorSelect: (color: string) => void; preventClose?: boolean }
+  | { type: 'icon-row'; items: { icon: React.ReactNode; onClick: () => void; label: string; active?: boolean; preventClose?: boolean }[] }
+  | { type: 'submenu'; label: string; icon?: React.ReactNode; submenu: ContextMenuAction[] };
 
 interface ContextMenuProps {
   x: number;
@@ -23,227 +35,142 @@ interface ContextMenuProps {
   onClose: () => void;
 }
 
-const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => {
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [hoveredSubmenuIndex, setHoveredSubmenuIndex] = useState<number | null>(null);
-  const [submenuPosition, setSubmenuPosition] = useState<{ top: number; left: number } | null>(null);
-  // Keep the menu inside the window: open upward / leftward near the edges.
-  const [position, setPosition] = useState({ top: y, left: x });
-  useLayoutEffect(() => {
-    const el = menuRef.current;
-    if (!el) return;
-    const margin = 8;
-    const { width, height } = el.getBoundingClientRect();
-    setPosition({
-      left: x + width > window.innerWidth - margin ? Math.max(margin, x - width) : x,
-      top: y + height > window.innerHeight - margin ? Math.max(margin, window.innerHeight - height - margin) : y,
-    });
-  }, [x, y, options.length]);
+const itemClass = 'flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-xs text-nt-ink-2 outline-none focus:bg-nt-raised focus:text-nt-ink data-[disabled]:opacity-40';
+const colorClass = 'h-5 w-5 rounded-sm border border-white/10 outline-none focus-visible:ring-2 focus-visible:ring-nt-focus';
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        onClose();
-      }
-    };
-
-    const handleScroll = () => {
-      onClose();
-    };
-
-    const handleWheel = () => {
-      onClose();
-    };
-
-    // Use capture phase for click to ensure we catch all clicks
-    document.addEventListener('mousedown', handleClickOutside, true);
-    // Listen to scroll on document and window
-    document.addEventListener('scroll', handleScroll, true);
-    window.addEventListener('scroll', handleScroll, true);
-    // Also listen to wheel events for scroll
-    document.addEventListener('wheel', handleWheel, true);
-    
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside, true);
-      document.removeEventListener('scroll', handleScroll, true);
-      window.removeEventListener('scroll', handleScroll, true);
-      document.removeEventListener('wheel', handleWheel, true);
-    };
-  }, [onClose]);
-
+const ColorGridSubmenu = ({ option }: { option: Extract<ContextMenuOption, { type: 'color-grid' }> }) => {
+  const inputRef = useRef<HTMLInputElement>(null);
   return (
-    <div
-      ref={menuRef}
-      className="fixed z-50 bg-[#1e1e20] border border-[#27272a] rounded-lg shadow-2xl py-1.5 min-w-[200px] max-h-[calc(100vh-16px)] flex flex-col overflow-y-auto animate-in fade-in zoom-in-95 duration-200 ease-out"
-      style={{ top: position.top, left: position.left }}
-      onContextMenu={(e) => e.preventDefault()}
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-xs text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink">
+        <Palette size={14} /> Color
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="min-w-0 rounded-lg border border-nt-line bg-nt-surface p-2 shadow-2xl">
+        <div className="grid grid-cols-6 gap-1" aria-label="Choose color">
+          {option.colors.map((color) => (
+            <DropdownMenuItem
+              key={color}
+              aria-label={`Set color ${color}`}
+              title={color}
+              className={`${colorClass} p-0`}
+              style={{ backgroundColor: color }}
+              onSelect={(event) => {
+                if (option.preventClose) event.preventDefault();
+                option.onColorSelect(color);
+              }}
+            />
+          ))}
+          <DropdownMenuItem
+            aria-label="Choose custom color"
+            title="Custom color"
+            className={`${colorClass} relative flex items-center justify-center overflow-hidden bg-nt-raised p-0`}
+            onSelect={(event) => {
+              event.preventDefault();
+              inputRef.current?.click();
+            }}
+          >
+            <Palette size={12} />
+          </DropdownMenuItem>
+        </div>
+        <input
+          ref={inputRef}
+          type="color"
+          aria-label="Custom color"
+          defaultValue={option.color || '#ffffff'}
+          className="sr-only"
+          tabIndex={-1}
+          onChange={(event) => option.onColorSelect(event.target.value)}
+        />
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  );
+};
+
+const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => (
+  <DropdownMenu open onOpenChange={(open) => { if (!open) onClose(); }}>
+    <DropdownMenuTrigger asChild>
+      <button aria-hidden tabIndex={-1} className="pointer-events-none fixed h-px w-px opacity-0" style={{ left: x, top: y }} />
+    </DropdownMenuTrigger>
+    <DropdownMenuContent
+      align="start"
+      side="bottom"
+      sideOffset={0}
+      collisionPadding={8}
+      className="z-50 min-w-[200px] rounded-lg border border-nt-line bg-nt-surface py-1.5 text-nt-ink shadow-2xl shadow-black/50"
+      onContextMenu={(event) => event.preventDefault()}
     >
-      {options.map((opt, i) => {
-        if (opt.type === 'divider') {
-            return <div key={i} className="h-[1px] bg-[#27272a] my-1 mx-2" />;
+      {options.map((option, index) => {
+        if (option.type === 'divider') return <DropdownMenuSeparator key={index} className="my-1 bg-nt-line" />;
+
+        if (option.type === 'color-grid') {
+          return <ColorGridSubmenu key={index} option={option} />;
         }
 
-        if (opt.type === 'color-grid') {
-            return (
-                <div key={i} className="grid grid-cols-6 gap-1 px-2 py-2">
-                    {opt.colors?.map((c, idx) => (
-                        <button
-                            key={idx}
-                            className="w-5 h-5 rounded-sm hover:scale-110 transition-transform border border-white/10"
-                            style={{ backgroundColor: c }}
-                            onClick={() => {
-                                opt.onColorSelect?.(c);
-                                if (!opt.preventClose) onClose();
-                            }}
-                            title={c}
-                        />
-                    ))}
-                    <label
-                        className="relative w-5 h-5 rounded-sm border border-white/10 bg-[#27272a] hover:scale-110 transition-transform cursor-pointer flex items-center justify-center"
-                        title="Custom color"
-                    >
-                        <Palette size={12} className="text-zinc-300" />
-                        <input
-                            type="color"
-                            className="absolute inset-0 opacity-0 cursor-pointer"
-                            defaultValue={opt.color || '#ffffff'}
-                            onBlur={(e) => {
-                                opt.onColorSelect?.(e.target.value);
-                            }}
-                            style={{ colorScheme: 'dark' }}
-                        />
-                    </label>
-                </div>
-            );
-        }
-
-        if (opt.type === 'icon-row') {
-            return (
-                <div key={i} className="flex items-center justify-around px-2 py-2">
-                    {opt.items?.map((item, idx) => (
-                        <button
-                            key={idx}
-                            className={`p-1.5 rounded hover:bg-[#27272a] text-zinc-400 hover:text-zinc-100 transition-colors ${item.active ? 'bg-[#27272a] text-zinc-100' : ''}`}
-                            onClick={() => {
-                                item.onClick();
-                                if (!item.preventClose) onClose();
-                            }}
-                            title={item.label}
-                        >
-                            {item.icon}
-                        </button>
-                    ))}
-                </div>
-            );
-        }
-
-        if (opt.type === 'color-picker') {
-             return (
-                <label key={i} className="flex items-center justify-between px-3 py-2 text-xs font-medium text-zinc-300 hover:bg-[#27272a] hover:text-white cursor-pointer transition-colors group">
-                    <div className="flex items-center gap-2">
-                        <Palette size={14} className="text-zinc-500 group-hover:text-zinc-300"/>
-                        <span>{opt.label}</span>
-                    </div>
-                    <div className="relative w-5 h-5 rounded-full overflow-hidden border border-zinc-600 group-hover:border-zinc-400">
-                        <input 
-                            type="color" 
-                            className="absolute -top-1/2 -left-1/2 w-[200%] h-[200%] cursor-pointer p-0 border-0"
-                            value={opt.color || '#ffffff'}
-                            onBlur={(e) => {
-                                opt.onChange?.(e);
-                                if (!opt.preventClose) onClose();
-                            }}
-                        />
-                    </div>
-                </label>
-             );
-        }
-
-        if (opt.type === 'submenu') {
-            return (
-                <div
-                    key={i}
-                    className="relative"
-                    onMouseEnter={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setHoveredSubmenuIndex(i);
-                        // Estimated size (rows are ~34px): flip left / shift up near the window edges.
-                        const subHeight = (opt.submenu?.length ?? 0) * 34 + 12;
-                        const subWidth = 188;
-                        setSubmenuPosition({
-                            top: Math.max(8, Math.min(rect.top, window.innerHeight - subHeight - 8)),
-                            left: rect.right + subWidth > window.innerWidth - 8 ? rect.left - subWidth - 8 : rect.right
-                        });
-                    }}
-                    onMouseLeave={() => {
-                        setHoveredSubmenuIndex(null);
-                        setSubmenuPosition(null);
-                    }}
+        if (option.type === 'icon-row') {
+          return (
+            <div key={index} className="flex items-center justify-around px-2 py-2">
+              {option.items.map((item, itemIndex) => (
+                <DropdownMenuItem
+                  key={itemIndex}
+                  aria-label={item.label}
+                  title={item.label}
+                  className={`h-8 min-w-8 justify-center p-1.5 ${item.active ? 'bg-nt-raised text-nt-ink' : ''}`}
+                  onSelect={(event) => {
+                    if (item.preventClose) event.preventDefault();
+                    item.onClick();
+                  }}
                 >
-                    <button
-                        className="w-full text-left px-3 py-2 text-xs font-medium hover:bg-[#27272a] transition-colors flex items-center justify-between group text-zinc-300 hover:text-white"
-                    >
-                        <div className="flex items-center gap-2">
-                            {opt.icon && <span className="text-zinc-500 group-hover:text-zinc-300">{opt.icon}</span>}
-                            <span>{opt.label}</span>
-                        </div>
-                        <ChevronRight size={14} className="text-zinc-500" />
-                    </button>
-                    {hoveredSubmenuIndex === i && submenuPosition && opt.submenu && (
-                        <div
-                            className="fixed z-[60] bg-[#1e1e20] border border-[#27272a] rounded-lg shadow-2xl py-1.5 min-w-[180px] animate-in fade-in slide-in-from-left-1 duration-100"
-                            style={{
-                                top: submenuPosition.top,
-                                left: submenuPosition.left + 4
-                            }}
-                        >
-                            {opt.submenu.map((subOpt, subIdx) => (
-                                <button
-                                    key={subIdx}
-                                    className={`w-full text-left px-3 py-2 text-xs font-medium hover:bg-[#27272a] transition-colors flex items-center gap-2 ${
-                                        subOpt.danger ? 'text-red-400 hover:text-red-300 hover:bg-red-900/10' : 'text-zinc-300 hover:text-white'
-                                    }`}
-                                    onClick={() => {
-                                        if (subOpt.onClick) subOpt.onClick();
-                                        if (!subOpt.preventClose) onClose();
-                                    }}
-                                >
-                                    {subOpt.icon && <span className={subOpt.danger ? 'text-red-400' : 'text-zinc-500'}>{subOpt.icon}</span>}
-                                    <span>{subOpt.label}</span>
-                                </button>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            );
+                  {item.icon}
+                </DropdownMenuItem>
+              ))}
+            </div>
+          );
+        }
+
+        if (option.type === 'submenu') {
+          return (
+            <DropdownMenuSub key={index}>
+              <DropdownMenuSubTrigger className={itemClass}>
+                {option.icon}
+                <span className="flex-1">{option.label}</span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="min-w-[180px] rounded-lg border border-nt-line bg-nt-surface py-1.5 text-nt-ink shadow-2xl shadow-black/50">
+                {option.submenu.map((action, actionIndex) => (
+                  <DropdownMenuItem
+                    key={actionIndex}
+                    className={`${itemClass} ${action.danger ? 'text-red-400 focus:bg-red-900/20 focus:text-red-300' : ''}`}
+                    onSelect={(event) => {
+                      if (action.preventClose) event.preventDefault();
+                      action.onClick?.();
+                    }}
+                  >
+                    {action.icon}<span>{action.label}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          );
         }
 
         return (
-          <button
-            key={i}
-            className={`w-full text-left px-3 py-2 text-xs font-medium hover:bg-[#27272a] transition-colors flex items-center justify-between group ${
-              opt.danger ? 'text-red-400 hover:text-red-300 hover:bg-red-900/10' : 'text-zinc-300 hover:text-white'
-            }`}
-            onClick={() => {
-              if (opt.onClick) opt.onClick();
-              if (!opt.preventClose) onClose();
+          <DropdownMenuItem
+            key={index}
+            className={`${itemClass} justify-between ${option.danger ? 'text-red-400 focus:bg-red-900/20 focus:text-red-300' : ''}`}
+            onSelect={(event) => {
+              if (option.preventClose) event.preventDefault();
+              option.onClick?.();
             }}
           >
-            <div className="flex items-center gap-2">
-                {opt.icon && <span className={opt.danger ? 'text-red-400' : 'text-zinc-500 group-hover:text-zinc-300'}>{opt.icon}</span>}
-                {opt.color && (
-                    <span 
-                        className="w-3 h-3 rounded-full border border-white/10 shadow-sm" 
-                        style={{ backgroundColor: opt.color }}
-                    />
-                )}
-                <span>{opt.label}</span>
-            </div>
-          </button>
+            <span className="flex min-w-0 items-center gap-2">
+              {option.icon}
+              {option.color && <span className="h-3 w-3 rounded-full border border-white/10" style={{ backgroundColor: option.color }} />}
+              <span>{option.label}</span>
+            </span>
+          </DropdownMenuItem>
         );
       })}
-    </div>
-  );
-};
+    </DropdownMenuContent>
+  </DropdownMenu>
+);
 
 export default ContextMenu;

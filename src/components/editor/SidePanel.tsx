@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
-import { Project } from '../../types';
+import { Project } from '../../models/story';
 import { Diagnostic } from '../../core/validation/types';
 import { BoardsList } from '../sidebar/BoardsList';
 import { VariablesList } from '../sidebar/VariablesList';
 import { AssetsList } from '../sidebar/AssetsList';
 import { ProblemsList } from '../sidebar/ProblemsList';
-import { island, toolButton } from './usePopover';
+import { island, toolButton } from './editorStyles';
 import { PanelId } from './EditorTopBar';
 
 interface SidePanelProps {

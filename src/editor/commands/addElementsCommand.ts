@@ -1,11 +1,11 @@
 import { Edge } from 'reactflow';
-import { AppNode } from '../../types';
+import { CanvasNode } from '../../adapters/reactFlow';
 import { Command, CommandContext } from './types';
 
 // Covers addNode, pasteClipboard (nodes+edges together), and the palette-drop handler.
 export function addElementsCommand(
   ctx: CommandContext,
-  nodesToAdd: AppNode[],
+  nodesToAdd: CanvasNode[],
   edgesToAdd: Edge[] = [],
   deselectExisting = false
 ): Command {

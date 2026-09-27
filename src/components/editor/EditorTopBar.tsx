@@ -1,12 +1,16 @@
 import { memo } from 'react';
 import {
-  ArrowLeft, ChevronDown, Check, Plus, Settings2, Variable, Image as ImageIcon, TriangleAlert, MoreHorizontal,
+  ArrowLeft, ChevronDown, Plus, Settings2, Variable, Image as ImageIcon, TriangleAlert, MoreHorizontal,
   Download, Command, HelpCircle, Play, Copy, X, LayoutList,
 } from 'lucide-react';
-import { Board } from '../../types';
+import { Board } from '../../models/story';
 import { VIEW_MODES, ViewMode } from '../views/viewModes';
 import { formatRelativeTime } from '../../utils/localPrefs';
-import { island, menuItem, menuPanel, toolButton, toolButtonActive, usePopover } from './usePopover';
+import { island, toolButton, toolButtonActive } from './editorStyles';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup,
+  DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger,
+} from '../ui/dropdown-menu';
 
 export type PanelId = 'boards' | 'variables' | 'assets' | 'problems';
 
@@ -39,9 +43,6 @@ const divider = <span aria-hidden className="mx-0.5 h-5 w-px bg-nt-line" />;
 // panels, more) and Play top-right. Board editing tools live in the dock.
 export const EditorTopBar = memo((props: EditorTopBarProps) => {
   const { projectName, boards, activeBoardId, lastSaved, viewMode, panel, problemCount, canPlay, jumpClipboard } = props;
-  const boardMenu = usePopover();
-  const viewMenu = usePopover();
-  const moreMenu = usePopover();
   const board = boards.find((b) => b.id === activeBoardId) ?? boards[0];
   const view = VIEW_MODES.find((v) => v.id === viewMode)!;
 
@@ -69,79 +70,77 @@ export const EditorTopBar = memo((props: EditorTopBarProps) => {
         {divider}
 
         {/* Board switcher */}
-        <div ref={boardMenu.ref} className="relative">
-          <button type="button" onClick={() => boardMenu.setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={boardMenu.open}
-            className={`${toolButton} max-w-40 px-2 text-sm`}>
-            <LayoutList size={15} aria-hidden /><span className="truncate">{board?.name}</span><ChevronDown size={14} aria-hidden />
-          </button>
-          {boardMenu.open && (
-            <div role="menu" className={`${menuPanel} left-0 top-10`}>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" aria-haspopup="menu" className={`${toolButton} max-w-40 px-2 text-sm`}>
+              <LayoutList size={15} aria-hidden /><span className="truncate">{board?.name}</span><ChevronDown size={14} aria-hidden />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="min-w-52 border-nt-line bg-nt-surface text-nt-ink shadow-2xl shadow-black/50">
+            <DropdownMenuRadioGroup value={activeBoardId} onValueChange={props.onSwitchBoard}>
               {boards.map((b) => (
-                <button key={b.id} role="menuitemradio" aria-checked={b.id === activeBoardId} className={menuItem}
-                  onClick={() => { boardMenu.setOpen(false); props.onSwitchBoard(b.id); }}>
-                  <span className="w-4">{b.id === activeBoardId && <Check size={14} />}</span>
+                <DropdownMenuRadioItem key={b.id} value={b.id} className="text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink">
                   <span className="truncate">{b.name}</span>
                   <span className="ml-auto pl-4 text-xs text-nt-ink-3">{b.nodes.length}</span>
-                </button>
+                </DropdownMenuRadioItem>
               ))}
-              <div className="my-1 h-px bg-nt-line" />
-              <button role="menuitem" className={menuItem} onClick={() => { boardMenu.setOpen(false); props.onAddBoard(); }}>
+            </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator className="bg-nt-line" />
+            <DropdownMenuItem className="text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink" onSelect={props.onAddBoard}>
                 <Plus size={14} /> New board
-              </button>
-              <button role="menuitem" className={menuItem} onClick={() => { boardMenu.setOpen(false); props.onPanel('boards'); }}>
+            </DropdownMenuItem>
+            <DropdownMenuItem className="text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink" onSelect={() => props.onPanel('boards')}>
                 <Settings2 size={14} /> Rename or delete boards…
-              </button>
-            </div>
-          )}
-        </div>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {/* View switcher */}
-        <div ref={viewMenu.ref} className="relative">
-          <button type="button" onClick={() => viewMenu.setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={viewMenu.open}
-            aria-label={`View: ${view.label}`} className={`${toolButton} px-2 text-sm`}>
-            <view.icon size={15} aria-hidden /><span className="hidden sm:inline">{view.label}</span><ChevronDown size={14} aria-hidden />
-          </button>
-          {viewMenu.open && (
-            <div role="menu" className={`${menuPanel} left-0 top-10 w-72`}>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" aria-haspopup="menu" aria-label={`View: ${view.label}`} className={`${toolButton} px-2 text-sm`}>
+              <view.icon size={15} aria-hidden /><span className="hidden sm:inline">{view.label}</span><ChevronDown size={14} aria-hidden />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-72 border-nt-line bg-nt-surface text-nt-ink shadow-2xl shadow-black/50">
+            <DropdownMenuRadioGroup value={viewMode} onValueChange={(id) => props.onViewMode(id as ViewMode)}>
               {VIEW_MODES.map((v, i) => (
-                <button key={v.id} role="menuitemradio" aria-checked={v.id === viewMode} className={`${menuItem} items-start py-2`}
-                  onClick={() => { viewMenu.setOpen(false); props.onViewMode(v.id); }}>
+                <DropdownMenuRadioItem key={v.id} value={v.id} className="items-start py-2 text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink">
                   <v.icon size={15} className="mt-0.5 shrink-0" />
                   <span className="min-w-0 flex-1">
                     <span className={`block ${v.id === viewMode ? 'font-semibold text-nt-ink' : ''}`}>{v.label}</span>
                     <span className="block text-xs text-nt-ink-3">{v.description}</span>
                   </span>
-                  <kbd className="font-mono text-[11px] text-nt-ink-3">Alt {i + 1}</kbd>
-                </button>
+                  <DropdownMenuShortcut>Alt {i + 1}</DropdownMenuShortcut>
+                </DropdownMenuRadioItem>
               ))}
-            </div>
-          )}
-        </div>
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
         {divider}
 
         {panelButton('variables', 'Variables', Variable)}
         {panelButton('assets', 'Assets', ImageIcon)}
         {panelButton('problems', 'Problems', TriangleAlert, problemCount)}
 
-        <div ref={moreMenu.ref} className="relative">
-          <button type="button" onClick={() => moreMenu.setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={moreMenu.open}
-            aria-label="More" title="More" className={toolButton}>
-            <MoreHorizontal size={16} />
-          </button>
-          {moreMenu.open && (
-            <div role="menu" className={`${menuPanel} left-0 top-10`}>
-              <button role="menuitem" className={menuItem} onClick={() => { moreMenu.setOpen(false); props.onExport(); }}>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" aria-haspopup="menu" aria-label="More" title="More" className={toolButton}>
+              <MoreHorizontal size={16} />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="border-nt-line bg-nt-surface text-nt-ink shadow-2xl shadow-black/50">
+              <DropdownMenuItem className="text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink" onSelect={props.onExport}>
                 <Download size={14} /> Export…
-              </button>
-              <button role="menuitem" className={menuItem} onClick={() => { moreMenu.setOpen(false); props.onPalette(); }}>
-                <Command size={14} /> All commands <kbd className="ml-auto pl-4 font-mono text-[11px] text-nt-ink-3">Ctrl K</kbd>
-              </button>
-              <button role="menuitem" className={menuItem} onClick={() => { moreMenu.setOpen(false); props.onHelp(); }}>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink" onSelect={props.onPalette}>
+                <Command size={14} /> All commands <DropdownMenuShortcut>Ctrl K</DropdownMenuShortcut>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink" onSelect={props.onHelp}>
                 <HelpCircle size={14} /> Help & shortcuts
-              </button>
-            </div>
-          )}
-        </div>
+              </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       <div className="absolute right-3 top-3 z-30 flex items-center gap-2">

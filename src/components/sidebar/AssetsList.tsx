@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { getStorageAdapter } from '../../services/storage';
-import { Project, Asset, Folder } from '../../types';
+import { Project, Asset, Folder } from '../../models/story';
 import { 
   Folder as FolderIcon,
   FolderOpen,

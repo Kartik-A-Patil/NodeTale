@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { useReactFlow, useStore } from 'reactflow';
 import {
   MousePointer2, Hand, Undo2, Redo2, PlusCircle, GitFork, ArrowRightCircle, MessageSquare, LayoutTemplate,
@@ -9,7 +9,9 @@ import {
 import { NodeTypeKey } from '../../core/nodes/nodeRegistry';
 import { AlignMode } from '../../core/layout/arrange';
 import { htmlToText } from '../../utils/html';
-import { island, menuItem, menuPanel, toolButton, toolButtonActive, usePopover } from './usePopover';
+import { island, menuItem, toolButton, toolButtonActive } from './editorStyles';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '../ui/dropdown-menu';
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 
 export interface FindableNode {
   id: string;
@@ -71,7 +73,7 @@ function FindPopover({ findable, onFocusNode, onClose, startId }: { findable: Fi
   };
 
   return (
-    <div className={`${menuPanel} bottom-12 left-1/2 w-80 -translate-x-1/2 p-2`}>
+    <div>
       <input autoFocus value={query} placeholder="Find a scene by name or text" aria-label="Find a scene"
         onChange={(e) => { setQuery(e.target.value); setActive(0); }}
         onKeyDown={(e) => {
@@ -108,23 +110,10 @@ function FindPopover({ findable, onFocusNode, onClose, startId }: { findable: Fi
 export const BoardDock = memo((p: BoardDockProps) => {
   const { zoomIn, zoomOut, fitView, zoomTo } = useReactFlow();
   const zoomPercent = useStore((s) => Math.round(s.transform[2] * 100));
-  const arrange = usePopover();
-  // Find's open state is lifted (Ctrl+F opens it), so outside-click closes it here.
-  const findRef = useRef<HTMLDivElement>(null);
-  const { findOpen, onFindOpen } = p;
-  useEffect(() => {
-    if (!findOpen) return;
-    const onDown = (e: PointerEvent) => {
-      if (!findRef.current?.contains(e.target as Node)) onFindOpen(false);
-    };
-    document.addEventListener('pointerdown', onDown);
-    return () => document.removeEventListener('pointerdown', onDown);
-  }, [findOpen, onFindOpen]);
-
   const alignItem = (mode: AlignMode, label: string, Icon: typeof AlignStartVertical) => (
-    <button role="menuitem" className={menuItem} disabled={p.selectionCount < 2} onClick={() => { arrange.setOpen(false); p.onAlign(mode); }}>
+    <DropdownMenuItem className="text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink" disabled={p.selectionCount < 2} onSelect={() => p.onAlign(mode)}>
       <Icon size={14} /> {label}
-    </button>
+    </DropdownMenuItem>
   );
 
   return (
@@ -155,45 +144,47 @@ export const BoardDock = memo((p: BoardDockProps) => {
       ))}
       {divider}
 
-      <div ref={arrange.ref} className="relative">
-        <button type="button" className={`${toolButton} ${arrange.open ? toolButtonActive : ''}`} aria-haspopup="menu" aria-expanded={arrange.open}
-          disabled={p.locked} onClick={() => arrange.setOpen((o) => !o)} title="Arrange & align" aria-label="Arrange and align">
-          <Wand2 size={16} />
-        </button>
-        {arrange.open && (
-          <div role="menu" className={`${menuPanel} bottom-12 left-1/2 w-60 -translate-x-1/2`}>
-            <button role="menuitem" className={menuItem} onClick={() => { arrange.setOpen(false); p.onArrange('board'); }}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button type="button" className={toolButton} disabled={p.locked} title="Arrange & align" aria-label="Arrange and align">
+            <Wand2 size={16} />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="top" align="center" className="w-60 border-nt-line bg-nt-surface text-nt-ink shadow-2xl shadow-black/50">
+            <DropdownMenuItem className="text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink" onSelect={() => p.onArrange('board')}>
               <Wand2 size={14} /> Tidy up the whole board
-            </button>
-            <button role="menuitem" className={menuItem} disabled={p.selectionCount < 2} onClick={() => { arrange.setOpen(false); p.onArrange('selection'); }}>
+            </DropdownMenuItem>
+            <DropdownMenuItem className="text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink" disabled={p.selectionCount < 2} onSelect={() => p.onArrange('selection')}>
               <Wand2 size={14} /> Tidy up the selection
-            </button>
-            <div className="my-1 h-px bg-nt-line" />
-            <p className="px-3 py-1 text-xs text-nt-ink-3">{p.selectionCount < 2 ? 'Select 2 or more to align' : `Align ${p.selectionCount} selected`}</p>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="bg-nt-line" />
+            <DropdownMenuLabel className="text-xs font-normal text-nt-ink-3">{p.selectionCount < 2 ? 'Select 2 or more to align' : `Align ${p.selectionCount} selected`}</DropdownMenuLabel>
             {alignItem('left', 'Left edges', AlignStartVertical)}
             {alignItem('center', 'Centres (vertical line)', AlignCenterVertical)}
             {alignItem('right', 'Right edges', AlignEndVertical)}
             {alignItem('top', 'Top edges', AlignStartHorizontal)}
             {alignItem('middle', 'Middles (horizontal line)', AlignCenterHorizontal)}
             {alignItem('bottom', 'Bottom edges', AlignEndHorizontal)}
-            <div className="my-1 h-px bg-nt-line" />
-            <button role="menuitem" className={menuItem} disabled={p.selectionCount < 3} onClick={() => { arrange.setOpen(false); p.onDistribute('horizontal'); }}>
+            <DropdownMenuSeparator className="bg-nt-line" />
+            <DropdownMenuItem className="text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink" disabled={p.selectionCount < 3} onSelect={() => p.onDistribute('horizontal')}>
               <AlignHorizontalSpaceAround size={14} /> Space evenly across
-            </button>
-            <button role="menuitem" className={menuItem} disabled={p.selectionCount < 3} onClick={() => { arrange.setOpen(false); p.onDistribute('vertical'); }}>
+            </DropdownMenuItem>
+            <DropdownMenuItem className="text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink" disabled={p.selectionCount < 3} onSelect={() => p.onDistribute('vertical')}>
               <AlignVerticalSpaceAround size={14} /> Space evenly down
-            </button>
-          </div>
-        )}
-      </div>
+            </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-      <div ref={findRef} className="relative">
-        <button type="button" className={`${toolButton} ${p.findOpen ? toolButtonActive : ''}`} aria-expanded={p.findOpen}
-          onClick={() => p.onFindOpen(!p.findOpen)} title="Find (Ctrl+F)" aria-label="Find a scene">
-          <Search size={16} />
-        </button>
-        {p.findOpen && <FindPopover findable={p.findable} onFocusNode={p.onFocusNode} startId={p.startId} onClose={() => p.onFindOpen(false)} />}
-      </div>
+      <Popover open={p.findOpen} onOpenChange={p.onFindOpen}>
+        <PopoverTrigger asChild>
+          <button type="button" className={`${toolButton} ${p.findOpen ? toolButtonActive : ''}`} title="Find (Ctrl+F)" aria-label="Find a scene">
+            <Search size={16} />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent side="top" align="center" sideOffset={8} className="w-80 border-nt-line bg-nt-surface p-2 text-nt-ink shadow-2xl shadow-black/50">
+          <FindPopover findable={p.findable} onFocusNode={p.onFocusNode} startId={p.startId} onClose={() => p.onFindOpen(false)} />
+        </PopoverContent>
+      </Popover>
       {divider}
 
       <button type="button" className={toolButton} onClick={() => zoomOut({ duration: 200 })} title="Zoom out" aria-label="Zoom out"><Minus size={16} /></button>

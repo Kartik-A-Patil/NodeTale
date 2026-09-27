@@ -1,4 +1,4 @@
-import { Project, AppNode, Board, Variable, Branch, isConditionNode } from '../../types';
+import { Project, StoryNode, Board, Variable, Branch, isConditionNode } from '../../models/story';
 import { executeNode } from '../nodes/nodeRegistry';
 import { runScript } from '../runtime/scriptInterpreter';
 import { extractScriptCode } from '../runtime/htmlScript';
@@ -35,7 +35,7 @@ export interface StepResult {
 export interface Simulator {
   startId: string | null;
   variables: Variable[];
-  node: (id: string) => { node: AppNode; board: Board } | undefined;
+  node: (id: string) => { node: StoryNode; board: Board } | undefined;
   initialValues: (overrides?: Values) => Values;
   step: (nodeId: string, values: Values) => StepResult;
 }
@@ -43,7 +43,7 @@ export interface Simulator {
 export const valuesEqual = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
 
 export function createSimulator(project: Project): Simulator {
-  const index = new Map<string, { node: AppNode; board: Board }>();
+  const index = new Map<string, { node: StoryNode; board: Board }>();
   for (const board of project.boards) for (const node of board.nodes) if (!index.has(node.id)) index.set(node.id, { node, board });
   const active = project.boards.find((b) => b.id === project.activeBoardId) || project.boards[0];
   const start = active?.nodes.find((n) => n.type !== 'commentNode' && n.data?.label?.toLowerCase() === 'start');
@@ -121,7 +121,7 @@ const MAX_RESOLVE_HOPS = 64;
  * interactive (elementNode) scene, a dead end, or a cycle. Used to label a
  * choice by what it leads to, not by an invisible logic node's own name.
  */
-export function resolveVisibleNode(sim: Simulator, nodeId: string, values: Values = sim.initialValues()): AppNode | null {
+export function resolveVisibleNode(sim: Simulator, nodeId: string, values: Values = sim.initialValues()): StoryNode | null {
   let current = sim.node(nodeId)?.node ?? null;
   const visited = new Set<string>();
   let hops = 0;

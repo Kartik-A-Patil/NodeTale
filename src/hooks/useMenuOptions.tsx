@@ -4,8 +4,9 @@ import {
     MessageSquare, Layout, Info, ArrowUpLeft, ArrowUpRight, 
     ArrowDownLeft, ArrowDownRight, MoveUpLeft, CornerDownRight, Spline, Image as ImageIcon, Play, X
 } from 'lucide-react';
-import { ContextMenuOption } from '../components/ContextMenu';
-import { AppNode, Asset, isAnnotationNode, isConditionNode, isElementNode } from '../types';
+import { ContextMenuAction, ContextMenuOption } from '../components/ContextMenu';
+import { Asset, isAnnotationNode, isConditionNode, isElementNode } from '../models/story';
+import { CanvasNode } from '../adapters/reactFlow';
 import { Edge, ReactFlowInstance } from 'reactflow';
 import { MenuState } from './useContextMenu';
 import { AlignMode } from '../core/layout/arrange';
@@ -65,7 +66,7 @@ const EdgeColors = [
 
 interface UseMenuOptionsProps {
     menu: MenuState;
-    nodes: AppNode[];
+    nodes: CanvasNode[];
     edges: Edge[];
     updateNodeData: (id: string, data: any) => void;
     deleteNode: (id: string, deleteChildren?: boolean) => void;
@@ -297,7 +298,7 @@ export function useMenuOptions({
                .map((assetId: string) => assets.find((a) => a.id === assetId))
                .filter(Boolean) as Asset[];
 
-             const submenuItems: ContextMenuOption[] = [
+             const submenuItems: ContextMenuAction[] = [
                 {
                     label: 'Add Asset',
                     icon: <PlusCircle size={14} className="text-green-400" />,

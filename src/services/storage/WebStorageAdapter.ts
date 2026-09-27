@@ -1,5 +1,5 @@
 import { StorageAdapter, FileOrBlob } from './StorageAdapter';
-import { Project, ProjectSummary } from '../../types';
+import { Project, ProjectSummary } from '../../models/story';
 import { buildProjectSummary } from '../../utils/projectSummary';
 
 const DB_NAME = 'NodeTaleDB';

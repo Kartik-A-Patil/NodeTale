@@ -1,7 +1,7 @@
 import React, { memo, useCallback } from 'react';
 import { Node, useReactFlow, useStore } from 'reactflow';
 import { Link2 } from 'lucide-react';
-import { JumpNodeData } from '../../types';
+import { JumpNodeData } from '../../models/story';
 
 interface JumpTargetBadgeProps {
   nodeId: string;
@@ -11,7 +11,6 @@ interface JumpTargetBadgeProps {
 const JumpTargetBadge = ({ nodeId, className = '' }: JumpTargetBadgeProps) => {
   // Select primitives, not the node list: getNodes() returns a fresh array on
   // every store tick (drag/pan/zoom), which re-rendered every badge per frame.
-  // ponytail: still an O(n) scan per tick per badge; index jump targets if boards get huge.
   const findSource = useCallback(
     (nodes: Iterable<Node>) => {
       for (const n of nodes) {

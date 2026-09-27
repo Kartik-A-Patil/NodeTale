@@ -1,5 +1,5 @@
 import { useCallback, useReducer, useRef } from "react";
-import { Project } from "../types";
+import { Project } from "../models/story";
 import { StoryRuntime } from "../core/runtime/StoryRuntime";
 
 // Thin React wrapper around StoryRuntime (src/core/runtime/StoryRuntime.ts),

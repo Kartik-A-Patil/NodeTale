@@ -1,6 +1,6 @@
 import { useDeferredValue, useMemo, useRef, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
-import { Project, SimulationPreset } from '../../../types';
+import { Project, SimulationPreset } from '../../../models/story';
 import { StoryGraph } from '../../../core/graph/storyGraph';
 import { analyzeStates, createSimulator, formatValue, branchLabel, Values } from '../../../core/sim/simulate';
 import { buildStateTree, pathTo, DEFAULT_TREE_BUDGET } from '../../../core/sim/stateTree';

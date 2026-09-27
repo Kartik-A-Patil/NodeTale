@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react';
 import { Edge } from 'reactflow';
-import { AppNode, Asset, Variable } from '../types';
+import { Asset, Variable } from '../models/story';
+import { CanvasNode } from '../adapters/reactFlow';
 
 // Project-level data and undoable edit actions for canvas node/edge components.
 // Previously variables/assets were copied into every node's `data` (so every
@@ -10,7 +11,7 @@ export interface EditorContextValue {
   variables: Variable[];
   assets: Asset[];
   updateNodeData: (id: string, data: Record<string, unknown>, mergeKey?: string) => void;
-  updateNode: (id: string, patch: Partial<AppNode>, mergeKey?: string) => void;
+  updateNode: (id: string, patch: Partial<CanvasNode>, mergeKey?: string) => void;
   updateEdge: (id: string, applyPatch: (edge: Edge) => Edge, mergeKey?: string) => void;
 }
 

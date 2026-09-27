@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Project, Variable, VariableType, ArrayValue, ObjectValue } from '../../types';
+import { Project, Variable, VariableType, ArrayValue, ObjectValue } from '../../models/story';
 import { Plus, X, Edit, AlertTriangle } from 'lucide-react';
 import { ArrayObjectEditorModal } from '../modals/ArrayObjectEditorModal';
 

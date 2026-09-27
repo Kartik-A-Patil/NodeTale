@@ -1,6 +1,6 @@
 import React from 'react';
 import { X, Plus, Trash2 } from 'lucide-react';
-import { VariableType, ArrayValue, ObjectValue } from '../../types';
+import { VariableType, ArrayValue, ObjectValue } from '../../models/story';
 
 let objectKeyCounter = 0;
 

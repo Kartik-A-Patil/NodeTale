@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Project, ElementNodeData, Asset } from "../types";
+import { Project, ElementNodeData, Asset } from "../models/story";
 import { replaceVariablesInText } from "../services/logicService";
 import { sanitizeHtml } from "../utils/html";
 import { usePlayModeLogic } from "../hooks/usePlayMode";

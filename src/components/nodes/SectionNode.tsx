@@ -1,7 +1,7 @@
 import React, { memo, useState } from 'react';
 import { NodeProps, NodeResizeControl } from 'reactflow';
 import { useEditor } from '../../editor/EditorContext';
-import { SectionNodeData } from '../../types';
+import { SectionNodeData } from '../../models/story';
 import JumpTargetBadge from './JumpTargetBadge';
 import { nodePropsEqual } from './nodePropsEqual';
 

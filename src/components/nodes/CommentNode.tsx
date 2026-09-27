@@ -1,7 +1,7 @@
 import { memo, useState } from 'react';
 import { NodeProps, NodeResizeControl } from 'reactflow';
 import { useEditor } from '../../editor/EditorContext';
-import { CommentNodeData } from '../../types';
+import { CommentNodeData } from '../../models/story';
 import { RichTextEditor } from '../RichTextEditor';
 import JumpTargetBadge from './JumpTargetBadge';
 import { nodePropsEqual } from './nodePropsEqual';

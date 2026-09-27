@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import { Project } from '../types';
+import { Project } from '../models/story';
 import { getStorageAdapter } from './storage';
 import { saveProject, checkProjectNameExists } from './storageService';
 import { shrinkCoverImage } from '../utils/coverImage';
@@ -49,11 +49,7 @@ export async function createExampleProject(): Promise<Project> {
   })();
   await Promise.all([...assetPromises, coverPromise]);
 
-  // 3. Process Embedded Images in Nodes
-  // These are problematic. They point to `assets/...`. 
-  // We should ideally extract them and save them as assets, then replace src with generic ID-based URL?
-  // Or if they are simple generic images, maybe just base64 them?
-  // Base64 is easiest to ensure they work everywhere immediately.
+  // Process embedded image references in node content.
   for (const board of project.boards || []) {
     for (const node of board.nodes || []) {
       if (node.data && typeof node.data.content === 'string') {
@@ -61,8 +57,6 @@ export async function createExampleProject(): Promise<Project> {
          const regex = /src=["'](assets\/[^"']+)["']/g;
          let content = node.data.content;
          let match;
-         // We need to async replace.
-         // Simplest way: find all matches, fetch them, convert to base64, replace.
          const replacements: {match: string, replacement: string}[] = [];
 
          while ((match = regex.exec(content)) !== null) {

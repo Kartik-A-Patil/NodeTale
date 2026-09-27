@@ -1,4 +1,4 @@
-import { Project } from '../types';
+import { Project } from '../models/story';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { getStorageAdapter } from '../services/storage';
@@ -240,9 +240,7 @@ export const exportProjectAsZip = async (project: Project, includeAssets: boolea
         }));
     }
 
-    // 3. Handle Embedded Images in Node Content (Rich Text)
-    // This is a bit more complex as we need to parse HTML. 
-    // We'll use a regex to find <img src="data:...">
+    // Handle embedded images in node content.
     if (includeAssets) {
         projectToSave.boards.forEach(board => {
             board.nodes.forEach(node => {
@@ -255,8 +253,6 @@ export const exportProjectAsZip = async (project: Project, includeAssets: boolea
                     let match;
                     let imgIndex = 0;
                     
-                    // We need to replace matches, but string is immutable. 
-                    // Let's build a list of replacements first.
                     const replacements: {original: string, replacement: string}[] = [];
 
                     while ((match = imgRegex.exec(content)) !== null) {
@@ -310,4 +306,3 @@ export const exportProjectAsZip = async (project: Project, includeAssets: boolea
     const content = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
     saveAs(content, `${project.name.replace(/\s+/g, "_")}.zip`);
 };
-

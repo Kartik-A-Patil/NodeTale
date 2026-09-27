@@ -1,5 +1,5 @@
 import { StorageAdapter, FileOrBlob } from './StorageAdapter';
-import { Project, ProjectSummary } from '../../types';
+import { Project, ProjectSummary } from '../../models/story';
 
 // Declare global augmentation for window.electron
 declare global {
@@ -71,8 +71,6 @@ export class ElectronStorageAdapter implements StorageAdapter {
   }
 
   async migrate(): Promise<void> {
-    // No legacy data to migrate on Electron currently.
-    // When schema changes are needed, implement version-checked migration here.
     console.log('[ElectronStorageAdapter] Migration check complete (no-op).');
   }
 

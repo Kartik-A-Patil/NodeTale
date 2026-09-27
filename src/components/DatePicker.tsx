@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useReactFlow, Node } from 'reactflow';
-import { ElementNodeData } from '../types';
+import { ElementNodeData } from '../models/story';
 
 interface DatePickerProps {
   date: string | null;

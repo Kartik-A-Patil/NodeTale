@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { ProjectThumbnail } from '../../types';
+import { ProjectThumbnail } from '../../models/story';
 
 interface GraphThumbnailProps {
   thumbnail?: ProjectThumbnail;

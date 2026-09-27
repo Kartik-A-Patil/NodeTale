@@ -1,7 +1,7 @@
 import { memo, useState } from "react";
 import { NodeProps } from "reactflow";
 import { useEditor } from "../../editor/EditorContext";
-import { AnnotationNodeData } from "../../types";
+import { AnnotationNodeData } from "../../models/story";
 import { nodePropsEqual } from "./nodePropsEqual";
 
 const AnnotationNode = ({ id, data,selected }: NodeProps<AnnotationNodeData>) => {

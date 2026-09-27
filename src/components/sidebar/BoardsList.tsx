@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Project, Board } from '../../types';
+import { Project, Board } from '../../models/story';
 import { Layout, Plus, Trash2 } from 'lucide-react';
 
 interface BoardsListProps {

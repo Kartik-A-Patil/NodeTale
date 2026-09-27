@@ -1,6 +1,6 @@
 import { useMemo, useRef } from 'react';
 import { Edge, Node } from 'reactflow';
-import { Project } from '../types';
+import { Project } from '../models/story';
 import { computeResolvedEdgeLabels, EdgeLabelCache } from '../core/sim/resolvedEdgeLabels';
 
 /** See computeResolvedEdgeLabels — this just holds its cache across renders. */

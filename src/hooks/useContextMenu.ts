@@ -24,13 +24,14 @@ export function useContextMenu(selectedNodes: Node[]) {
   const onNodeContextMenu = useCallback(
     (event: React.MouseEvent, node: Node) => {
       event.preventDefault();
+      const selectedIds = selectedNodesRef.current.map(n => n.id);
       setMenu({
         x: event.clientX,
         y: event.clientY,
         type: 'node',
         id: node.id,
-        label: node.data.label,
-        selectedNodeIds: selectedNodesRef.current.map(n => n.id)
+        label: node.data?.label,
+        selectedNodeIds: selectedIds.includes(node.id) ? selectedIds : [node.id]
       });
     },
     []

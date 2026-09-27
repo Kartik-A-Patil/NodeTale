@@ -1,7 +1,8 @@
-import { forwardRef, useEffect, useRef, useState } from 'react';
+import { forwardRef, useRef } from 'react';
 import { Search, LayoutGrid, List, Upload, Plus, ChevronDown, X } from 'lucide-react';
 import nodetaleLogo from '../../assets/logo.png';
 import { buttonPrimary, buttonSecondary, focusRing, input } from '../ui/styles';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu';
 
 export type SortKey = 'opened' | 'modified' | 'name';
 export type ViewKey = 'grid' | 'list';
@@ -25,18 +26,6 @@ export const Toolbar = forwardRef<HTMLInputElement, ToolbarProps>(function Toolb
   searchRef
 ) {
   const importRef = useRef<HTMLInputElement>(null);
-  const [newMenuOpen, setNewMenuOpen] = useState(false);
-  const newMenuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!newMenuOpen) return;
-    const onPointer = (e: PointerEvent) => {
-      if (!newMenuRef.current?.contains(e.target as Node)) setNewMenuOpen(false);
-    };
-    document.addEventListener('pointerdown', onPointer);
-    return () => document.removeEventListener('pointerdown', onPointer);
-  }, [newMenuOpen]);
-
   return (
     <header className="sticky top-0 z-20 border-b border-nt-line bg-nt-bg/95">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-3 gap-y-3 px-4 py-3.5 sm:flex-nowrap sm:px-6">
@@ -102,30 +91,28 @@ export const Toolbar = forwardRef<HTMLInputElement, ToolbarProps>(function Toolb
             if (file) onImport(file);
           }} />
 
-        <div ref={newMenuRef} className="relative flex">
+        <div className="flex">
           <button type="button" className={`${buttonPrimary} rounded-r-none`} onClick={onNewBlank}>
             <Plus size={16} aria-hidden /> <span className="whitespace-nowrap">New<span className="hidden sm:inline"> story</span></span>
           </button>
-          <button type="button" aria-label="More ways to start" aria-haspopup="menu" aria-expanded={newMenuOpen}
-            onClick={() => setNewMenuOpen((o) => !o)}
-            className={`${buttonPrimary} rounded-l-none border-l border-nt-accent-ink/25 px-2`}>
-            <ChevronDown size={15} />
-          </button>
-          {newMenuOpen && (
-            <div role="menu" className="absolute right-0 top-11 z-30 w-60 overflow-hidden rounded-lg border border-nt-line bg-nt-surface py-1 shadow-2xl"
-              onKeyDown={(e) => { if (e.key === 'Escape') setNewMenuOpen(false); }}>
-              <button role="menuitem" autoFocus className="block w-full px-3 py-2 text-left hover:bg-nt-raised focus-visible:bg-nt-raised focus-visible:outline-none"
-                onClick={() => { setNewMenuOpen(false); onNewBlank(); }}>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" aria-label="More ways to start" aria-haspopup="menu"
+                className={`${buttonPrimary} rounded-l-none border-l border-nt-accent-ink/25 px-2`}>
+                <ChevronDown size={15} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-60 border-nt-line bg-nt-surface text-nt-ink shadow-2xl">
+              <DropdownMenuItem className="flex-col items-start whitespace-normal px-3 py-2 focus:bg-nt-raised" onSelect={onNewBlank}>
                 <span className="block text-sm text-nt-ink">Blank story</span>
                 <span className="block text-xs text-nt-ink-3">A Start scene on an empty board</span>
-              </button>
-              <button role="menuitem" disabled={exampleBusy} className="block w-full px-3 py-2 text-left hover:bg-nt-raised focus-visible:bg-nt-raised focus-visible:outline-none disabled:opacity-60"
-                onClick={() => { setNewMenuOpen(false); onNewExample(); }}>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="flex-col items-start whitespace-normal px-3 py-2 focus:bg-nt-raised" disabled={exampleBusy} onSelect={onNewExample}>
                 <span className="block text-sm text-nt-ink">{exampleBusy ? 'Adding example…' : 'Example story'}</span>
                 <span className="block text-xs text-nt-ink-3">A short mystery with branches and media</span>
-              </button>
-            </div>
-          )}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </header>

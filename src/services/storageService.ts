@@ -1,12 +1,14 @@
-import { Project, ProjectSummary } from '../types';
+import { Project, ProjectSummary } from '../models/story';
 import { getStorageAdapter } from './storage';
 import { COVER_SIZE_LIMIT, shrinkCoverImage } from '../utils/coverImage';
 
-// Big cover -> shrunk cover. The editor keeps the project it loaded in state, so
-// an old oversized cover arrives here again on every autosave until reload;
-// this makes the repeat cost a Map lookup instead of a re-decode.
-// ponytail: unbounded, but holds at most one entry per oversized cover seen this session.
+// The same oversized cover can be autosaved repeatedly before the project reloads.
+// Cache its resized form to avoid decoding and resizing it for each save.
 const shrunkCovers = new Map<string, string>();
+// Keep writes for one project in invocation order. Cover resizing happens
+// before the adapter write and can take long enough for autosaves to overlap;
+// without a queue, an older snapshot can overwrite a newer one.
+const projectSaveQueues = new Map<string, Promise<void>>();
 
 const withSmallCover = async (project: Project): Promise<Project> => {
   const cover = project.coverImage;
@@ -25,7 +27,19 @@ export const saveProject = async (project: Project): Promise<void> => {
   // Single chokepoint for every save path (create, import, example, cover
   // change, autosave), so oversized covers — including ones already stored —
   // get shrunk on their next save.
-  return getStorageAdapter().saveProject(await withSmallCover(project));
+  const previousSave = projectSaveQueues.get(project.id) ?? Promise.resolve();
+  const nextSave = previousSave
+    .catch(() => undefined)
+    .then(async () => getStorageAdapter().saveProject(await withSmallCover(project)));
+  projectSaveQueues.set(project.id, nextSave);
+
+  try {
+    await nextSave;
+  } finally {
+    if (projectSaveQueues.get(project.id) === nextSave) {
+      projectSaveQueues.delete(project.id);
+    }
+  }
 };
 
 export const loadProject = async (projectIdOrName: string): Promise<Project | null> => {

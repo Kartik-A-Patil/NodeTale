@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Project, Asset } from '../../types';
+import { Project, Asset } from '../../models/story';
 import { 
   Folder as FolderIcon,
   FolderOpen,

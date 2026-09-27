@@ -1,10 +1,8 @@
-import { Variable, VariableType, ArrayValue, ObjectValue } from '../types';
+import { Variable, VariableType, ArrayValue, ObjectValue } from '../models/story';
 import { parseExpression } from '../core/expression/parser';
 import { evaluate } from '../core/expression/evaluator';
 
-// Real tokenizer/parser-backed evaluator (see src/core/expression/). Supports
-// ==, !=, >, <, >=, <=, &&, ||, unary !/-, and parentheses — a real superset of
-// the old substring-matching implementation (which didn't support &&/|| at all).
+// Evaluate conditions with the expression parser used by scripts.
 export const evaluateCondition = (conditionStr: string | undefined, variables: Variable[]): boolean => {
   if (!conditionStr) return true;
 
@@ -19,8 +17,7 @@ export const evaluateCondition = (conditionStr: string | undefined, variables: V
     });
     return Boolean(result);
   } catch {
-    // Unknown variable, syntax error, etc. — same as the old parser's behavior
-    // of returning false rather than throwing into play mode.
+    // Invalid conditions should stop matching without interrupting play mode.
     return false;
   }
 };

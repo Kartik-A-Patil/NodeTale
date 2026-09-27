@@ -20,7 +20,7 @@ import {
   RotateCcw,
   Clock
 } from "lucide-react";
-import { ElementNodeData, Asset } from "../../types";
+import { ElementNodeData, Asset } from "../../models/story";
 import clsx from "clsx";
 import { DatePicker } from "@/components/DatePicker";
 import { RichTextEditor } from "../RichTextEditor";
@@ -40,7 +40,7 @@ import { useEditor } from "../../editor/EditorContext";
 // Rendered (sanitized + Prism-highlighted) content by source HTML. With viewport
 // culling, nodes remount as they scroll into view; this skips re-parsing and
 // re-highlighting content that has been rendered before.
-// ponytail: FIFO cap, not LRU; plenty for a board's worth of nodes.
+// Keep the cache bounded while retaining rendered content for large boards.
 const RENDER_CACHE_LIMIT = 1000;
 const renderedContentCache = new Map<string, string>();
 

@@ -2,7 +2,7 @@ import { memo, useState } from 'react';
 import { Handle, Position, NodeProps, useReactFlow, useStore } from 'reactflow';
 import { useEditor } from '../../editor/EditorContext';
 import { Forward, Link as LinkIcon } from 'lucide-react';
-import { JumpNodeData } from '../../types';
+import { JumpNodeData } from '../../models/story';
 import { nodePropsEqual } from './nodePropsEqual';
 
 const JumpNode = ({ id, data, selected }: NodeProps<JumpNodeData>) => {

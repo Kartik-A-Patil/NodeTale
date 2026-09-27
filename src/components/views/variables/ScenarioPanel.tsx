@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Eye, EyeOff, RotateCcw, Save, Trash2 } from 'lucide-react';
-import { SimulationPreset, Variable } from '../../../types';
+import { SimulationPreset, Variable } from '../../../models/story';
 import { Values, formatValue, valuesEqual } from '../../../core/sim/simulate';
 import { focusRing } from '../../ui/styles';
 

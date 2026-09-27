@@ -7,7 +7,7 @@ import {
   Edge,
   Node
 } from 'reactflow';
-import { AppNode } from '../types';
+import { CanvasNode } from '../adapters/reactFlow';
 import { useProjectState } from './useProjectState';
 import { nodeRegistry, NodeTypeKey } from '../core/nodes/nodeRegistry';
 import { useCommandHistory } from '../editor/history/useCommandHistory';
@@ -20,6 +20,7 @@ import { deleteEdgeCommand } from '../editor/commands/deleteEdgeCommand';
 import { updateNodeCommand } from '../editor/commands/updateNodeCommand';
 import { updateEdgeCommand } from '../editor/commands/updateEdgeCommand';
 import { NodeTransform } from '../editor/commands/moveNodeCommand';
+import { createId } from '../utils/id';
 
 export function useFlowLogic(projectIdOrName?: string) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -64,12 +65,12 @@ export function useFlowLogic(projectIdOrName?: string) {
     const { project, setProject, isInitializing, lastSaved, saveNow, getLiveProject } = useProjectState(nodes, edges, setNodes, setEdges, projectIdOrName);
 
     // Clipboard for copy/paste (stores nodes + edges snapshot)
-    const clipboardRef = useRef<{ nodes: AppNode[]; edges: Edge[] } | null>(null);
+    const clipboardRef = useRef<{ nodes: CanvasNode[]; edges: Edge[] } | null>(null);
 
     const copySelected = useCallback(() => {
         // Read through refs so this callback (and the editorActions list that
         // holds it) doesn't change identity on every drag frame.
-        const selected = nodesRef.current.filter(n => n.selected) as AppNode[];
+        const selected = nodesRef.current.filter(n => n.selected) as CanvasNode[];
         if (selected.length === 0) return;
 
         const selectedIds = new Set(selected.map(n => n.id));
@@ -84,11 +85,11 @@ export function useFlowLogic(projectIdOrName?: string) {
 
     // Insert copies of nodes (and the edges between them) with fresh ids,
     // offset from the originals, selected; one undo step. Shared by paste and duplicate.
-    const insertCopies = useCallback((sourceNodes: AppNode[], sourceEdges: Edge[], offset: number) => {
+    const insertCopies = useCallback((sourceNodes: CanvasNode[], sourceEdges: Edge[], offset: number) => {
         if (sourceNodes.length === 0) return;
         const idMap: Record<string, string> = {};
-        const newNodes: AppNode[] = sourceNodes.map(n => {
-            const newId = `node-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+        const newNodes: CanvasNode[] = sourceNodes.map(n => {
+            const newId = createId('node');
             idMap[n.id] = newId;
             return {
                 ...n,
@@ -96,14 +97,14 @@ export function useFlowLogic(projectIdOrName?: string) {
                 id: newId,
                 position: { x: (n.position?.x || 0) + offset, y: (n.position?.y || 0) + offset },
                 selected: true
-            } as AppNode;
+            } as CanvasNode;
         });
         const newEdges: Edge[] = sourceEdges
             .filter(e => idMap[e.source] && idMap[e.target])
             .map(e => ({
                 ...e,
                 data: { ...e.data },
-                id: `e-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+                id: createId('edge'),
                 source: idMap[e.source],
                 target: idMap[e.target]
             } as Edge));
@@ -120,7 +121,7 @@ export function useFlowLogic(projectIdOrName?: string) {
     const duplicateNodes = useCallback((ids: string[]) => {
         const set = new Set(ids);
         insertCopies(
-            nodesRef.current.filter(n => set.has(n.id)) as AppNode[],
+            nodesRef.current.filter(n => set.has(n.id)) as CanvasNode[],
             edgesRef.current.filter(e => set.has(e.source) && set.has(e.target)),
             40
         );
@@ -130,18 +131,18 @@ export function useFlowLogic(projectIdOrName?: string) {
     const addConnectedScene = useCallback((sourceId: string) => {
         const source = nodesRef.current.find(n => n.id === sourceId);
         if (!source) return;
-        const id = `node-${Date.now()}`;
+        const id = createId('node');
         const width = source.width ?? 250;
         // Stack below any scene this one already leads to, so new ones don't overlap.
         const existing = edgesRef.current.filter(e => e.source === sourceId).length;
-        const newNode: AppNode = {
+        const newNode: CanvasNode = {
             id,
             type: 'elementNode',
             position: { x: source.position.x + width + 120, y: source.position.y + existing * 200 },
             parentNode: source.parentNode,
             data: nodeRegistry.elementNode.create({ label: 'New scene' }),
             selected: true,
-        } as AppNode;
+        } as CanvasNode;
         const edge: Edge = {
             id: `e-${sourceId}-${id}`,
             source: sourceId,
@@ -160,8 +161,8 @@ export function useFlowLogic(projectIdOrName?: string) {
     execute(updateNodeCommand(ctx, id, (n) => ({ ...n, data: { ...n.data, ...data } }), mergeKey));
   }, [ctx, execute]);
 
-  const updateNode = useCallback((id: string, patch: Partial<AppNode>, mergeKey?: string) => {
-      execute(updateNodeCommand(ctx, id, (n) => ({ ...n, ...patch }) as AppNode, mergeKey));
+  const updateNode = useCallback((id: string, patch: Partial<CanvasNode>, mergeKey?: string) => {
+      execute(updateNodeCommand(ctx, id, (n) => ({ ...n, ...patch }) as CanvasNode, mergeKey));
   }, [ctx, execute]);
 
   const updateEdge = useCallback((id: string, applyPatch: (edge: Edge) => Edge, mergeKey?: string) => {
@@ -214,7 +215,7 @@ export function useFlowLogic(projectIdOrName?: string) {
         sourceHandle: params.sourceHandle,
         targetHandle: params.targetHandle,
         type: 'floating',
-        id: `e-${params.source}-${params.target}-${Date.now()}`,
+        id: createId('edge'),
         animated: false,
         markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 20 },
         style: { stroke: '#71717a'}
@@ -227,14 +228,14 @@ export function useFlowLogic(projectIdOrName?: string) {
   }, [ctx, execute]);
 
   const addNode = useCallback((type: NodeTypeKey, position?: { x: number, y: number }, extraData?: any) => {
-    const id = `node-${Date.now()}`;
+    const id = createId('node');
     const nodePosition = position || { x: Math.random() * 400 + 100, y: Math.random() * 400 + 100 };
     const { style: extraStyle, ...extraFields } = extraData || {};
     const entry = nodeRegistry[type];
     const zIndex = entry.defaultZIndex;
     const style = type === 'sectionNode' ? { width: 400, height: 300, ...extraStyle } : extraStyle;
 
-    const newNode: AppNode = { id, type, position: nodePosition, data: entry.create(extraFields), zIndex, style };
+    const newNode: CanvasNode = { id, type, position: nodePosition, data: entry.create(extraFields), zIndex, style };
     execute(addElementsCommand(ctx, [newNode]));
   }, [ctx, execute]);
 

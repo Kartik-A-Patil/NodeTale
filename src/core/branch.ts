@@ -1,4 +1,4 @@
-import { Branch } from '../types';
+import { Branch } from '../models/story';
 
 // A condition node with no branches yet behaves like a fresh If/Else — this
 // mirrors what the node itself falls back to when rendering (ConditionNode)
