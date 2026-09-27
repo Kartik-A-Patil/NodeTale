@@ -58,8 +58,19 @@ function FloatingEdge({ id, source, target, sourceHandleId, markerEnd, style, se
   // Every edge always shows a label: the target's title, or (from a condition
   // node) the branch that this specific edge is — no opt-in, no retyping what
   // the board already says. A custom label is the opt-out, not the default.
+  // When the target is itself a logic node (condition/jump), the board editor
+  // precomputes what the player actually lands on (see resolvedEdgeLabels)
+  // and hands it to us here — FloatingEdge doesn't have the full board/edges
+  // graph to do that chase itself without re-rendering every edge on every
+  // unrelated change, which is exactly what the narrow store selectors above
+  // are for.
   const isManual = !!data?.manualLabel;
-  const autoText = autoEdgeLabel(sourceNode, targetNode, sourceHandleId);
+  // EdgeProps' `data` is untyped (any), so the `typeof` check alone doesn't
+  // narrow it — cast explicitly or the "any" silently spreads into labelText
+  // and beyond (this is exactly how it surfaced: a wrong element type two
+  // lines into an unrelated useMemo below).
+  const resolvedFromChain: string | null = typeof data?.autoResolvedLabel === 'string' ? data.autoResolvedLabel : null;
+  const autoText = resolvedFromChain ?? autoEdgeLabel(sourceNode, targetNode, sourceHandleId);
   const labelText = isManual ? (typeof label === 'string' ? label : '') : autoText;
 
   const measuredWidth = useMemo(() => {

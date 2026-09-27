@@ -18,6 +18,7 @@ import { EditorTopBar, PanelId } from './editor/EditorTopBar';
 import { SidePanel } from './editor/SidePanel';
 import { BoardDock } from './editor/BoardDock';
 import { useFlowLogic } from '../hooks/useFlowLogic';
+import { useResolvedEdgeLabels } from '../hooks/useResolvedEdgeLabels';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useDragAndDrop } from '../hooks/useDragAndDrop';
 import { useMenuOptions } from '../hooks/useMenuOptions';
@@ -106,6 +107,11 @@ function ProjectEditor() {
     ctx,
     executeCommand
   } = useFlowLogic(projectId);
+
+  // A choice into a condition/jump node shows what the player actually lands
+  // on, not that logic node's own name — see resolvedEdgeLabels. Only these
+  // wrapped edges (not the real `edges`) go to the canvas and the edge menu.
+  const edgesForCanvas = useResolvedEdgeLabels(nodes, edges, project);
 
   // Keyed on the selected ids, not `nodes`: a drag changes `nodes` every frame,
   // and a fresh array here would rebuild editorActions (re-binding the global
@@ -370,7 +376,7 @@ function ProjectEditor() {
   const getMenuOptions = useMenuOptions({
       menu,
       nodes,
-      edges,
+      edges: edgesForCanvas,
       updateNodeData,
       deleteNode,
       setJumpClipboard,
@@ -438,7 +444,7 @@ function ProjectEditor() {
             <ReactFlow
             key={project.activeBoardId}
             nodes={nodes}
-            edges={edges}
+            edges={edgesForCanvas}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}

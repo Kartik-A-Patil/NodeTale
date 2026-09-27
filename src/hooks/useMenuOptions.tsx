@@ -393,11 +393,17 @@ export function useMenuOptions({
                         updateEdgeData(menu.id!, { manualLabel: false });
                         updateEdgeLabel(menu.id!, '');
                     } else {
-                        const autoText = autoEdgeLabel(
-                            sourceNode ? { type: sourceNode.type, branches: (sourceNode.data as any)?.branches } : null,
-                            targetNode ? { label: (targetNode.data as any)?.label } : null,
-                            edge?.sourceHandle
-                        );
+                        // `edges` already carries the resolved-through-logic-nodes
+                        // label when this edge needed one (see resolvedEdgeLabels) —
+                        // reuse it so switching to manual pre-fills the exact same
+                        // text the canvas was just showing, not the raw target title.
+                        const autoText = typeof edge?.data?.autoResolvedLabel === 'string'
+                            ? edge.data.autoResolvedLabel
+                            : autoEdgeLabel(
+                                sourceNode ? { type: sourceNode.type, branches: (sourceNode.data as any)?.branches } : null,
+                                targetNode ? { label: (targetNode.data as any)?.label } : null,
+                                edge?.sourceHandle
+                              );
                         updateEdgeData(menu.id!, { manualLabel: true });
                         updateEdgeLabel(menu.id!, autoText);
                     }
