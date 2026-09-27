@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Palette, ChevronRight } from 'lucide-react';
 
 export interface ContextMenuOption {
@@ -27,6 +27,18 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => 
   const menuRef = useRef<HTMLDivElement>(null);
   const [hoveredSubmenuIndex, setHoveredSubmenuIndex] = useState<number | null>(null);
   const [submenuPosition, setSubmenuPosition] = useState<{ top: number; left: number } | null>(null);
+  // Keep the menu inside the window: open upward / leftward near the edges.
+  const [position, setPosition] = useState({ top: y, left: x });
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!el) return;
+    const margin = 8;
+    const { width, height } = el.getBoundingClientRect();
+    setPosition({
+      left: x + width > window.innerWidth - margin ? Math.max(margin, x - width) : x,
+      top: y + height > window.innerHeight - margin ? Math.max(margin, window.innerHeight - height - margin) : y,
+    });
+  }, [x, y, options.length]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -62,8 +74,8 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => 
   return (
     <div
       ref={menuRef}
-      className="fixed z-50 bg-[#1e1e20] border border-[#27272a] rounded-lg shadow-2xl py-1.5 min-w-[200px] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 ease-out"
-      style={{ top: y, left: x }}
+      className="fixed z-50 bg-[#1e1e20] border border-[#27272a] rounded-lg shadow-2xl py-1.5 min-w-[200px] max-h-[calc(100vh-16px)] flex flex-col overflow-y-auto animate-in fade-in zoom-in-95 duration-200 ease-out"
+      style={{ top: position.top, left: position.left }}
       onContextMenu={(e) => e.preventDefault()}
     >
       {options.map((opt, i) => {
@@ -155,9 +167,12 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => 
                     onMouseEnter={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
                         setHoveredSubmenuIndex(i);
+                        // Estimated size (rows are ~34px): flip left / shift up near the window edges.
+                        const subHeight = (opt.submenu?.length ?? 0) * 34 + 12;
+                        const subWidth = 188;
                         setSubmenuPosition({
-                            top: rect.top,
-                            left: rect.right
+                            top: Math.max(8, Math.min(rect.top, window.innerHeight - subHeight - 8)),
+                            left: rect.right + subWidth > window.innerWidth - 8 ? rect.left - subWidth - 8 : rect.right
                         });
                     }}
                     onMouseLeave={() => {

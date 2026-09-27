@@ -92,6 +92,9 @@ function ProjectEditor() {
     getLiveProject,
     copySelected,
     pasteClipboard,
+    hasClipboard,
+    duplicateNodes,
+    addConnectedScene,
     jumpClipboard,
     setJumpClipboard,
     undo,
@@ -342,6 +345,28 @@ function ProjectEditor() {
     return () => document.removeEventListener('keydown', handleOpenPalette);
   }, []);
 
+  // Latest arrange/align handlers for the menu without rebuilding it every render.
+  const alignRef = useRef({ alignSelection, distributeSelection, arrange });
+  alignRef.current = { alignSelection, distributeSelection, arrange };
+  const boardMenu = useMemo(() => ({
+    locked,
+    onUnlock: () => setLocked(false),
+    canPaste: hasClipboard,
+    paste: pasteClipboard,
+    selectAll,
+    fitView: () => reactFlowInstance?.fitView({ duration: 300, padding: 0.15 }),
+    tidyBoard,
+    tidySelection: () => alignRef.current.arrange('selection'),
+    align: (mode: AlignMode) => alignRef.current.alignSelection(mode),
+    distribute: (axis: 'horizontal' | 'vertical') => alignRef.current.distributeSelection(axis),
+    minimap,
+    toggleMinimap: () => setMinimap(!minimap),
+    snap,
+    toggleSnap: () => setSnap(!snap),
+    duplicate: duplicateNodes,
+    addConnected: addConnectedScene,
+  }), [locked, hasClipboard, pasteClipboard, selectAll, reactFlowInstance, tidyBoard, minimap, setMinimap, snap, setSnap, duplicateNodes, addConnectedScene]);
+
   const getMenuOptions = useMenuOptions({
       menu,
       nodes,
@@ -359,7 +384,8 @@ function ProjectEditor() {
       setShowAssetSelectorModal,
       setSelectedNodeForAsset,
       reactFlowInstance,
-      startPlayFromNode
+      startPlayFromNode,
+      board: boardMenu
   });
 
   const onConnectStart = React.useCallback(() => {

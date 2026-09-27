@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { 
     GitFork, ArrowRightCircle, Copy as CopyIcon, Trash2, PlusCircle, 
     MessageSquare, Layout, Info, ArrowUpLeft, ArrowUpRight, 
@@ -8,6 +8,32 @@ import { ContextMenuOption } from '../components/ContextMenu';
 import { AppNode, Asset, isAnnotationNode, isConditionNode, isElementNode } from '../types';
 import { Edge, ReactFlowInstance } from 'reactflow';
 import { MenuState } from './useContextMenu';
+import { AlignMode } from '../core/layout/arrange';
+import {
+    Copy as DuplicateIcon, GitFork as BranchIcon, Wand2, AlignStartVertical, AlignCenterVertical, AlignEndVertical,
+    AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignHorizontalSpaceAround, AlignVerticalSpaceAround,
+    ClipboardPaste, BoxSelect, Maximize, Map as MapIcon, Grid3x3, Unlock, CirclePlus,
+} from 'lucide-react';
+
+/** Board-level actions the right-click menu offers (wired in ProjectEditor). */
+export interface BoardMenuActions {
+    locked: boolean;
+    onUnlock: () => void;
+    canPaste: () => boolean;
+    paste: () => void;
+    selectAll: () => void;
+    fitView: () => void;
+    tidyBoard: () => void;
+    tidySelection: () => void;
+    align: (mode: AlignMode) => void;
+    distribute: (axis: 'horizontal' | 'vertical') => void;
+    minimap: boolean;
+    toggleMinimap: () => void;
+    snap: boolean;
+    toggleSnap: () => void;
+    duplicate: (ids: string[]) => void;
+    addConnected: (id: string) => void;
+}
 
 const MENU_COLORS = [
     '#18181b', // Zinc 300
@@ -54,6 +80,7 @@ interface UseMenuOptionsProps {
     setSelectedNodeForAsset: (id: string | null) => void;
     reactFlowInstance: ReactFlowInstance | null;
     startPlayFromNode: (nodeId: string) => void;
+    board: BoardMenuActions;
 }
 
 export function useMenuOptions({
@@ -73,7 +100,8 @@ export function useMenuOptions({
     setShowAssetSelectorModal,
     setSelectedNodeForAsset,
     reactFlowInstance,
-    startPlayFromNode
+    startPlayFromNode,
+    board
 }: UseMenuOptionsProps) {
 
   const getMenuOptions = useCallback((): ContextMenuOption[] => {
@@ -94,7 +122,12 @@ export function useMenuOptions({
                 },
                 { type: 'divider' } as ContextMenuOption,
                 {
-                    label: 'Create Section',
+                    label: `Duplicate ${selectedNodes.length} nodes`,
+                    icon: <DuplicateIcon size={14} />,
+                    onClick: () => board.duplicate(selectedNodes.map(n => n.id))
+                },
+                {
+                    label: 'Group into a section',
                     icon: <Layout size={14} />,
                     onClick: () => {
                         if (!reactFlowInstance) return;
@@ -116,6 +149,26 @@ export function useMenuOptions({
                         });
                     }
                 },
+                { type: 'divider' } as ContextMenuOption,
+                { label: 'Tidy up the selection', icon: <Wand2 size={14} />, onClick: board.tidySelection },
+                {
+                    label: 'Align',
+                    type: 'submenu',
+                    icon: <AlignStartVertical size={14} />,
+                    submenu: ([
+                        ['left', 'Left edges', AlignStartVertical], ['center', 'Centres (vertical line)', AlignCenterVertical], ['right', 'Right edges', AlignEndVertical],
+                        ['top', 'Top edges', AlignStartHorizontal], ['middle', 'Middles (horizontal line)', AlignCenterHorizontal], ['bottom', 'Bottom edges', AlignEndHorizontal],
+                    ] as const).map(([mode, label, Icon]) => ({ label, icon: <Icon size={14} />, onClick: () => board.align(mode) }))
+                },
+                ...(selectedNodes.length >= 3 ? [{
+                    label: 'Space evenly',
+                    type: 'submenu' as const,
+                    icon: <AlignHorizontalSpaceAround size={14} />,
+                    submenu: [
+                        { label: 'Across', icon: <AlignHorizontalSpaceAround size={14} />, onClick: () => board.distribute('horizontal') },
+                        { label: 'Down', icon: <AlignVerticalSpaceAround size={14} />, onClick: () => board.distribute('vertical') },
+                    ]
+                }] : []),
                 { type: 'divider' } as ContextMenuOption,
                 {
                     label: 'Delete Selected',
@@ -285,15 +338,26 @@ export function useMenuOptions({
                 },
                 { type: 'divider' } as ContextMenuOption,
                 {
-                    label: 'Start Play from Here',
+                    label: 'Play from here',
                     icon: <Play size={14} />,
                     onClick: () => startPlayFromNode(menu.id!)
+                },
+                {
+                    label: 'Add a connected scene',
+                    icon: <CirclePlus size={14} />,
+                    onClick: () => board.addConnected(menu.id!)
                 },
                 { type: 'divider' } as ContextMenuOption
              );
         }
 
         options.push(
+            {
+                label: 'Duplicate',
+                icon: <DuplicateIcon size={14} />,
+                onClick: () => board.duplicate([menu.id!])
+            },
+            { type: 'divider' } as ContextMenuOption,
             {
                 type: 'color-grid',
                 preventClose: true,
@@ -368,52 +432,36 @@ export function useMenuOptions({
     }
 
     if (menu.type === 'pane') {
+        const at = () => reactFlowInstance?.screenToFlowPosition({ x: menu.x, y: menu.y });
+        const addHere = (type: string, label: string, icon: React.ReactNode): ContextMenuOption => ({
+            label, icon, onClick: () => { const position = at(); if (position) addNode(type, position); }
+        });
+        const view: ContextMenuOption[] = [
+            { type: 'divider' } as ContextMenuOption,
+            { label: 'Select all', icon: <BoxSelect size={14} />, onClick: board.selectAll },
+            { label: 'Fit the board', icon: <Maximize size={14} />, onClick: board.fitView },
+            { label: board.minimap ? 'Hide minimap' : 'Show minimap', icon: <MapIcon size={14} />, onClick: board.toggleMinimap },
+            { label: board.snap ? 'Turn off snap to grid' : 'Snap to grid', icon: <Grid3x3 size={14} />, onClick: board.toggleSnap },
+        ];
+        if (board.locked) {
+            return [{ label: 'Unlock the board', icon: <Unlock size={14} />, onClick: board.onUnlock }, ...view];
+        }
         const options: ContextMenuOption[] = [
-             {
-                label: 'Add Element',
-                icon: <PlusCircle size={14} />,
-                onClick: () => {
-                     if (reactFlowInstance) {
-                        const position = reactFlowInstance.screenToFlowPosition({ x: menu.x, y: menu.y });
-                        addNode('elementNode', position);
-                    }
-                }
-            },
-            {
-                label: 'Add Comment',
-                icon: <MessageSquare size={14} />,
-                onClick: () => {
-                     if (reactFlowInstance) {
-                        const position = reactFlowInstance.screenToFlowPosition({ x: menu.x, y: menu.y });
-                        addNode('commentNode', position);
-                    }
-                }
-            },
-            {
-                label: 'Add Section',
-                icon: <Layout size={14} />,
-                onClick: () => {
-                     if (reactFlowInstance) {
-                        const position = reactFlowInstance.screenToFlowPosition({ x: menu.x, y: menu.y });
-                        addNode('sectionNode', position);
-                    }
-                }
-            },
-            {
-                label: 'Add Annotation',
-                icon: <Info size={14} />,
-                onClick: () => {
-                     if (reactFlowInstance) {
-                        const position = reactFlowInstance.screenToFlowPosition({ x: menu.x, y: menu.y });
-                        addNode('annotationNode', position);
-                    }
-                }
-            }
+            addHere('elementNode', 'Add scene here', <PlusCircle size={14} />),
+            addHere('conditionNode', 'Add branch here', <BranchIcon size={14} />),
+            addHere('jumpNode', 'Add jump here', <ArrowRightCircle size={14} />),
+            addHere('commentNode', 'Add comment here', <MessageSquare size={14} />),
+            addHere('sectionNode', 'Add section here', <Layout size={14} />),
+            addHere('annotationNode', 'Add annotation here', <Info size={14} />),
+            ...(board.canPaste() ? [{ type: 'divider' } as ContextMenuOption, { label: 'Paste', icon: <ClipboardPaste size={14} />, onClick: board.paste }] : []),
+            { type: 'divider' } as ContextMenuOption,
+            { label: 'Tidy up the board', icon: <Wand2 size={14} />, onClick: board.tidyBoard },
+            ...view,
         ];
 
         if (jumpClipboard) {
             options.unshift({
-                label: `Paste Jump to "${jumpClipboard.label}"`,
+                label: `Paste jump to “${jumpClipboard.label}”`,
                 icon: <ArrowRightCircle size={14} />,
                 onClick: () => {
                     if (reactFlowInstance) {
@@ -430,7 +478,7 @@ export function useMenuOptions({
     }
 
     return [];
-    }, [menu, nodes, edges, updateNodeData, deleteNode, setJumpClipboard, jumpClipboard, updateEdgeLabel, updateEdgeColor, updateEdgeData, deleteEdge, addNode, assets, reactFlowInstance, setShowAssetSelectorModal, setSelectedNodeForAsset, startPlayFromNode]);
+    }, [menu, nodes, edges, updateNodeData, deleteNode, setJumpClipboard, jumpClipboard, updateEdgeLabel, updateEdgeColor, updateEdgeData, deleteEdge, addNode, assets, reactFlowInstance, setShowAssetSelectorModal, setSelectedNodeForAsset, startPlayFromNode, board]);
 
   return getMenuOptions;
 }
