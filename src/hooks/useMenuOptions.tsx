@@ -9,6 +9,7 @@ import { AppNode, Asset, isAnnotationNode, isConditionNode, isElementNode } from
 import { Edge, ReactFlowInstance } from 'reactflow';
 import { MenuState } from './useContextMenu';
 import { AlignMode } from '../core/layout/arrange';
+import { autoEdgeLabel } from '../utils/edgeLabel';
 import {
     Copy as DuplicateIcon, GitFork as BranchIcon, Wand2, AlignStartVertical, AlignCenterVertical, AlignEndVertical,
     AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignHorizontalSpaceAround, AlignVerticalSpaceAround,
@@ -377,18 +378,28 @@ export function useMenuOptions({
 
     if (menu.type === 'edge') {
         const edge = edges.find(e => e.id === menu.id);
-        const labelEnabled = !!edge?.data?.labelEnabled;
+        const isManual = !!edge?.data?.manualLabel;
+        const sourceNode = edge ? nodes.find(n => n.id === edge.source) : undefined;
+        const targetNode = edge ? nodes.find(n => n.id === edge.target) : undefined;
 
         return [
             {
-                label: labelEnabled ? 'Remove label' : 'Add label',
+                // Every edge always shows a label now (the target's title, or a
+                // branch's own text) — this just mirrors the on-canvas toggle icon.
+                label: isManual ? 'Use automatic label' : 'Use custom label',
                 preventClose: true,
                 onClick: () => {
-                    if (labelEnabled) {
-                        updateEdgeData(menu.id!, { labelEnabled: false });
+                    if (isManual) {
+                        updateEdgeData(menu.id!, { manualLabel: false });
                         updateEdgeLabel(menu.id!, '');
                     } else {
-                        updateEdgeData(menu.id!, { labelEnabled: true });
+                        const autoText = autoEdgeLabel(
+                            sourceNode ? { type: sourceNode.type, branches: (sourceNode.data as any)?.branches } : null,
+                            targetNode ? { label: (targetNode.data as any)?.label } : null,
+                            edge?.sourceHandle
+                        );
+                        updateEdgeData(menu.id!, { manualLabel: true });
+                        updateEdgeLabel(menu.id!, autoText);
                     }
                 }
             },

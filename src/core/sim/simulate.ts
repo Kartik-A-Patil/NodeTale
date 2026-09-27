@@ -2,6 +2,9 @@ import { Project, AppNode, Board, Variable, Branch, isConditionNode } from '../.
 import { executeNode } from '../nodes/nodeRegistry';
 import { runScript } from '../runtime/scriptInterpreter';
 import { extractScriptCode } from '../runtime/htmlScript';
+import { DEFAULT_BRANCHES, branchLabel } from '../branch';
+
+export { branchLabel };
 
 // Story state simulation. `step` applies exactly the runtime's rules (it calls
 // the same executeNode / runScript as StoryRuntime), and both the automatic
@@ -36,11 +39,6 @@ export interface Simulator {
   initialValues: (overrides?: Values) => Values;
   step: (nodeId: string, values: Values) => StepResult;
 }
-
-const DEFAULT_BRANCHES: Branch[] = [
-  { id: 'true', label: 'If', condition: 'true' },
-  { id: 'false', label: 'Else', condition: '' },
-];
 
 export const valuesEqual = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
 
@@ -107,8 +105,6 @@ export function createSimulator(project: Project): Simulator {
     step,
   };
 }
-
-export const branchLabel = (b: Branch) => (b.label === 'Else' || !b.condition ? b.label : `${b.label} ${b.condition}`);
 
 // ---------- automatic analysis: explore every (scene, state) the story can reach ----------
 

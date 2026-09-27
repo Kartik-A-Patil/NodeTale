@@ -1,11 +1,13 @@
 import { memo, useCallback, useMemo } from 'react';
 import { useStore, getBezierPath, getStraightPath, getSmoothStepPath, EdgeProps, Node, Position, EdgeLabelRenderer, ReactFlowState } from 'reactflow';
-import { X } from 'lucide-react';
+import { Pencil, Sparkles } from 'lucide-react';
 import { getEdgeParams, HandlePoint, NodeGeometry } from '../../utils/EdgeUtils';
+import { autoEdgeLabel } from '../../utils/edgeLabel';
+import { DEFAULT_BRANCHES } from '../../core/branch';
 import { Branch } from '../../types';
 import { useEditor } from '../../editor/EditorContext';
 
-type EndpointGeometry = NodeGeometry & { type?: string; branches?: Branch[] };
+type EndpointGeometry = NodeGeometry & { type?: string; branches?: Branch[]; label?: string };
 
 const toGeometry = (node: Node | undefined): EndpointGeometry | null =>
   node
@@ -17,18 +19,16 @@ const toGeometry = (node: Node | undefined): EndpointGeometry | null =>
         height: node.height ?? 0,
         // Only condition sources route by branch (see getBranchHandle)
         branches: node.type === 'conditionNode' ? node.data?.branches : undefined,
+        // The auto label reads the target's title (and, harmlessly, the
+        // source's — never used since only conditionNode sources branch).
+        label: node.data?.label,
       }
     : null;
 
 const sameGeometry = (a: EndpointGeometry | null, b: EndpointGeometry | null) =>
   a === b ||
   (!!a && !!b && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height &&
-    a.type === b.type && a.branches === b.branches);
-
-const DEFAULT_BRANCHES: Branch[] = [
-  { id: 'true', label: 'If', condition: 'true' },
-  { id: 'false', label: 'Else', condition: '' },
-];
+    a.type === b.type && a.branches === b.branches && a.label === b.label);
 
 // Condition nodes are the one source with fixed handles: one per branch row on
 // the right edge. Every other endpoint floats to whichever side faces the other node.
@@ -55,20 +55,21 @@ function FloatingEdge({ id, source, target, sourceHandleId, markerEnd, style, se
   const targetNode = useStore(useCallback((s: ReactFlowState) => toGeometry(s.nodeInternals.get(target)), [target]), sameGeometry);
   const { updateEdge } = useEditor();
 
-  // Ensure label used in textarea is a string to satisfy its value prop typing
-  const labelText = typeof label === 'string' ? label : '';
+  // Every edge always shows a label: the target's title, or (from a condition
+  // node) the branch that this specific edge is — no opt-in, no retyping what
+  // the board already says. A custom label is the opt-out, not the default.
+  const isManual = !!data?.manualLabel;
+  const autoText = autoEdgeLabel(sourceNode, targetNode, sourceHandleId);
+  const labelText = isManual ? (typeof label === 'string' ? label : '') : autoText;
 
-  // Must stay above the early return below (Rules of Hooks).
   const measuredWidth = useMemo(() => {
-    const text = (labelText || 'Type label..').toString();
-    const lines = text.split(/\r?\n/);
+    const lines = labelText.split(/\r?\n/);
     const longest = Math.max(...lines.map((l) => l.length), 0);
     const charPx = 7; // approximate width per character at text-xs
-    const paddingPx = 16; // horizontal padding inside the container
-    const minPx = 80; // roughly placeholder size
+    const paddingPx = 28; // horizontal padding inside the container, plus room for the toggle icon
+    const minPx = 56;
     const maxPx = 400; // cap to avoid overly wide labels
-    const width = Math.max(minPx, Math.min(maxPx, longest * charPx + paddingPx));
-    return width;
+    return Math.max(minPx, Math.min(maxPx, longest * charPx + paddingPx));
   }, [labelText]);
 
   if (!sourceNode || !targetNode) {
@@ -110,8 +111,15 @@ function FloatingEdge({ id, source, target, sourceHandleId, markerEnd, style, se
     updateEdge(id, (e) => ({ ...e, label: newLabel }), `${id}:label`);
   };
 
-  const removeLabel = () => {
-    updateEdge(id, (e) => ({ ...e, label: '', data: { ...(e.data || {}), labelEnabled: false } }));
+  // Manual -> auto: nothing to keep, the text is computed again from the board.
+  // Auto -> manual: seed the input with what was just showing, so you edit
+  // from something real instead of a blank box.
+  const toggleMode = () => {
+    if (isManual) {
+      updateEdge(id, (e) => ({ ...e, label: '', data: { ...(e.data || {}), manualLabel: false } }));
+    } else {
+      updateEdge(id, (e) => ({ ...e, label: autoText, data: { ...(e.data || {}), manualLabel: true } }));
+    }
   };
 
   return (
@@ -152,44 +160,46 @@ function FloatingEdge({ id, source, target, sourceHandleId, markerEnd, style, se
           className="nodrag nopan"
         />
       </EdgeLabelRenderer>
-      {data?.labelEnabled && (
-        <EdgeLabelRenderer>
-          <div
-            style={{
-              position: 'absolute',
-              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-              background: '#18181b',
-              borderRadius: 4,
-              fontSize: 12,
-              color: '#a1a1aa',
-              pointerEvents: 'all',
-              border: '1px solid #27272a',
-              zIndex: 10,
-              width: measuredWidth,
-              ...labelStyle,
-            }}
-            className="nodrag nopan relative"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
+      <EdgeLabelRenderer>
+        <div
+          style={{
+            position: 'absolute',
+            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+            background: '#18181b',
+            borderRadius: 999,
+            fontSize: 12,
+            color: '#a1a1aa',
+            pointerEvents: 'all',
+            border: isManual ? '1px solid #3f3f46' : '1px solid transparent',
+            zIndex: 10,
+            width: measuredWidth,
+            ...labelStyle,
+          }}
+          className="nodrag nopan group relative"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {isManual ? (
             <input
-              className="nodrag bg-transparent border-none outline-none px-2 py-1.5 w-full text-xs text-zinc-300 placeholder-zinc-500"
+              className="nodrag w-full bg-transparent border-none outline-none px-2.5 py-1.5 text-xs text-center text-zinc-300 placeholder-zinc-500"
               value={labelText}
               onChange={(e) => updateLabel(e.target.value.slice(0, 100))}
-              placeholder="Type label.."
+              placeholder="Type a label…"
               onMouseDown={(e) => e.stopPropagation()}
             />
-            {selected && (
-              <button
-                title="Clear label"
-                onClick={(e) => { e.stopPropagation(); removeLabel(); }}
-                className="absolute -top-2 -right-2 p-0.5 rounded-full bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
-              >
-                <X size={10} />
-              </button>
-            )}
-          </div>
-        </EdgeLabelRenderer>
-      )}
+          ) : (
+            <div className="px-2.5 py-1.5 text-xs text-center text-zinc-400 truncate select-none">
+              {labelText}
+            </div>
+          )}
+          <button
+            title={isManual ? 'Use the automatic label' : 'Use a custom label'}
+            onClick={(e) => { e.stopPropagation(); toggleMode(); }}
+            className="nodrag absolute -top-2 -right-2 p-0.5 rounded-full bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+          >
+            {isManual ? <Sparkles size={10} /> : <Pencil size={10} />}
+          </button>
+        </div>
+      </EdgeLabelRenderer>
     </>
   );
 }
