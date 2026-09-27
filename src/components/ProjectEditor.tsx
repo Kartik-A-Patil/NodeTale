@@ -1,72 +1,39 @@
 import React, { useState, useRef, useMemo, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
-import ReactFlow, { 
-  Background, 
-  Controls, 
-  ControlButton,
+import { useNavigate, useParams } from 'react-router-dom';
+import ReactFlow, {
+  Background,
+  MiniMap,
   ReactFlowProvider,
   BackgroundVariant,
   ReactFlowInstance,
   PanOnScrollMode,
-  useReactFlow,
-  useStore,
+  Node,
 } from 'reactflow';
-import { Hand, MousePointer2, Plus, Minus, Maximize } from 'lucide-react';
-import SidebarLeft from './SidebarLeft';
 import ContextMenu from './ContextMenu';
 import { AssetSelectorModal } from './modals/AssetSelectorModal';
-import { TopToolbar } from './TopToolbar';
+import { ExportProjectModal } from './modals/ExportProjectModal';
+import { HelpModal } from './modals/HelpModal';
 import { ViewMode, VIEW_MODES } from './views/viewModes';
+import { EditorTopBar, PanelId } from './editor/EditorTopBar';
+import { SidePanel } from './editor/SidePanel';
+import { BoardDock } from './editor/BoardDock';
 import { useFlowLogic } from '../hooks/useFlowLogic';
+import { useResolvedEdgeLabels } from '../hooks/useResolvedEdgeLabels';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useDragAndDrop } from '../hooks/useDragAndDrop';
 import { useMenuOptions } from '../hooks/useMenuOptions';
 import { deleteElementsCommand } from '../editor/commands/deleteElementsCommand';
-import { exportProject } from '../utils/projectUtils';
+import { moveNodesCommand, NodeMove } from '../editor/commands/moveNodeCommand';
 import { nodeTypes as initialNodeTypes, edgeTypes as initialEdgeTypes } from './flowConfig';
 import { EditorAction } from '../editor/shortcuts/types';
-import { AppNode, Asset } from '../types';
+import { AppNode, Asset, Board, Project } from '../types';
 import { useShortcuts } from '../editor/shortcuts/useShortcuts';
 import { CommandPalette } from './CommandPalette';
 import { EditorContext } from '../editor/EditorContext';
-import { markProjectOpened } from '../utils/localPrefs';
-
-// memo: rendered inside ReactFlow, which re-renders with the editor on every drag frame.
-const CustomControls = React.memo(({ isPanMode, setIsPanMode }: { isPanMode: boolean, setIsPanMode: (v: boolean) => void }) => {
-  const { zoomIn, zoomOut, fitView } = useReactFlow();
-  // Only the zoom level is shown; useViewport() also changes on every pan frame.
-  const zoomPercent = useStore((s) => Math.round(s.transform[2] * 100));
-
-  return (
-    <Controls 
-      position="bottom-left" 
-      showZoom={false} 
-      showFitView={false} 
-      showInteractive={false}
-      className="!flex !flex-row !gap-2 !bg-transparent !border-none !shadow-none !items-center"
-    >
-       <ControlButton onClick={() => zoomOut({ duration: 300 })} className="!w-9 !h-9 !bg-zinc-800 !border !border-zinc-700 !text-zinc-400 hover:!text-zinc-100 !rounded-md !shadow-sm !flex !items-center !justify-center !p-0" title="Zoom Out">
-        <Minus size={18} />
-      </ControlButton>
-      
-      <div className="flex items-center justify-center w-14 h-9 text-xs font-medium text-zinc-400 bg-zinc-800 border border-zinc-700 rounded-md shadow-sm select-none">
-        {zoomPercent}%
-      </div>
-
-      <ControlButton onClick={() => zoomIn({ duration: 300 })} className="!w-9 !h-9 !bg-zinc-800 !border !border-zinc-700 !text-zinc-400 hover:!text-zinc-100 !rounded-md !shadow-sm !flex !items-center !justify-center !p-0" title="Zoom In">
-        <Plus size={18} />
-      </ControlButton>
-
-      <ControlButton onClick={() => fitView({ duration: 300 })} className="!w-9 !h-9 !bg-zinc-800 !border !border-zinc-700 !text-zinc-400 hover:!text-zinc-100 !rounded-md !shadow-sm !flex !items-center !justify-center !p-0" title="Fit View">
-        <Maximize size={18} />
-      </ControlButton>
-
-      <ControlButton onClick={() => setIsPanMode(!isPanMode)} className="!w-9 !h-9 !bg-zinc-800 !border !border-zinc-700 !text-zinc-400 hover:!text-zinc-100 !rounded-md !shadow-sm !flex !items-center !justify-center !p-0" title={isPanMode ? "Switch to Selection Mode" : "Switch to Pan Mode"}>
-        {isPanMode ? <MousePointer2 size={18} /> : <Hand size={18} />}
-      </ControlButton>
-    </Controls>
-  );
-});
+import { markProjectOpened, useLocalPref } from '../utils/localPrefs';
+import { validateProject } from '../core/validation/Validator';
+import { autoArrange, align, distribute, AlignMode, Box, Positions } from '../core/layout/arrange';
+import { NodeTypeKey } from '../core/nodes/nodeRegistry';
 
 // Loaded on demand: play mode isn't needed until the author presses Play, and
 // the story views (with d3) until one is opened.
@@ -83,6 +50,14 @@ function ProjectEditor() {
   const [showAssetSelectorModal, setShowAssetSelectorModal] = useState(false);
   const [selectedNodeForAsset, setSelectedNodeForAsset] = useState<string | null>(null);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const navigate = useNavigate();
+  const [panel, setPanel] = useState<PanelId | null>(null);
+  const [exporting, setExporting] = useState<Project | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
+  const [minimap, setMinimap] = useLocalPref('nodetale:board:minimap', false);
+  const [snap, setSnap] = useLocalPref('nodetale:board:snap', false);
+  const [locked, setLocked] = useState(false);
 
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
@@ -118,6 +93,9 @@ function ProjectEditor() {
     getLiveProject,
     copySelected,
     pasteClipboard,
+    hasClipboard,
+    duplicateNodes,
+    addConnectedScene,
     jumpClipboard,
     setJumpClipboard,
     undo,
@@ -129,6 +107,11 @@ function ProjectEditor() {
     ctx,
     executeCommand
   } = useFlowLogic(projectId);
+
+  // A choice into a condition/jump node shows what the player actually lands
+  // on, not that logic node's own name — see resolvedEdgeLabels. Only these
+  // wrapped edges (not the real `edges`) go to the canvas and the edge menu.
+  const edgesForCanvas = useResolvedEdgeLabels(nodes, edges, project);
 
   // Keyed on the selected ids, not `nodes`: a drag changes `nodes` every frame,
   // and a fresh array here would rebuild editorActions (re-binding the global
@@ -166,9 +149,9 @@ function ProjectEditor() {
     [project.variables, project.assets, updateNodeData, updateNode, updateEdge]
   );
 
-  const onToolbarAddNode = useCallback((type: Parameters<typeof addNode>[0]) => addNode(type), [addNode]);
   const onToolbarPlay = useCallback(() => { setPlayStartNodeId(null); setIsPlaying(true); }, []);
-  const onToolbarExport = useCallback(() => exportProject(getLiveProject()), [getLiveProject]);
+  // The single export: a dialog with the formats, fed the live canvas.
+  const onToolbarExport = useCallback(() => setExporting(getLiveProject()), [getLiveProject]);
 
   const startPlayFromNode = React.useCallback((nodeId: string) => {
       setPlayStartNodeId(nodeId);
@@ -180,6 +163,71 @@ function ProjectEditor() {
 
   // From the live canvas, not project.boards (which lags until autosave).
   const canPlay = nodes.some(n => typeof n.data?.label === 'string' && n.data.label.toLowerCase() === 'start');
+  const startId = nodes.find(n => typeof n.data?.label === 'string' && n.data.label.toLowerCase() === 'start')?.id ?? null;
+
+  // Problems for the active board (the Problems panel and its badge).
+  const diagnostics = useMemo(() => validateProject(project, { boardIds: [project.activeBoardId] }), [project]);
+
+  // The command palette's "Validate Project" action opens the Problems panel.
+  React.useEffect(() => {
+    const show = () => setPanel('problems');
+    window.addEventListener('nodetale:show-problems', show);
+    return () => window.removeEventListener('nodetale:show-problems', show);
+  }, []);
+
+  const switchBoard = useCallback((id: string) => setProject((p) => ({ ...p, activeBoardId: id })), [setProject]);
+  const addBoard = useCallback(() => {
+    const board: Board = { id: `board-${Date.now()}`, name: 'New board', nodes: [], edges: [] };
+    setProject((p) => ({ ...p, boards: [...p.boards, board], activeBoardId: board.id }));
+  }, [setProject]);
+
+  /** Add a node in the middle of what's on screen. */
+  const addAtCenter = useCallback((type: NodeTypeKey) => {
+    const box = reactFlowWrapper.current?.getBoundingClientRect();
+    if (!reactFlowInstance || !box) return addNode(type);
+    const center = reactFlowInstance.screenToFlowPosition({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
+    addNode(type, { x: center.x - 125, y: center.y - 60 });
+  }, [reactFlowInstance, addNode]);
+
+  // ---------- arrange / align ----------
+  const FLOW_TYPES = useMemo(() => new Set(['elementNode', 'conditionNode', 'jumpNode']), []);
+  const boxOf = (n: Node): Box => ({
+    id: n.id, x: n.position.x, y: n.position.y,
+    width: n.width ?? (typeof n.style?.width === 'number' ? n.style.width : 250),
+    height: n.height ?? (typeof n.style?.height === 'number' ? n.style.height : 150),
+  });
+  const applyPositions = useCallback((positions: Positions) => {
+    const moves: NodeMove[] = [];
+    for (const n of nodes) {
+      const to = positions.get(n.id);
+      if (!to || (to.x === n.position.x && to.y === n.position.y)) continue;
+      const extent = (n as AppNode & { extent?: NodeMove['from']['extent'] }).extent;
+      moves.push({ id: n.id, from: { position: n.position, parentNode: n.parentNode, extent }, to: { position: to, parentNode: n.parentNode, extent } });
+    }
+    if (moves.length) executeCommand(moveNodesCommand(ctx, moves));
+  }, [nodes, executeCommand, ctx]);
+
+  // Only nodes that share a coordinate space (same parent section) move together.
+  const selectionBoxes = () => {
+    const sel = nodes.filter((n) => n.selected);
+    const parent = sel[0]?.parentNode;
+    return sel.filter((n) => n.parentNode === parent).map(boxOf);
+  };
+  const arrange = (scope: 'board' | 'selection') => {
+    const boxes = scope === 'selection' ? selectionBoxes() : nodes.filter((n) => FLOW_TYPES.has(n.type ?? '') && !n.parentNode).map(boxOf);
+    applyPositions(autoArrange(boxes, edges, startId));
+    if (scope === 'board') requestAnimationFrame(() => reactFlowInstance?.fitView({ duration: 300, padding: 0.15 }));
+  };
+  const arrangeRef = useRef(arrange);
+  arrangeRef.current = arrange;
+  const tidyBoard = useCallback(() => arrangeRef.current('board'), []);
+  const alignSelection = (mode: AlignMode) => applyPositions(align(selectionBoxes(), mode));
+  const distributeSelection = (axis: 'horizontal' | 'vertical') => applyPositions(distribute(selectionBoxes(), axis));
+
+  const findable = useMemo(
+    () => nodes.filter((n) => n.type !== 'sectionNode').map((n) => ({ id: n.id, label: String(n.data?.label || n.data?.text || 'Untitled'), content: n.data?.content ?? n.data?.text })),
+    [nodes]
+  );
 
   // Every editor action — keyboard shortcut and/or command palette entry.
   // Migrated from a single scattered keydown handler (Phase 8): one list drives
@@ -227,21 +275,23 @@ function ProjectEditor() {
 
   // Open a node on the canvas from a story view: switch board if needed, back
   // to Flow, then select + centre it once the canvas and node are ready.
-  const pendingFocusRef = useRef<string | null>(null);
+  // State, not a ref: focusing a node that's already on the open board (Find)
+  // changes nothing else, and the effect below must still run.
+  const [pendingFocus, setPendingFocus] = useState<string | null>(null);
   const focusTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const focusNode = useCallback((nodeId: string) => {
     const live = getLiveProject();
     const board = live.boards.find((b) => b.nodes.some((n) => n.id === nodeId));
-    pendingFocusRef.current = nodeId;
+    setPendingFocus(nodeId);
     setFocusOnMount(true);
     if (board && board.id !== live.activeBoardId) setProject((p) => ({ ...p, activeBoardId: board.id }));
     setViewMode('flow');
   }, [getLiveProject, setProject, setViewMode]);
 
   React.useEffect(() => {
-    const id = pendingFocusRef.current;
+    const id = pendingFocus;
     if (!id || viewMode !== 'flow' || !reactFlowInstance || !nodes.some((n) => n.id === id)) return;
-    pendingFocusRef.current = null;
+    setPendingFocus(null);
     setNodes((nds) => nds.map((n) => (n.selected || n.id === id ? { ...n, selected: n.id === id } : n)));
     // Give ReactFlow a frame to measure the freshly mounted nodes. A node
     // outside the viewport was never rendered (culling), so it has no size and
@@ -258,7 +308,7 @@ function ProjectEditor() {
     // Not cleared on re-run: selecting the node above changes `nodes`, which
     // re-runs this effect and would cancel the centring before it happens.
     focusTimerRef.current = timer;
-  }, [viewMode, reactFlowInstance, nodes, setNodes]);
+  }, [pendingFocus, viewMode, reactFlowInstance, nodes, setNodes]);
   React.useEffect(() => () => clearTimeout(focusTimerRef.current), []);
 
   const editorActions: EditorAction[] = useMemo(() => [
@@ -275,7 +325,17 @@ function ProjectEditor() {
     { id: 'play', label: 'Run Story', category: 'Story', run: () => { setPlayStartNodeId(null); setIsPlaying(true); }, enabled: canPlay },
     { id: 'export', label: 'Export Project', category: 'File', run: onToolbarExport },
     ...VIEW_MODES.map((v, i) => ({ id: `view-${v.id}`, label: `View: ${v.label}`, category: 'View' as const, keys: { key: String(i + 1), alt: true }, run: () => setViewMode(v.id) })),
-  ], [undo, redo, canUndo, canRedo, selectedNodes, ctx, executeCommand, saveNow, copySelected, cutSelected, pasteClipboard, selectAll, deselectAll, canPlay, onToolbarExport, setViewMode]);
+    { id: 'find', label: 'Find a scene', category: 'View', keys: { key: 'f', ctrlOrCmd: true }, run: () => { setViewMode('flow'); setFindOpen(true); } },
+    { id: 'tool-select', label: 'Select tool', category: 'View', keys: { key: 'v' }, run: () => setIsPanMode(false), enabled: viewMode === 'flow' },
+    { id: 'tool-pan', label: 'Pan tool', category: 'View', keys: { key: 'h' }, run: () => setIsPanMode(true), enabled: viewMode === 'flow' },
+    { id: 'tidy-board', label: 'Tidy up the whole board', category: 'Edit', run: tidyBoard, enabled: viewMode === 'flow' && !locked },
+    { id: 'toggle-minimap', label: minimap ? 'Hide minimap' : 'Show minimap', category: 'View', run: () => setMinimap(!minimap) },
+    { id: 'toggle-snap', label: snap ? 'Turn off snap to grid' : 'Snap to grid', category: 'View', run: () => setSnap(!snap) },
+    { id: 'toggle-lock', label: locked ? 'Unlock the board' : 'Lock the board', category: 'Edit', run: () => setLocked(!locked) },
+    { id: 'panel-variables', label: 'Open Variables panel', category: 'View', run: () => setPanel('variables') },
+    { id: 'panel-assets', label: 'Open Assets panel', category: 'View', run: () => setPanel('assets') },
+    { id: 'panel-boards', label: 'Open Boards panel', category: 'View', run: () => setPanel('boards') },
+  ], [undo, redo, canUndo, canRedo, selectedNodes, ctx, executeCommand, saveNow, copySelected, cutSelected, pasteClipboard, selectAll, deselectAll, canPlay, onToolbarExport, setViewMode, viewMode, locked, minimap, snap, setMinimap, setSnap, tidyBoard]);
 
   useShortcuts(editorActions);
 
@@ -291,10 +351,32 @@ function ProjectEditor() {
     return () => document.removeEventListener('keydown', handleOpenPalette);
   }, []);
 
+  // Latest arrange/align handlers for the menu without rebuilding it every render.
+  const alignRef = useRef({ alignSelection, distributeSelection, arrange });
+  alignRef.current = { alignSelection, distributeSelection, arrange };
+  const boardMenu = useMemo(() => ({
+    locked,
+    onUnlock: () => setLocked(false),
+    canPaste: hasClipboard,
+    paste: pasteClipboard,
+    selectAll,
+    fitView: () => reactFlowInstance?.fitView({ duration: 300, padding: 0.15 }),
+    tidyBoard,
+    tidySelection: () => alignRef.current.arrange('selection'),
+    align: (mode: AlignMode) => alignRef.current.alignSelection(mode),
+    distribute: (axis: 'horizontal' | 'vertical') => alignRef.current.distributeSelection(axis),
+    minimap,
+    toggleMinimap: () => setMinimap(!minimap),
+    snap,
+    toggleSnap: () => setSnap(!snap),
+    duplicate: duplicateNodes,
+    addConnected: addConnectedScene,
+  }), [locked, hasClipboard, pasteClipboard, selectAll, reactFlowInstance, tidyBoard, minimap, setMinimap, snap, setSnap, duplicateNodes, addConnectedScene]);
+
   const getMenuOptions = useMenuOptions({
       menu,
       nodes,
-      edges,
+      edges: edgesForCanvas,
       updateNodeData,
       deleteNode,
       setJumpClipboard,
@@ -308,7 +390,8 @@ function ProjectEditor() {
       setShowAssetSelectorModal,
       setSelectedNodeForAsset,
       reactFlowInstance,
-      startPlayFromNode
+      startPlayFromNode,
+      board: boardMenu
   });
 
   const onConnectStart = React.useCallback(() => {
@@ -353,35 +436,15 @@ function ProjectEditor() {
 
   return (
     <EditorContext.Provider value={editorContext}>
-    <div className="flex h-screen w-screen bg-[#121212] text-zinc-100 overflow-clip">
-      
-      <SidebarLeft project={project} setProject={setProject} />
-
-      <div className={`flex-1 min-w-0 relative flex flex-col h-full ${isConnecting ? 'is-connecting' : ''}`}>
-        
-        <TopToolbar 
-            onAddNode={onToolbarAddNode}
-            onPlay={onToolbarPlay}
-            onExport={onToolbarExport}
-            lastSaved={lastSaved}
-          onSave={saveNow}
-            jumpClipboard={jumpClipboard}
-            setJumpClipboard={setJumpClipboard}
-            viewMode={viewMode}
-            onViewModeChange={setViewMode}
-            onUndo={undo}
-            onRedo={redo}
-            canUndo={canUndo}
-            canRedo={canRedo}
-            canPlay={canPlay}
-        />
-
-        <div className="flex-1 bg-[#0f0f11] relative" ref={reactFlowWrapper}>
+    {/* Canvas-first: the board fills the window; everything else floats over it.
+        overflow-clip (not hidden) so focusing off-screen items can't scroll the page. */}
+    <div className={`relative h-screen w-screen overflow-clip bg-[#0f0f11] text-zinc-100 ${isConnecting ? 'is-connecting' : ''}`}>
+        <div className="absolute inset-0" ref={reactFlowWrapper}>
           {viewMode === 'flow' ? (
             <ReactFlow
             key={project.activeBoardId}
             nodes={nodes}
-            edges={edges}
+            edges={edgesForCanvas}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
@@ -396,7 +459,7 @@ function ProjectEditor() {
             onPaneClick={onPaneClick}
             onInit={setReactFlowInstance}
             onDragOver={onDragOver}
-            onDrop={onDrop}
+            onDrop={locked ? undefined : onDrop}
             nodeTypes={nodeTypes}
             fitView={!focusOnMount}
             edgeTypes={edgeTypes}
@@ -410,32 +473,99 @@ function ProjectEditor() {
             connectionRadius={40}
             elevateNodesOnSelect={false}
             onlyRenderVisibleElements
+            snapToGrid={snap}
+            snapGrid={[20, 20]}
+            nodesDraggable={!locked}
+            nodesConnectable={!locked}
+            edgesUpdatable={!locked}
           >
             <Background color="#52525b" gap={20} size={1} variant={BackgroundVariant.Dots} />
-            <CustomControls isPanMode={isPanMode} setIsPanMode={setIsPanMode} />
+            {minimap && (
+              <MiniMap position="bottom-right" pannable zoomable ariaLabel="Board overview"
+                className="!bottom-16 !right-3 !m-0 overflow-hidden !rounded-xl !border !border-nt-line !bg-nt-surface"
+                maskColor="oklch(0.1 0.005 55 / 0.6)" nodeColor="oklch(0.6 0.01 55)" nodeBorderRadius={4} />
+            )}
           </ReactFlow>
           ) : (
-            <React.Suspense fallback={null}>
-              <StoryViews mode={viewMode} project={viewProject!} onFocusNode={focusNode} onUpdateProject={setProject} />
-            </React.Suspense>
+            <div className="absolute inset-0 pt-16">
+              <div className="relative h-full">
+                <React.Suspense fallback={null}>
+                  <StoryViews mode={viewMode} project={viewProject!} onFocusNode={focusNode} onUpdateProject={setProject} />
+                </React.Suspense>
+              </div>
+            </div>
           )}
 
           {menu && viewMode === 'flow' && (
-            <ContextMenu 
-                x={menu.x} 
-                y={menu.y} 
+            <ContextMenu
+                x={menu.x}
+                y={menu.y}
                 onClose={() => setMenu(null)}
                 options={getMenuOptions()}
             />
           )}
         </div>
-      </div>
+
+        <EditorTopBar
+          projectName={project.name}
+          boards={project.boards}
+          activeBoardId={project.activeBoardId}
+          lastSaved={lastSaved ?? (project.modifiedAt ? new Date(project.modifiedAt) : null)}
+          viewMode={viewMode}
+          panel={panel}
+          problemCount={diagnostics.length}
+          canPlay={canPlay}
+          jumpClipboard={jumpClipboard}
+          onBack={() => navigate('/')}
+          onSwitchBoard={switchBoard}
+          onAddBoard={addBoard}
+          onViewMode={setViewMode}
+          onPanel={setPanel}
+          onExport={onToolbarExport}
+          onPalette={() => setShowCommandPalette(true)}
+          onHelp={() => setHelpOpen(true)}
+          onSave={saveNow}
+          onPlay={onToolbarPlay}
+          onClearJump={() => setJumpClipboard(null)}
+        />
+
+        {panel && <SidePanel panel={panel} project={project} setProject={setProject} diagnostics={diagnostics} onClose={() => setPanel(null)} />}
+
+        {viewMode === 'flow' && (
+          <BoardDock
+            isPanMode={isPanMode}
+            onPanMode={setIsPanMode}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onUndo={undo}
+            onRedo={redo}
+            onAdd={addAtCenter}
+            selectionCount={selectedNodes.length}
+            onArrange={arrange}
+            onAlign={alignSelection}
+            onDistribute={distributeSelection}
+            findOpen={findOpen}
+            onFindOpen={setFindOpen}
+            findable={findable}
+            onFocusNode={focusNode}
+            startId={startId}
+            minimap={minimap}
+            onMinimap={setMinimap}
+            snap={snap}
+            onSnap={setSnap}
+            locked={locked}
+            onLocked={setLocked}
+          />
+        )}
 
       {isPlaying && (
           <React.Suspense fallback={null}>
             <PlayMode project={playProject!} startNodeId={playStartNodeId} onClose={() => { setIsPlaying(false); setPlayStartNodeId(null); }} />
           </React.Suspense>
       )}
+
+      <ExportProjectModal project={exporting} onClose={() => setExporting(null)} />
+      <HelpModal isOpen={helpOpen} onClose={() => setHelpOpen(false)} />
 
       <CommandPalette
           isOpen={showCommandPalette}

@@ -2,6 +2,9 @@ import { Project, AppNode, Board, Variable, Branch, isConditionNode } from '../.
 import { executeNode } from '../nodes/nodeRegistry';
 import { runScript } from '../runtime/scriptInterpreter';
 import { extractScriptCode } from '../runtime/htmlScript';
+import { DEFAULT_BRANCHES, branchLabel } from '../branch';
+
+export { branchLabel };
 
 // Story state simulation. `step` applies exactly the runtime's rules (it calls
 // the same executeNode / runScript as StoryRuntime), and both the automatic
@@ -36,11 +39,6 @@ export interface Simulator {
   initialValues: (overrides?: Values) => Values;
   step: (nodeId: string, values: Values) => StepResult;
 }
-
-const DEFAULT_BRANCHES: Branch[] = [
-  { id: 'true', label: 'If', condition: 'true' },
-  { id: 'false', label: 'Else', condition: '' },
-];
 
 export const valuesEqual = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
 
@@ -108,7 +106,35 @@ export function createSimulator(project: Project): Simulator {
   };
 }
 
-export const branchLabel = (b: Branch) => (b.label === 'Else' || !b.condition ? b.label : `${b.label} ${b.condition}`);
+// A condition/jump node is a "logic check" — StoryRuntime skips straight
+// through it, the player never sees it. A generous but finite bound: a real
+// story won't chain this many in a row, and it also catches loops that
+// `visited` alone wouldn't (a cycle through 3+ distinct nodes still
+// terminates once `visited` has seen them all, but this is the belt to that
+// suspenders in case that reasoning is ever wrong).
+const MAX_RESOLVE_HOPS = 64;
+
+/**
+ * The scene a player actually lands on after taking this path: starting at
+ * `nodeId`, follows the same auto-advance rule StoryRuntime uses to skip
+ * condition/jump nodes (evaluating branches with the given values) until an
+ * interactive (elementNode) scene, a dead end, or a cycle. Used to label a
+ * choice by what it leads to, not by an invisible logic node's own name.
+ */
+export function resolveVisibleNode(sim: Simulator, nodeId: string, values: Values = sim.initialValues()): AppNode | null {
+  let current = sim.node(nodeId)?.node ?? null;
+  const visited = new Set<string>();
+  let hops = 0;
+  while (current && current.type !== 'elementNode') {
+    if (visited.has(current.id) || hops++ > MAX_RESOLVE_HOPS) return null;
+    visited.add(current.id);
+    const result = sim.step(current.id, values);
+    values = result.after;
+    const nextId = result.next[0]?.target;
+    current = nextId ? sim.node(nextId)?.node ?? null : null;
+  }
+  return current;
+}
 
 // ---------- automatic analysis: explore every (scene, state) the story can reach ----------
 

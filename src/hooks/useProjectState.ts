@@ -33,15 +33,27 @@ const stripContext = (nodes: Node[]): AppNode[] =>
     return { ...n, data } as AppNode;
   });
 
+// Labels used to be opt-in (data.labelEnabled) and always custom text. Every
+// edge now always shows a label, computed automatically unless a custom one
+// was set — carry forward any custom text a saved edge already had as
+// 'manual', so older projects don't lose it; an edge that never had a label
+// just starts on 'auto' like a fresh one.
+export const migrateEdgeLabel = (e: Edge): Edge => {
+  if (e.data?.labelEnabled === undefined) return e;
+  const keepCustom = !!e.data.labelEnabled && !!e.label;
+  const { labelEnabled: _labelEnabled, ...restData } = e.data;
+  return { ...e, label: keepCustom ? e.label : '', data: { ...restData, manualLabel: keepCustom } };
+};
+
 // Brings a stored board up to what the editor expects, once at load (these used
 // to be enforced by per-node mount effects and a forever-running edge effect).
 const normalizeBoard = (nodes: Node[], edges: Edge[]): { nodes: Node[]; edges: Edge[] } => ({
   nodes: stripContext(nodes).map(n => normalizeNodeDimensions(withDefaultZIndex(n as AppNode))),
-  edges: edges.map(e =>
+  edges: edges.map(e => migrateEdgeLabel(
     e.type === 'floating' && (e.animated || !e.markerEnd)
       ? { ...e, animated: false, markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 20 } }
       : e
-  ),
+  )),
 });
 
 const projectMetaHash = (project: Project): string =>

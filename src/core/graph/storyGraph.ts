@@ -1,8 +1,9 @@
-import { Project, Branch, isConditionNode, isElementNode, isJumpNode } from '../../types';
+import { Project, isConditionNode, isElementNode, isJumpNode } from '../../types';
 import { parseExpression, parseScript } from '../expression/parser';
 import { collectExprIdentifiers } from '../validation/identifierCollector';
 import { extractScriptCode } from '../runtime/htmlScript';
 import { Stmt } from '../expression/ast';
+import { DEFAULT_BRANCHES, branchLabel } from '../branch';
 
 // One analysis of a project's story structure, shared by the story views
 // (branch map, timeline, path flow, variable tracker) and dashboard stats.
@@ -67,12 +68,6 @@ export interface StoryGraph {
   variableUse: Map<string, VariableUse>;
 }
 
-
-const DEFAULT_BRANCHES: Branch[] = [
-  { id: 'true', label: 'If', condition: 'true' },
-  { id: 'false', label: 'Else', condition: '' },
-];
-
 const VARIABLE_MENTION = /\{\{\s*([A-Za-z_$][\w$]*)\s*\}\}/g;
 
 const tryParse = <T>(parse: () => T): T | null => {
@@ -82,9 +77,6 @@ const tryParse = <T>(parse: () => T): T | null => {
     return null;
   }
 };
-
-const branchText = (b: Branch) =>
-  b.label === 'Else' || !b.condition ? b.label : `${b.label} ${b.condition}`;
 
 function collectVariableUse(project: Project, nodes: Map<string, GraphNode>): Map<string, VariableUse> {
   const uses = new Map<string, VariableUse>();
@@ -162,7 +154,7 @@ export function buildStoryGraph(project: Project): StoryGraph {
       if (isConditionNode(node)) {
         for (const b of node.data.branches || DEFAULT_BRANCHES) {
           const edge = edges.find((e) => e.sourceHandle === b.id);
-          if (edge) links.push({ source: node.id, target: edge.target, kind: 'branch', label: branchText(b) });
+          if (edge) links.push({ source: node.id, target: edge.target, kind: 'branch', label: branchLabel(b) });
           else deadEnds.push({ nodeId: node.id, what: b.label });
         }
       } else {

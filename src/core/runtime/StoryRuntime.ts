@@ -142,6 +142,23 @@ export class StoryRuntime {
     this.enterNode(this.initialStartNodeId);
   }
 
+  // A choice into a condition/jump node must show what the player actually
+  // lands on, not that logic node's own name — same reasoning as enterNode,
+  // but read-only (no script side effects; condition/jump nodes have none).
+  private resolveDisplayNode(nodeId: string): AppNode | null {
+    let current = this.findNode(nodeId)?.node ?? null;
+    const visited = new Set<string>();
+    while (current && current.type !== 'elementNode') {
+      if (visited.has(current.id)) return null;
+      visited.add(current.id);
+      const ctx = this.findNode(current.id);
+      if (!ctx) return null;
+      const result = executeNode(ctx.node, { board: ctx.board, runtimeVars: this.runtimeVars });
+      current = result.nextNodeId ? this.findNode(result.nextNodeId)?.node ?? null : null;
+    }
+    return current;
+  }
+
   getOptions(): StoryOption[] {
     const ctx = this.currentNodeId ? this.findNode(this.currentNodeId) : null;
     if (!ctx || ctx.node.type !== 'elementNode') return [];
@@ -152,7 +169,9 @@ export class StoryRuntime {
     return edges
       .map((edge) => {
         const target = board.nodes.find((n) => n.id === edge.target);
-        return { label: (target?.data as any)?.label || 'Continue', targetId: target?.id };
+        if (!target) return { label: '', targetId: undefined };
+        const resolved = target.type === 'elementNode' ? target : this.resolveDisplayNode(target.id);
+        return { label: (resolved?.data as any)?.label || 'Continue', targetId: target.id };
       })
       .filter((opt): opt is StoryOption => !!opt.targetId);
   }

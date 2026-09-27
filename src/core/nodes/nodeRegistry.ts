@@ -13,6 +13,7 @@ import {
   Variable,
 } from '../../types';
 import { evaluateCondition } from '../../services/logicService';
+import { DEFAULT_BRANCHES } from '../branch';
 import ElementNode from '../../components/nodes/ElementNode';
 import ConditionNode from '../../components/nodes/ConditionNode';
 import JumpNode from '../../components/nodes/JumpNode';
@@ -58,8 +59,15 @@ export const nodeRegistry: Record<NodeTypeKey, NodeRegistryEntry<any>> = {
     component: ConditionNode,
     create: (extraFields = {}): ConditionNodeData => ({ label: 'Logic Check', ...extraFields }),
     execute: (node, ctx) => {
-      const branches = node.data.branches || [];
-      let targetHandleId = 'else';
+      // Same fallback as everywhere else a condition node's branches are read
+      // (ConditionNode's own UI, storyGraph, the simulator) — a node that
+      // hasn't been edited yet still has real If/Else handles to route to.
+      const branches = node.data.branches || DEFAULT_BRANCHES;
+      // null, not the string 'else': that never matches a real branch id
+      // (ids are 'true'/'false' by default, or whatever the user set), so a
+      // condition node with no Else branch at all correctly finds no edge
+      // and stops, instead of silently looking for a branch named "else".
+      let targetHandleId: string | null = null;
 
       for (const branch of branches) {
         if (branch.label === 'Else') {
@@ -72,9 +80,9 @@ export const nodeRegistry: Record<NodeTypeKey, NodeRegistryEntry<any>> = {
         }
       }
 
-      const edge = ctx.board.edges.find(
-        (e) => e.source === node.id && e.sourceHandle === targetHandleId
-      );
+      const edge = targetHandleId
+        ? ctx.board.edges.find((e) => e.source === node.id && e.sourceHandle === targetHandleId)
+        : undefined;
 
       return { nextNodeId: edge?.target ?? null };
     },
