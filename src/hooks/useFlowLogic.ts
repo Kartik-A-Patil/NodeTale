@@ -82,34 +82,76 @@ export function useFlowLogic(projectIdOrName?: string) {
         clipboardRef.current = { nodes: clonedNodes, edges: clonedEdges };
     }, []);
 
-    const pasteClipboard = useCallback(() => {
-        if (!clipboardRef.current) return;
-        const { nodes: copiedNodes, edges: copiedEdges } = clipboardRef.current;
-
-        // Map old ids to new ids
+    // Insert copies of nodes (and the edges between them) with fresh ids,
+    // offset from the originals, selected; one undo step. Shared by paste and duplicate.
+    const insertCopies = useCallback((sourceNodes: AppNode[], sourceEdges: Edge[], offset: number) => {
+        if (sourceNodes.length === 0) return;
         const idMap: Record<string, string> = {};
-        const newNodes: AppNode[] = copiedNodes.map(n => {
+        const newNodes: AppNode[] = sourceNodes.map(n => {
             const newId = `node-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
             idMap[n.id] = newId;
             return {
                 ...n,
+                data: { ...n.data },
                 id: newId,
-                position: { x: (n.position?.x || 0) + 20, y: (n.position?.y || 0) + 20 },
+                position: { x: (n.position?.x || 0) + offset, y: (n.position?.y || 0) + offset },
                 selected: true
             } as AppNode;
         });
-
-        const newEdges: Edge[] = copiedEdges.map(e => {
-            const newId = `e-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-            return {
+        const newEdges: Edge[] = sourceEdges
+            .filter(e => idMap[e.source] && idMap[e.target])
+            .map(e => ({
                 ...e,
-                id: newId,
-                source: idMap[e.source] || e.source,
-                target: idMap[e.target] || e.target
-            } as Edge;
-        });
-
+                data: { ...e.data },
+                id: `e-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+                source: idMap[e.source],
+                target: idMap[e.target]
+            } as Edge));
         execute(addElementsCommand(ctx, newNodes, newEdges, true));
+    }, [ctx, execute]);
+
+    const pasteClipboard = useCallback(() => {
+        if (!clipboardRef.current) return;
+        insertCopies(clipboardRef.current.nodes, clipboardRef.current.edges, 20);
+    }, [insertCopies]);
+
+    const hasClipboard = useCallback(() => !!clipboardRef.current?.nodes.length, []);
+
+    const duplicateNodes = useCallback((ids: string[]) => {
+        const set = new Set(ids);
+        insertCopies(
+            nodesRef.current.filter(n => set.has(n.id)) as AppNode[],
+            edgesRef.current.filter(e => set.has(e.source) && set.has(e.target)),
+            40
+        );
+    }, [insertCopies]);
+
+    /** A new scene to the right of `sourceId`, connected to it; one undo step. */
+    const addConnectedScene = useCallback((sourceId: string) => {
+        const source = nodesRef.current.find(n => n.id === sourceId);
+        if (!source) return;
+        const id = `node-${Date.now()}`;
+        const width = source.width ?? 250;
+        // Stack below any scene this one already leads to, so new ones don't overlap.
+        const existing = edgesRef.current.filter(e => e.source === sourceId).length;
+        const newNode: AppNode = {
+            id,
+            type: 'elementNode',
+            position: { x: source.position.x + width + 120, y: source.position.y + existing * 200 },
+            parentNode: source.parentNode,
+            data: nodeRegistry.elementNode.create({ label: 'New scene' }),
+            selected: true,
+        } as AppNode;
+        const edge: Edge = {
+            id: `e-${sourceId}-${id}`,
+            source: sourceId,
+            target: id,
+            type: 'floating',
+            animated: false,
+            markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 20 },
+            style: { stroke: '#71717a' },
+        };
+        execute(addElementsCommand(ctx, [newNode], [edge], true));
     }, [ctx, execute]);
 
   // mergeKey: pass `${id}:${field}` for continuous edits (typing) so they undo
@@ -230,6 +272,9 @@ export function useFlowLogic(projectIdOrName?: string) {
     getLiveProject,
     copySelected,
     pasteClipboard,
+    hasClipboard,
+    duplicateNodes,
+    addConnectedScene,
     jumpClipboard,
     setJumpClipboard,
     undo: history.undo,
