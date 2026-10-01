@@ -1,92 +1,48 @@
 import React, {
   memo,
   useState,
-  useRef,
-  useEffect,
   useMemo,
   useDeferredValue
 } from "react";
-import {
-  Handle,
-  Position,
-  NodeProps,
-  useReactFlow,
-  useStore,
-  NodeResizeControl
-} from "reactflow";
-import {
-  FileAudio,
-  AlertCircle,
-  RotateCcw,
-  Clock
-} from "lucide-react";
+import { Handle, Position, NodeProps, useReactFlow } from "reactflow";
+import { Clapperboard, ImagePlus, Maximize2 } from "lucide-react";
 import { ElementNodeData, Asset } from "../../models/story";
 import clsx from "clsx";
 import { DatePicker } from "@/components/DatePicker";
-import { RichTextEditor } from "../RichTextEditor";
+import { LazyRichTextEditor } from "../editor/LazyRichTextEditor";
+import { EditStart, StoryText } from "../editor/StoryText";
 import JumpTargetBadge from "./JumpTargetBadge";
-import { sanitizeHtml } from "../../utils/html";
-import { AssetPreview } from "../AssetPreview";
+import { NodeAudioList, NodeVisualAsset } from "./NodeAssets";
+import { ExpandedEditor } from "../editor/ExpandedEditor";
+import { draggedAssetId, hasDraggedJson, isVisualAsset, withAttachedAsset } from "../../utils/nodeAssets";
 import { AudioSettingsModal } from "../modals/AudioSettingsModal";
 import {
   validateCodeSyntax,
   validateTypeAssignments
 } from "../../services/logicService";
-import Prism from "prismjs";
-import "prismjs/components/prism-javascript";
 import { nodePropsEqual } from "./nodePropsEqual";
 import { useEditor } from "../../editor/EditorContext";
-
-// Rendered (sanitized + Prism-highlighted) content by source HTML. With viewport
-// culling, nodes remount as they scroll into view; this skips re-parsing and
-// re-highlighting content that has been rendered before.
-// Keep the cache bounded while retaining rendered content for large boards.
-const RENDER_CACHE_LIMIT = 1000;
-const renderedContentCache = new Map<string, string>();
+import { useNodeStatus } from "../../editor/nodeStatusStore";
+import { EditableTitle, NodeFrame, NodeHeader, NodeResizeGrip, StatusBadge, nodeIconButton, useNodeEditRequest } from "./nodeChrome";
 
 const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
   const { getNode } = useReactFlow();
   const { variables, assets: projectAssets, updateNodeData, updateNode } = useEditor();
-  const connectionNodeId = useStore((state) => state.connectionNodeId);
-  const isTarget = connectionNodeId && connectionNodeId !== id;
-
-  const [editingField, setEditingField] = useState<"label" | "content" | null>(
-    null
-  );
+  const status = useNodeStatus(id);
+  const [editingField, setEditingField] = useState<"content" | null>(null);
+  useNodeEditRequest(id, "content", () => { setEditStart(undefined); setEditingField("content"); });
   const [selectedAudioForConfig, setSelectedAudioForConfig] = useState<Asset | null>(
     null
   );
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [editStart, setEditStart] = useState<EditStart>();
+  const [isAssetOver, setIsAssetOver] = useState(false);
 
   const [hoveredSide, setHoveredSide] = useState<
     "top" | "right" | "bottom" | "left" | null
   >(null);
-  const contentDisplayRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!contentDisplayRef.current || editingField === "content") return;
-
-    const target = contentDisplayRef.current;
-
-    if (!data.content) {
-      target.innerHTML = "";
-      return;
-    }
-
-    const cached = renderedContentCache.get(data.content);
-    if (cached !== undefined) {
-      target.innerHTML = cached;
-      return;
-    }
-    target.innerHTML = sanitizeHtml(data.content);
-    Prism.highlightAllUnder(target);
-    if (renderedContentCache.size >= RENDER_CACHE_LIMIT) {
-      renderedContentCache.delete(renderedContentCache.keys().next().value!);
-    }
-    renderedContentCache.set(data.content, target.innerHTML);
-  }, [data.content, editingField]);
-
   const getBorderClass = (side: "top" | "right" | "bottom" | "left") => {
-    const color = hoveredSide === side ? "bg-gray-500" : "bg-transparent";
+    const color = hoveredSide === side ? "bg-nt-line-strong" : "bg-transparent";
     return clsx(
       "absolute transition-colors duration-200 pointer-events-none",
       color
@@ -104,59 +60,47 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
     updateNodeData(id, { [field]: value }, field === "date" ? undefined : `${id}:${field}`);
   };
 
+  const nodeAssets = (data.assets || [])
+    .map((assetId) => projectAssets.find((a) => a.id === assetId))
+    .filter((a): a is Asset => a !== undefined);
+  const visualAsset = nodeAssets.find(isVisualAsset);
+  const audioAssets = nodeAssets.filter((a) => a.type === "audio");
+
+  const attachAsset = (assetId: string) => {
+    const asset = projectAssets.find((a) => a.id === assetId);
+    const current = data.assets || [];
+    if (!asset) return;
+    const next = withAttachedAsset(current, asset, projectAssets);
+    if (next === current) return;
+    // Height back to auto so the node grows to fit the new media.
+    updateNode(id, {
+      style: { ...getNode(id)?.style, height: undefined },
+      data: { ...data, assets: next }
+    });
+  };
+
+  const detachAsset = (assetId: string) => {
+    updateNodeData(id, { assets: (data.assets || []).filter((a) => a !== assetId) });
+  };
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const json = e.dataTransfer.getData("application/json");
-    if (!json) return;
-
-    try {
-      const { type, id: assetId } = JSON.parse(json);
-      if (type === "asset") {
-        const currentAssets = data.assets || [];
-        const nodeAssets = currentAssets
-          .map((id) => projectAssets.find((a) => a.id === id))
-          .filter((a): a is Asset => a !== undefined);
-
-        // Check if asset already exists
-        if (currentAssets.includes(assetId)) return;
-
-        // Find the asset
-        const asset = projectAssets.find((a) => a.id === assetId);
-        if (!asset) return;
-
-        // Check if adding a visual asset and there's already one
-        const isVisual = asset.type === "image" || asset.type === "video";
-        const hasVisual = nodeAssets.some(
-          (a) => a.type === "image" || a.type === "video"
-        );
-        if (isVisual && hasVisual) return;
-
-        // Update assets AND reset height to auto to fit new content
-        updateNode(id, {
-          style: { ...getNode(id)?.style, height: undefined },
-          data: { ...data, assets: [...currentAssets, assetId] }
-        });
-      }
-    } catch (err) {
-      console.error("Failed to parse drop data", err);
-    }
+    setIsAssetOver(false);
+    const assetId = draggedAssetId(e.dataTransfer);
+    if (assetId) attachAsset(assetId);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
+    if (!hasDraggedJson(e.dataTransfer)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
+    setIsAssetOver(true);
   };
 
-  // Only store asset IDs in node data
-  const nodeAssetIds = data.assets || [];
-  const nodeAssets = nodeAssetIds
-    .map((assetId) => projectAssets.find((a) => a.id === assetId))
-    .filter(Boolean) as Asset[];
-  const visualAssets = nodeAssets.filter(
-    (a) => a.type === "image" || a.type === "video"
-  );
-  const audioAssets = nodeAssets.filter((a) => a.type === "audio");
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setIsAssetOver(false);
+  };
 
   // Deferred: validation re-parses the content and runs the code checker, so
   // let React do it after the edit has painted instead of blocking it.
@@ -182,199 +126,74 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
 
   return (
     <>
-      {selected && (
-        <NodeResizeControl
-          style={{
-            background: "transparent",
-            border: "none",
-            position: "absolute",
-            bottom: 0,
-            right: 0
-          }}
-          minWidth={250}
-          minHeight={150}
+      {selected && <NodeResizeGrip minWidth={250} minHeight={150} />}
+      <NodeFrame id={id} selected={selected} color={data.color} className="h-full w-full min-w-[250px] min-h-[150px] flex-col">
+        <NodeHeader
+          icon={Clapperboard}
+          title={<EditableTitle nodeId={id} value={data.label} placeholder="Untitled scene" onChange={(label) => handleChange("label", label)} />}
+          status={
+            <>
+              {status && <StatusBadge status={status} />}
+              {hasError && <StatusBadge status="error" hint="A logic block has a syntax error or a type mismatch" />}
+            </>
+          }
         >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 12 12"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            className="text-zinc-500"
-          >
-            <path
-              d="M11 1L1 11"
-              stroke="currentColor"
-              strokeWidth="1.1"
-              strokeLinecap="round"
-            />
-            <path
-              d="M11 5L5 11"
-              stroke="currentColor"
-              strokeWidth="1.1"
-              strokeLinecap="round"
-            />
-            <path
-              d="M11 9L9 11"
-              stroke="currentColor"
-              strokeWidth="1.1"
-              strokeLinecap="round"
-            />
-          </svg>
-        </NodeResizeControl>
-      )}
-      <div className="w-full h-full min-w-[250px] min-h-[150px] bg-zinc-800 rounded-md flex flex-col relative">
-        {/* Border Overlay */}
-        <div
-          className={clsx(
-            "absolute inset-0 rounded-md pointer-events-none transition-[border-color,box-shadow] duration-300 ease-in-out z-10 border",
-            selected ? "border-orange-500 ring-4 ring-orange-500/20" : "border-transparent",
-            isTarget ? "hover:!border-orange-500" : ""
-          )}
-        />
-        {/* Global Target Handle - Covers entire node */}
-        <Handle
-          type="target"
-          position={Position.Left}
-          id="target"
-          className="!w-full !h-full !absolute !inset-0 !transform-none !border-0 !rounded-md z-[100] !opacity-0"
-          style={{
-            borderRadius: "inherit",
-            pointerEvents: isTarget ? "all" : "none"
-          }}
-        />
-        <div
-          className="p-2 pr-1 rounded-t-md flex items-center justify-between relative"
-          style={{
-            backgroundColor: data.color ? `${data.color}60` : "#18181b"
-          }}
-        >
-          <div className="flex items-center gap-2 flex-1 overflow-hidden">
-            <div
-              className="flex-1 min-w-0 ml-2"
-              onDoubleClick={() => setEditingField("label")}
-            >
-              {editingField === "label" ? (
-                <input
-                  className="nodrag w-full bg-transparent border-none outline-none p-0 text-sm font-semibold text-white placeholder-zinc-500"
-                  value={data.label}
-                  onChange={(e) => handleChange("label", e.target.value)}
-                  autoFocus
-                  onBlur={() => setEditingField(null)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") setEditingField(null);
-                  }}
-                />
-              ) : (
-                <div
-                  className="font-semibold text-sm text-zinc-200 truncate cursor-text"
-                  title="Double click to edit"
-                >
-                  {data.label}
-                </div>
-              )}
-            </div>
-          </div>
           <JumpTargetBadge nodeId={id} />
-          <DatePicker
-            date={data.date || null}
-            onChange={(date) => handleChange("date", date)}
-            nodeId={id}
-          />
-        </div>
+          {/* Opening it blurs the inline editor first, which saves pending text. */}
+          {(selected || editingField === "content") && (
+            <button type="button" onClick={() => setIsExpanded(true)} title="Open in a larger editor" aria-label="Open in a larger editor" className={nodeIconButton}>
+              <Maximize2 size={14} />
+            </button>
+          )}
+          <DatePicker date={data.date || null} onChange={(date) => handleChange("date", date)} nodeId={id} />
+        </NodeHeader>
 
         {/* Body */}
         <div
-          className="p-3 bg-zinc-900/50 flex-1 relative min-h-[6rem] flex flex-col"
+          className={clsx(
+            "relative flex min-h-[6rem] flex-1 flex-col rounded-b-[inherit] p-3 transition-shadow",
+            isAssetOver && "ring-2 ring-inset ring-nt-accent/70"
+          )}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
         >
-          {/* Visual Assets (Images/Videos) */}
-          {visualAssets.length > 0 && (
-            <div className="mb-2 flex flex-col gap-2">
-              {visualAssets.map((asset) => (
-                <div
-                  key={asset.id}
-                  className="relative rounded overflow-hidden bg-black/20"
-                >
-                  <AssetPreview 
-                    asset={asset} 
-                    className="w-full h-auto min-h-[100px]"
-                    imgClassName="w-full h-auto max-h-48 object-contain"
-                  />
-                </div>
-              ))}
+          {isAssetOver && (
+            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-b-[inherit] bg-nt-bg/70 text-xs font-medium text-nt-ink">
+              <ImagePlus size={14} className="mr-1.5 text-nt-accent" /> Drop to attach
             </div>
           )}
 
-          <div
-            className={`flex-1 w-full h-full ${
-              editingField === "content" ? "overflow-visible" : "overflow-auto"
-            }`}
-            onDoubleClick={(e) => {
-              e.stopPropagation();
-              setEditingField("content");
-            }}
-          >
+          {visualAsset && <NodeVisualAsset asset={visualAsset} onDetach={() => detachAsset(visualAsset.id)} />}
+
+          <div className="relative min-h-0 w-full flex-1 text-xs text-nt-ink-2">
             {editingField === "content" ? (
-              <RichTextEditor
+              <LazyRichTextEditor
                 initialValue={data.content || ""}
+                startAt={editStart}
                 onChange={(val) => handleChange("content", val)}
                 onBlur={() => setEditingField(null)}
+                onAssetDrop={attachAsset}
               />
             ) : (
-              <div className="relative w-full">
-                {!data.content && (
-                  <span className="absolute inset-0 text-xs text-zinc-500 italic opacity-60 select-none">
-                    Double click to add content...
-                  </span>
-                )}
-                <div
-                  ref={contentDisplayRef}
-                  className="text-xs text-zinc-300 whitespace-pre-wrap cursor-text markdown-content"
-                />
-              </div>
+              <StoryText
+                html={data.content || ""}
+                placeholder="Double click to add content…"
+                onStartEdit={(start) => {
+                  setEditStart(start);
+                  setEditingField("content");
+                }}
+              />
             )}
           </div>
 
-          {/* Audio Assets */}
           {audioAssets.length > 0 && (
-            <div className="mt-2 pt-2 border-t border-zinc-700/50 flex flex-col gap-1">
-              {audioAssets.map((asset) => {
-                const settings = data.audioSettings?.[asset.id] || {
-                  loop: false,
-                  delay: 0
-                };
-                return (
-                  <div
-                    key={asset.id}
-                    className="flex items-center gap-2 text-xs text-zinc-400 p-1.5 roundedcursor-pointer group"
-                    onClick={() => setSelectedAudioForConfig(asset)}
-                  >
-                    <div className="relative">
-                      <FileAudio
-                        size={14}
-                        className="text-white shrink-0"
-                      />
-                      {settings.loop && (
-                        <RotateCcw
-                          size={10}
-                          className="absolute -top-1 -right-1 text-white bg-zinc-900 rounded-full"
-                        />
-                      )}
-                      {settings.delay > 0 && (
-                        <Clock
-                          size={10}
-                          className="absolute -bottom-1 -right-1 text-white bg-zinc-900 rounded-full"
-                        />
-                      )}
-                    </div>
-                    <span className="truncate flex-1 hover:text-white">{asset.name}</span>
-                    
-                  </div>
-                );
-              })}
-            </div>
+            <NodeAudioList
+              assets={audioAssets}
+              settings={data.audioSettings}
+              onConfigure={setSelectedAudioForConfig}
+              onDetach={(asset) => detachAsset(asset.id)}
+            />
           )}
         </div>
         {/* Source Handles - Centered and smaller for dragging out */}
@@ -416,16 +235,16 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
           <div key={side} className={clsx(getBorderClass(side), borderPositions[side])} />
         ))}
 
-        {/* Error Badge */}
-        {hasError && (
-          <div
-            className="absolute -bottom-2 -right-2 bg-red-500 text-white rounded-full p-0.5 shadow-lg z-50"
-            title="Missing variable in content"
-          >
-            <AlertCircle size={12} />
-          </div>
-        )}
-      </div>
+      </NodeFrame>
+
+      {isExpanded && (
+        <ExpandedEditor
+          title={data.label}
+          initialValue={data.content || ""}
+          onChange={(val) => handleChange("content", val)}
+          onClose={() => setIsExpanded(false)}
+        />
+      )}
 
       {selectedAudioForConfig && (
         <AudioSettingsModal

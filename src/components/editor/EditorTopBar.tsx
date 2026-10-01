@@ -6,10 +6,14 @@ import {
 import { Board } from '../../models/story';
 import { VIEW_MODES, ViewMode } from '../views/viewModes';
 import { formatRelativeTime } from '../../utils/localPrefs';
-import { island, toolButton, toolButtonActive } from './editorStyles';
+import { dropdownItem, dropdownPanel, island, toolButton, toolButtonActive } from './editorStyles';
+import { Hint } from './Hint';
+import { ShortcutKbd } from '../ui/kbd';
+import { KEYS } from '../../editor/shortcuts/keymap';
+import type { ShortcutKeys } from '../../editor/shortcuts/types';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup,
-  DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger,
+  DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 
 export type PanelId = 'boards' | 'variables' | 'assets' | 'problems';
@@ -46,27 +50,33 @@ export const EditorTopBar = memo((props: EditorTopBarProps) => {
   const board = boards.find((b) => b.id === activeBoardId) ?? boards[0];
   const view = VIEW_MODES.find((v) => v.id === viewMode)!;
 
-  const panelButton = (id: PanelId, label: string, Icon: typeof Variable, badge?: number) => (
-    <button type="button" onClick={() => props.onPanel(panel === id ? null : id)} aria-pressed={panel === id}
-      title={label} aria-label={badge ? `${label} (${badge})` : label} className={`${toolButton} relative ${panel === id ? toolButtonActive : ''}`}>
-      <Icon size={16} />
-      {badge ? (
-        <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-nt-danger px-1 text-[10px] font-semibold text-nt-bg">{badge > 99 ? '99+' : badge}</span>
-      ) : null}
-    </button>
+  const panelButton = (id: PanelId, label: string, Icon: typeof Variable, keys: ShortcutKeys, badge?: number) => (
+    <Hint label={label} keys={keys} side="bottom">
+      <button type="button" onClick={() => props.onPanel(panel === id ? null : id)} aria-pressed={panel === id}
+        aria-label={badge ? `${label} (${badge})` : label} className={`${toolButton} relative ${panel === id ? toolButtonActive : ''}`}>
+        <Icon size={16} />
+        {badge ? (
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-nt-danger px-1 text-[10px] font-semibold text-nt-bg">{badge > 99 ? '99+' : badge}</span>
+        ) : null}
+      </button>
+    </Hint>
   );
 
   return (
     <>
       <div className={`absolute left-3 top-3 z-30 flex max-w-[calc(100vw-9rem)] items-center gap-0.5 p-1 ${island}`}>
-        <button type="button" onClick={props.onBack} className={toolButton} title="All stories" aria-label="Back to all stories">
-          <ArrowLeft size={16} />
-        </button>
-        <button type="button" onClick={props.onSave} title={lastSaved ? `Saved ${lastSaved.toLocaleTimeString()} · Ctrl+S to save now` : 'Ctrl+S to save'}
+        <Hint label="All stories" side="bottom">
+          <button type="button" onClick={props.onBack} className={toolButton} aria-label="Back to all stories">
+            <ArrowLeft size={16} />
+          </button>
+        </Hint>
+        <Hint side="bottom" keys={KEYS.save} label={lastSaved ? `Saved ${lastSaved.toLocaleTimeString()} · save now` : 'Save'}>
+        <button type="button" onClick={props.onSave}
           className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1 text-left hover:bg-nt-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-nt-focus">
           <span className="max-w-44 truncate text-sm font-semibold text-nt-ink">{projectName}</span>
           <span className="hidden whitespace-nowrap text-xs text-nt-ink-3 md:inline">{lastSaved ? `Saved ${formatRelativeTime(lastSaved.getTime())}` : 'Not saved yet'}</span>
         </button>
+        </Hint>
         {divider}
 
         {/* Board switcher */}
@@ -76,21 +86,22 @@ export const EditorTopBar = memo((props: EditorTopBarProps) => {
               <LayoutList size={15} aria-hidden /><span className="truncate">{board?.name}</span><ChevronDown size={14} aria-hidden />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="min-w-52 border-nt-line bg-nt-surface text-nt-ink shadow-2xl shadow-black/50">
+          <DropdownMenuContent align="start" className={`min-w-52 ${dropdownPanel}`}>
             <DropdownMenuRadioGroup value={activeBoardId} onValueChange={props.onSwitchBoard}>
               {boards.map((b) => (
-                <DropdownMenuRadioItem key={b.id} value={b.id} className="text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink">
+                <DropdownMenuRadioItem key={b.id} value={b.id} className={dropdownItem}>
                   <span className="truncate">{b.name}</span>
                   <span className="ml-auto pl-4 text-xs text-nt-ink-3">{b.nodes.length}</span>
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>
             <DropdownMenuSeparator className="bg-nt-line" />
-            <DropdownMenuItem className="text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink" onSelect={props.onAddBoard}>
+            <DropdownMenuItem className={dropdownItem} onSelect={props.onAddBoard}>
                 <Plus size={14} /> New board
             </DropdownMenuItem>
-            <DropdownMenuItem className="text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink" onSelect={() => props.onPanel('boards')}>
+            <DropdownMenuItem className={dropdownItem} onSelect={() => props.onPanel('boards')}>
                 <Settings2 size={14} /> Rename or delete boards…
+                <ShortcutKbd keys={KEYS.panelBoards} className="ml-auto" />
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -102,16 +113,16 @@ export const EditorTopBar = memo((props: EditorTopBarProps) => {
               <view.icon size={15} aria-hidden /><span className="hidden sm:inline">{view.label}</span><ChevronDown size={14} aria-hidden />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-72 border-nt-line bg-nt-surface text-nt-ink shadow-2xl shadow-black/50">
+          <DropdownMenuContent align="start" className={`w-72 ${dropdownPanel}`}>
             <DropdownMenuRadioGroup value={viewMode} onValueChange={(id) => props.onViewMode(id as ViewMode)}>
               {VIEW_MODES.map((v, i) => (
-                <DropdownMenuRadioItem key={v.id} value={v.id} className="items-start py-2 text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink">
+                <DropdownMenuRadioItem key={v.id} value={v.id} className={`items-start py-2 ${dropdownItem}`}>
                   <v.icon size={15} className="mt-0.5 shrink-0" />
                   <span className="min-w-0 flex-1">
                     <span className={`block ${v.id === viewMode ? 'font-semibold text-nt-ink' : ''}`}>{v.label}</span>
                     <span className="block text-xs text-nt-ink-3">{v.description}</span>
                   </span>
-                  <DropdownMenuShortcut>Alt {i + 1}</DropdownMenuShortcut>
+                  <ShortcutKbd keys={{ key: String(i + 1), alt: true }} className="ml-auto" />
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>
@@ -119,25 +130,25 @@ export const EditorTopBar = memo((props: EditorTopBarProps) => {
         </DropdownMenu>
         {divider}
 
-        {panelButton('variables', 'Variables', Variable)}
-        {panelButton('assets', 'Assets', ImageIcon)}
-        {panelButton('problems', 'Problems', TriangleAlert, problemCount)}
+        {panelButton('variables', 'Variables', Variable, KEYS.panelVariables)}
+        {panelButton('assets', 'Assets', ImageIcon, KEYS.panelAssets)}
+        {panelButton('problems', 'Problems', TriangleAlert, KEYS.panelProblems, problemCount)}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button type="button" aria-haspopup="menu" aria-label="More" title="More" className={toolButton}>
+            <button type="button" aria-haspopup="menu" aria-label="More" className={toolButton}>
               <MoreHorizontal size={16} />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="border-nt-line bg-nt-surface text-nt-ink shadow-2xl shadow-black/50">
-              <DropdownMenuItem className="text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink" onSelect={props.onExport}>
+          <DropdownMenuContent align="start" className={`w-56 ${dropdownPanel}`}>
+              <DropdownMenuItem className={dropdownItem} onSelect={props.onExport}>
                 <Download size={14} /> Export…
               </DropdownMenuItem>
-              <DropdownMenuItem className="text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink" onSelect={props.onPalette}>
-                <Command size={14} /> All commands <DropdownMenuShortcut>Ctrl K</DropdownMenuShortcut>
+              <DropdownMenuItem className={dropdownItem} onSelect={props.onPalette}>
+                <Command size={14} /> All commands <ShortcutKbd keys={KEYS.palette} className="ml-auto" />
               </DropdownMenuItem>
-              <DropdownMenuItem className="text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink" onSelect={props.onHelp}>
-                <HelpCircle size={14} /> Help & shortcuts
+              <DropdownMenuItem className={dropdownItem} onSelect={props.onHelp}>
+                <HelpCircle size={14} /> Help <ShortcutKbd keys={KEYS.help} className="ml-auto" />
               </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

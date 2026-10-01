@@ -97,14 +97,14 @@ export const nodeRegistry: Record<NodeTypeKey, NodeRegistryEntry<any>> = {
 
   commentNode: {
     component: CommentNode,
-    create: (extraFields = {}): CommentNodeData => ({ label: 'Jump', text: '', ...extraFields }),
-    defaultZIndex: -10,
+    create: (extraFields = {}): CommentNodeData => ({ label: '', text: '', ...extraFields }),
+    defaultZIndex: -1,
   } satisfies NodeRegistryEntry<CommentNodeData>,
 
   sectionNode: {
     component: SectionNode,
     create: (extraFields = {}): SectionNodeData => ({ label: 'New Section', ...extraFields }),
-    defaultZIndex: -1,
+    defaultZIndex: -10,
   } satisfies NodeRegistryEntry<SectionNodeData>,
 
   annotationNode: {
@@ -122,8 +122,8 @@ export const executeNode = (node: StoryNode, ctx: NodeExecutionContext): NodeExe
   return entry?.execute?.(node, ctx) ?? {};
 };
 
-// Comment and section nodes always sit behind other nodes, regardless of how
-// they enter the editor.
+// Sections sit furthest back, then comments (so a comment inside a section
+// stays visible), then everything else, regardless of how they enter the editor.
 export const withDefaultZIndex = (node: CanvasNode): CanvasNode => {
   const zIndex = nodeRegistry[node.type as NodeTypeKey]?.defaultZIndex;
   return zIndex === undefined || node.zIndex === zIndex ? node : { ...node, zIndex };

@@ -1,10 +1,11 @@
 import { memo, useMemo, useCallback } from "react";
 import { Handle, Position, NodeProps, useStore, ReactFlowState } from "reactflow";
 import { ConditionNodeData, Branch, Variable } from "../../models/story";
-import { X, AlertCircle } from "lucide-react";
-import clsx from "clsx";
+import { AlertCircle, X } from "lucide-react";
 import { nodePropsEqual } from "./nodePropsEqual";
 import { useEditor } from "../../editor/EditorContext";
+import { DEFAULT_BRANCHES } from "../../core/branch";
+import { NodeFrame, accentStyle, nodeIconButton } from "./nodeChrome";
 
 const ConditionInput = ({
   value,
@@ -16,7 +17,7 @@ const ConditionInput = ({
   onKeyDown
 }: any) => {
   const renderHighlight = () => {
-    if (!value) return <span className="text-zinc-600">{placeholder}</span>;
+    if (!value) return <span className="text-nt-ink-3/70">{placeholder}</span>;
 
     // Regex to match:
     // 1. String literals ("..." or '...')
@@ -32,7 +33,7 @@ const ConditionInput = ({
       // String literal
       if (/^["'].*["']$/.test(token)) {
         return (
-          <span key={i} className="text-green-400">
+          <span key={i} className="text-nt-success">
             {token}
           </span>
         );
@@ -41,7 +42,7 @@ const ConditionInput = ({
       // Number
       if (/^\d+(\.\d+)?$/.test(token)) {
         return (
-          <span key={i} className="text-orange-400">
+          <span key={i} className="text-nt-accent">
             {token}
           </span>
         );
@@ -55,11 +56,9 @@ const ConditionInput = ({
         const isVar = variables.some((v: Variable) => v.name === token);
 
         let color: string;
-        if (isKeyword) color = "text-purple-400";
-        else if (isVar) color = "text-blue-400";
-        else
-          color =
-            "text-red-400 underline decoration-wavy decoration-red-400/50"; // Error for unknown
+        if (isKeyword) color = "text-purple-300";
+        else if (isVar) color = "text-nt-focus";
+        else color = "text-nt-danger underline decoration-wavy decoration-nt-danger/50"; // Unknown variable
 
         return (
           <span key={i} className={color}>
@@ -70,7 +69,7 @@ const ConditionInput = ({
 
       // Operators/Other
       return (
-        <span key={i} className="text-zinc-400">
+        <span key={i} className="text-nt-ink-3">
           {token}
         </span>
       );
@@ -94,7 +93,7 @@ const ConditionInput = ({
         value={value}
         onChange={onChange}
         maxLength={100}
-        className="absolute inset-0 w-full h-full bg-transparent border-none outline-none text-xs font-mono text-transparent caret-white z-10 placeholder-transparent px-1"
+        className="nodrag absolute inset-0 z-10 h-full w-full border-none bg-transparent px-1 font-mono text-xs text-transparent caret-nt-accent placeholder-transparent outline-none"
         placeholder={placeholder}
         spellCheck={false}
         autoFocus={autoFocus}
@@ -104,11 +103,6 @@ const ConditionInput = ({
     </div>
   );
 };
-
-const DEFAULT_BRANCHES: Branch[] = [
-  { id: "true", label: "If", condition: "true" },
-  { id: "false", label: "Else", condition: "" }
-];
 
 // Flags conditions that reference identifiers that aren't project variables.
 const validateCondition = (condition: string, variables: Variable[]) => {
@@ -138,7 +132,6 @@ const validateCondition = (condition: string, variables: Variable[]) => {
 
 const ConditionNode = ({ id, data, selected }: NodeProps<ConditionNodeData>) => {
   const { variables, updateNodeData } = useEditor();
-  const connectionNodeId = useStore((state) => state.connectionNodeId);
   // Only this node's connected branch handles matter; subscribing to the whole
   // edge list re-rendered every condition node on any edge change.
   const connectedHandles = useStore(
@@ -148,7 +141,6 @@ const ConditionNode = ({ id, data, selected }: NodeProps<ConditionNodeData>) => 
       [id]
     )
   );
-  const isTarget = connectionNodeId && connectionNodeId !== id;
 
   const branches = data.branches || DEFAULT_BRANCHES;
 
@@ -176,110 +168,58 @@ const ConditionNode = ({ id, data, selected }: NodeProps<ConditionNodeData>) => 
   };
 
   return (
-    <div
-      className={`min-w-[180px] w-fit bg-zinc-800 rounded-md transition-[border-color,box-shadow,background-color] duration-300 ease-in-out flex flex-col relative `}
-    >
-      {/* Border Overlay */}
-      <div
-        className={clsx(
-          "absolute inset-0 rounded-md pointer-events-none transition-[border-color,box-shadow,background-color] duration-300 ease-in-out z-10 border",
-          selected ? "border-orange-500 ring-4 ring-orange-500/20" : "border-transparent",
-          isTarget ? "hover:!border-orange-500" : ""
-        )}
-      />
+    <NodeFrame id={id} selected={selected} color={data.color} className="w-fit min-w-[180px]">
+      {/* Colour strip: the node's colour, or a quiet neutral. */}
+      <div className="w-5 shrink-0 rounded-l-[inherit]" style={{ background: accentStyle(data.color) ? "var(--node-accent)" : "oklch(var(--nt-raised))" }} />
 
-      {/* Global Target Handle */}
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="!w-full !h-full !absolute !inset-0 !transform-none !border-0 !rounded-md z-[100] !opacity-0"
-        style={{
-          borderRadius: "inherit",
-          pointerEvents: isTarget ? "all" : "none"
-        }}
-      />
-
-      <div className="relative flex bg-zinc-800/60 rounded-md">
-        <div
-          className="w-5 rounded-l-md"
-          style={{
-            backgroundColor: data.color ? `${data.color}60` : "#18181b"
-          }}
-        />
-
-        <div className="flex-1 flex flex-col py-1">
-          {branches.map((branch, index) => {
-            const isElse = branch.label === "Else";
-            const isIf = branch.label === "If";
-
-            const isConnected = connectedHandles.split('\u0000').includes(branch.id);
-            return (
-              <div
-                key={branch.id}
-                className="relative flex items-center h-12 pr-4 border-b border-zinc-700/50 last:border-0 group transition-colors"
-              >
-                {/* Keyword */}
-                <span
-                  className={`text-sm font-bold font-mono w-auto shrink-0 text-center mr-3 pl-4 text-white`}
-                >
-                  {branch.label.toLowerCase()}
-                </span>
-
-                {/* Input */}
-                <div className="flex-1 min-w-[180px] mr-4 h-full">
-                  {!isElse ? (
-                    <ConditionInput
-                      value={branch.condition}
-                      onChange={(e: any) => editBranch(index, e.target.value)}
-                      variables={variables}
-                      placeholder="Enter condition here..."
-                    />
-                  ) : (
-                    <span className="text-xs text-zinc-500 italic select-none flex items-center h-full">
-                      fallback
-                    </span>
-                  )}
-                </div>
-
-                {/* Delete 'Else If' on hover */}
-                {!isIf && !isElse && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeBranch(index);
-                    }}
-                    className="absolute right-2 w-7 h-7 rounded-full bg-slate-700 text-white flex items-center justify-center border border-white/10 shadow-sm opacity-0 group-hover:opacity-100 transition-all hover:bg-slate-600 hover:scale-105"
-                    aria-label="Remove branch"
-                  >
-                    <X size={12} strokeWidth={2} />
-                  </button>
+      <div className="flex flex-1 flex-col py-1">
+        {branches.map((branch, index) => {
+          const isElse = branch.label === "Else";
+          const isConnected = connectedHandles.split("\u0000").includes(branch.id);
+          return (
+            <div key={branch.id} className="group relative flex h-12 items-center border-b border-nt-line/60 pr-3 last:border-0">
+              <span className="mr-3 shrink-0 pl-4 font-mono text-sm font-bold text-nt-ink">{branch.label.toLowerCase()}</span>
+              <div className="mr-2 h-full min-w-[180px] flex-1">
+                {isElse ? (
+                  <span className="flex h-full select-none items-center text-xs italic text-nt-ink-3">fallback</span>
+                ) : (
+                  <ConditionInput
+                    value={branch.condition}
+                    onChange={(e: any) => editBranch(index, e.target.value)}
+                    variables={variables}
+                    placeholder="Enter condition here..."
+                  />
                 )}
-
-                {/* Output Handle */}
-                <Handle
-                  type="source"
-                  position={Position.Right}
-                  id={branch.id}
-                  className={`!w-3 !h-3 !right-[-5px] z-100 transition-all hover:!w-3.5 hover:!h-3.5 ${
-                    isConnected ? "opacity-0" : "!border-zinc-400 bg-black "
-                  }`}
-                />
               </div>
-            );
-          })}
-        </div>
+              {branch.label === "Else If" && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); removeBranch(index); }}
+                  className={`${nodeIconButton} absolute right-2 opacity-0 focus-visible:opacity-100 group-hover:opacity-100`}
+                  aria-label="Remove this case"
+                  title="Remove this case"
+                >
+                  <X size={12} />
+                </button>
+              )}
+              <Handle
+                type="source"
+                position={Position.Right}
+                id={branch.id}
+                // Connected cases keep a filled dot where their line starts.
+                className={`!-right-[5px] !h-3 !w-3 !border-nt-line-strong transition-colors hover:!border-nt-accent ${isConnected ? "!bg-nt-line-strong" : "!bg-nt-bg"}`}
+              />
+            </div>
+          );
+        })}
       </div>
 
-      {/* Error Badge */}
       {hasError && (
-        <div
-          className="absolute -bottom-2 -right-2 bg-red-500 text-white rounded-full p-0.5 shadow-lg z-50"
-          title="Invalid condition"
-        >
+        <span className="absolute -bottom-2 -right-2 z-50 rounded-full bg-nt-danger p-0.5 text-nt-bg shadow-lg" title="A condition uses an unknown variable">
           <AlertCircle size={12} />
-        </div>
+        </span>
       )}
-    </div>
+    </NodeFrame>
   );
 };
 

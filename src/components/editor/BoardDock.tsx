@@ -9,9 +9,13 @@ import {
 import { NodeTypeKey } from '../../core/nodes/nodeRegistry';
 import { AlignMode } from '../../core/layout/arrange';
 import { htmlToText } from '../../utils/html';
-import { island, menuItem, toolButton, toolButtonActive } from './editorStyles';
+import { dropdownItem, dropdownLabel, dropdownPanel, island, menuItem, toolButton, toolButtonActive } from './editorStyles';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '../ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
+import { ShortcutKbd } from '../ui/kbd';
+import { KEYS } from '../../editor/shortcuts/keymap';
+import type { ShortcutKeys } from '../../editor/shortcuts/types';
+import { Hint } from './Hint';
 
 export interface FindableNode {
   id: string;
@@ -44,12 +48,12 @@ interface BoardDockProps {
   onLocked: (on: boolean) => void;
 }
 
-const ADD: { type: NodeTypeKey; label: string; icon: typeof PlusCircle; payload: string }[] = [
-  { type: 'elementNode', label: 'Scene', icon: PlusCircle, payload: 'New Element' },
-  { type: 'conditionNode', label: 'Branch', icon: GitFork, payload: 'Logic Check' },
-  { type: 'jumpNode', label: 'Jump', icon: ArrowRightCircle, payload: 'Jump' },
-  { type: 'commentNode', label: 'Comment', icon: MessageSquare, payload: '' },
-  { type: 'sectionNode', label: 'Section', icon: LayoutTemplate, payload: 'New Section' },
+const ADD: { type: NodeTypeKey; label: string; icon: typeof PlusCircle; payload: string; keys: ShortcutKeys }[] = [
+  { type: 'elementNode', label: 'Scene', icon: PlusCircle, payload: 'New Element', keys: KEYS.addScene },
+  { type: 'conditionNode', label: 'Branch', icon: GitFork, payload: 'Logic Check', keys: KEYS.addBranch },
+  { type: 'jumpNode', label: 'Jump', icon: ArrowRightCircle, payload: 'Jump', keys: KEYS.addJump },
+  { type: 'commentNode', label: 'Comment', icon: MessageSquare, payload: '', keys: KEYS.addComment },
+  { type: 'sectionNode', label: 'Section', icon: LayoutTemplate, payload: 'New Section', keys: KEYS.addSection },
 ];
 
 const divider = <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-nt-line" />;
@@ -111,7 +115,7 @@ export const BoardDock = memo((p: BoardDockProps) => {
   const { zoomIn, zoomOut, fitView, zoomTo } = useReactFlow();
   const zoomPercent = useStore((s) => Math.round(s.transform[2] * 100));
   const alignItem = (mode: AlignMode, label: string, Icon: typeof AlignStartVertical) => (
-    <DropdownMenuItem className="text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink" disabled={p.selectionCount < 2} onSelect={() => p.onAlign(mode)}>
+    <DropdownMenuItem className={dropdownItem} disabled={p.selectionCount < 2} onSelect={() => p.onAlign(mode)}>
       <Icon size={14} /> {label}
     </DropdownMenuItem>
   );
@@ -119,19 +123,28 @@ export const BoardDock = memo((p: BoardDockProps) => {
   return (
     <div role="toolbar" aria-label="Board tools"
       className={`absolute bottom-4 left-1/2 z-30 flex max-w-[calc(100vw-1.5rem)] -translate-x-1/2 items-center gap-0.5 overflow-visible p-1 ${island}`}>
-      <button type="button" className={`${toolButton} ${!p.isPanMode ? toolButtonActive : ''}`} aria-pressed={!p.isPanMode} onClick={() => p.onPanMode(false)} title="Select (V)" aria-label="Select tool">
-        <MousePointer2 size={16} />
-      </button>
-      <button type="button" className={`${toolButton} ${p.isPanMode ? toolButtonActive : ''}`} aria-pressed={p.isPanMode} onClick={() => p.onPanMode(true)} title="Pan (H)" aria-label="Pan tool">
-        <Hand size={16} />
-      </button>
+      <Hint label="Select" keys={KEYS.toolSelect}>
+        <button type="button" className={`${toolButton} ${!p.isPanMode ? toolButtonActive : ''}`} aria-pressed={!p.isPanMode} onClick={() => p.onPanMode(false)} aria-label="Select tool">
+          <MousePointer2 size={16} />
+        </button>
+      </Hint>
+      <Hint label="Pan" keys={KEYS.toolPan}>
+        <button type="button" className={`${toolButton} ${p.isPanMode ? toolButtonActive : ''}`} aria-pressed={p.isPanMode} onClick={() => p.onPanMode(true)} aria-label="Pan tool">
+          <Hand size={16} />
+        </button>
+      </Hint>
       {divider}
-      <button type="button" className={toolButton} onClick={p.onUndo} disabled={!p.canUndo} title="Undo (Ctrl+Z)" aria-label="Undo"><Undo2 size={16} /></button>
-      <button type="button" className={toolButton} onClick={p.onRedo} disabled={!p.canRedo} title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><Redo2 size={16} /></button>
+      <Hint label="Undo" keys={KEYS.undo}>
+        <button type="button" className={toolButton} onClick={p.onUndo} disabled={!p.canUndo} aria-label="Undo"><Undo2 size={16} /></button>
+      </Hint>
+      <Hint label="Redo" keys={KEYS.redo}>
+        <button type="button" className={toolButton} onClick={p.onRedo} disabled={!p.canRedo} aria-label="Redo"><Redo2 size={16} /></button>
+      </Hint>
       {divider}
       {ADD.map((a) => (
-        <button key={a.type} type="button" className={`${toolButton} cursor-grab active:cursor-grabbing`} disabled={p.locked}
-          title={`Add ${a.label} (click, or drag onto the board)`} aria-label={`Add ${a.label}`}
+        <Hint key={a.type} label={`Add a ${a.label.toLowerCase()} (or drag it onto the board)`} keys={a.keys}>
+        <button type="button" className={`${toolButton} cursor-grab active:cursor-grabbing`} disabled={p.locked}
+          aria-label={`Add ${a.label}`}
           draggable
           onDragStart={(e) => {
             e.dataTransfer.setData('application/reactflow/type', a.type);
@@ -141,24 +154,28 @@ export const BoardDock = memo((p: BoardDockProps) => {
           onClick={() => p.onAdd(a.type)}>
           <a.icon size={16} />
         </button>
+        </Hint>
       ))}
       {divider}
 
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button type="button" className={toolButton} disabled={p.locked} title="Arrange & align" aria-label="Arrange and align">
-            <Wand2 size={16} />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent side="top" align="center" className="w-60 border-nt-line bg-nt-surface text-nt-ink shadow-2xl shadow-black/50">
-            <DropdownMenuItem className="text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink" onSelect={() => p.onArrange('board')}>
+        <Hint label="Arrange & align">
+          <DropdownMenuTrigger asChild>
+            <button type="button" className={toolButton} disabled={p.locked} aria-label="Arrange and align">
+              <Wand2 size={16} />
+            </button>
+          </DropdownMenuTrigger>
+        </Hint>
+        <DropdownMenuContent side="top" align="center" className={`w-60 ${dropdownPanel}`}>
+            <DropdownMenuItem className={dropdownItem} onSelect={() => p.onArrange('board')}>
               <Wand2 size={14} /> Tidy up the whole board
+              <ShortcutKbd keys={KEYS.tidyBoard} className="ml-auto" />
             </DropdownMenuItem>
-            <DropdownMenuItem className="text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink" disabled={p.selectionCount < 2} onSelect={() => p.onArrange('selection')}>
+            <DropdownMenuItem className={dropdownItem} disabled={p.selectionCount < 2} onSelect={() => p.onArrange('selection')}>
               <Wand2 size={14} /> Tidy up the selection
             </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-nt-line" />
-            <DropdownMenuLabel className="text-xs font-normal text-nt-ink-3">{p.selectionCount < 2 ? 'Select 2 or more to align' : `Align ${p.selectionCount} selected`}</DropdownMenuLabel>
+            <DropdownMenuLabel className={dropdownLabel}>{p.selectionCount < 2 ? 'Select 2 or more to align' : `Align ${p.selectionCount} selected`}</DropdownMenuLabel>
             {alignItem('left', 'Left edges', AlignStartVertical)}
             {alignItem('center', 'Centres (vertical line)', AlignCenterVertical)}
             {alignItem('right', 'Right edges', AlignEndVertical)}
@@ -166,40 +183,56 @@ export const BoardDock = memo((p: BoardDockProps) => {
             {alignItem('middle', 'Middles (horizontal line)', AlignCenterHorizontal)}
             {alignItem('bottom', 'Bottom edges', AlignEndHorizontal)}
             <DropdownMenuSeparator className="bg-nt-line" />
-            <DropdownMenuItem className="text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink" disabled={p.selectionCount < 3} onSelect={() => p.onDistribute('horizontal')}>
+            <DropdownMenuItem className={dropdownItem} disabled={p.selectionCount < 3} onSelect={() => p.onDistribute('horizontal')}>
               <AlignHorizontalSpaceAround size={14} /> Space evenly across
             </DropdownMenuItem>
-            <DropdownMenuItem className="text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink" disabled={p.selectionCount < 3} onSelect={() => p.onDistribute('vertical')}>
+            <DropdownMenuItem className={dropdownItem} disabled={p.selectionCount < 3} onSelect={() => p.onDistribute('vertical')}>
               <AlignVerticalSpaceAround size={14} /> Space evenly down
             </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
       <Popover open={p.findOpen} onOpenChange={p.onFindOpen}>
-        <PopoverTrigger asChild>
-          <button type="button" className={`${toolButton} ${p.findOpen ? toolButtonActive : ''}`} title="Find (Ctrl+F)" aria-label="Find a scene">
-            <Search size={16} />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent side="top" align="center" sideOffset={8} className="w-80 border-nt-line bg-nt-surface p-2 text-nt-ink shadow-2xl shadow-black/50">
+        <Hint label="Find a scene" keys={KEYS.find}>
+          <PopoverTrigger asChild>
+            <button type="button" className={`${toolButton} ${p.findOpen ? toolButtonActive : ''}`} aria-label="Find a scene">
+              <Search size={16} />
+            </button>
+          </PopoverTrigger>
+        </Hint>
+        <PopoverContent side="top" align="center" sideOffset={8} className={`w-80 p-2 ${dropdownPanel}`}>
           <FindPopover findable={p.findable} onFocusNode={p.onFocusNode} startId={p.startId} onClose={() => p.onFindOpen(false)} />
         </PopoverContent>
       </Popover>
       {divider}
 
-      <button type="button" className={toolButton} onClick={() => zoomOut({ duration: 200 })} title="Zoom out" aria-label="Zoom out"><Minus size={16} /></button>
-      <button type="button" className={`${toolButton} w-12 font-mono text-xs`} onClick={() => zoomTo(1, { duration: 200 })} title="Reset to 100%" aria-label={`Zoom ${zoomPercent}%, reset to 100%`}>
-        {zoomPercent}%
-      </button>
-      <button type="button" className={toolButton} onClick={() => zoomIn({ duration: 200 })} title="Zoom in" aria-label="Zoom in"><Plus size={16} /></button>
-      <button type="button" className={toolButton} onClick={() => fitView({ duration: 300, padding: 0.15 })} title="Fit the board" aria-label="Fit the board"><Maximize size={16} /></button>
+      <Hint label="Zoom out" keys={KEYS.zoomOut}>
+        <button type="button" className={toolButton} onClick={() => zoomOut({ duration: 200 })} aria-label="Zoom out"><Minus size={16} /></button>
+      </Hint>
+      <Hint label="Reset to 100%">
+        <button type="button" className={`${toolButton} w-12 font-mono text-xs`} onClick={() => zoomTo(1, { duration: 200 })} aria-label={`Zoom ${zoomPercent}%, reset to 100%`}>
+          {zoomPercent}%
+        </button>
+      </Hint>
+      <Hint label="Zoom in" keys={KEYS.zoomIn}>
+        <button type="button" className={toolButton} onClick={() => zoomIn({ duration: 200 })} aria-label="Zoom in"><Plus size={16} /></button>
+      </Hint>
+      <Hint label="Fit the board" keys={KEYS.fitView}>
+        <button type="button" className={toolButton} onClick={() => fitView({ duration: 300, padding: 0.15 })} aria-label="Fit the board"><Maximize size={16} /></button>
+      </Hint>
       {divider}
-      <button type="button" className={`${toolButton} ${p.minimap ? toolButtonActive : ''}`} aria-pressed={p.minimap} onClick={() => p.onMinimap(!p.minimap)} title="Minimap" aria-label="Minimap"><MapIcon size={16} /></button>
-      <button type="button" className={`${toolButton} ${p.snap ? toolButtonActive : ''}`} aria-pressed={p.snap} onClick={() => p.onSnap(!p.snap)} title="Snap to grid" aria-label="Snap to grid"><Grid3x3 size={16} /></button>
+      <Hint label="Minimap" keys={KEYS.minimap}>
+        <button type="button" className={`${toolButton} ${p.minimap ? toolButtonActive : ''}`} aria-pressed={p.minimap} onClick={() => p.onMinimap(!p.minimap)} aria-label="Minimap"><MapIcon size={16} /></button>
+      </Hint>
+      <Hint label="Snap to grid">
+        <button type="button" className={`${toolButton} ${p.snap ? toolButtonActive : ''}`} aria-pressed={p.snap} onClick={() => p.onSnap(!p.snap)} aria-label="Snap to grid"><Grid3x3 size={16} /></button>
+      </Hint>
+      <Hint label={p.locked ? 'Unlock the board' : 'Lock the board (no moving, connecting or adding)'} keys={KEYS.lock}>
       <button type="button" className={`${toolButton} ${p.locked ? 'bg-nt-accent/15 text-nt-accent' : ''}`} aria-pressed={p.locked} onClick={() => p.onLocked(!p.locked)}
-        title={p.locked ? 'Unlock the board' : 'Lock the board (no moving, connecting or adding)'} aria-label={p.locked ? 'Unlock the board' : 'Lock the board'}>
+        aria-label={p.locked ? 'Unlock the board' : 'Lock the board'}>
         {p.locked ? <Lock size={16} /> : <Unlock size={16} />}
       </button>
+      </Hint>
     </div>
   );
 });

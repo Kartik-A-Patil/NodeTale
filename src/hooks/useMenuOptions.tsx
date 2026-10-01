@@ -1,18 +1,23 @@
 import React, { useCallback } from 'react';
 import { 
-    GitFork, ArrowRightCircle, Copy as CopyIcon, Trash2, PlusCircle, 
+    ArrowRightCircle, Trash2, PlusCircle, 
     MessageSquare, Layout, Info, ArrowUpLeft, ArrowUpRight, 
-    ArrowDownLeft, ArrowDownRight, MoveUpLeft, CornerDownRight, Spline, Image as ImageIcon, Play, X
+    ArrowDownLeft, ArrowDownRight, MoveUpLeft, CornerDownRight, Spline, Image as ImageIcon, Play, Film, Music,
+    LocateFixed, Plus, CopyPlus
 } from 'lucide-react';
 import { ContextMenuAction, ContextMenuOption } from '../components/ContextMenu';
-import { Asset, isAnnotationNode, isConditionNode, isElementNode } from '../models/story';
+import { Asset, isAnnotationNode, isConditionNode, isElementNode, isJumpNode } from '../models/story';
+import { DEFAULT_BRANCHES, withNewCase } from '../core/branch';
+import { createId } from '../utils/id';
+import { KEYS } from '../editor/shortcuts/keymap';
 import { CanvasNode } from '../adapters/reactFlow';
 import { Edge, ReactFlowInstance } from 'reactflow';
 import { MenuState } from './useContextMenu';
+import type { ShortcutKeys } from '../editor/shortcuts/types';
 import { AlignMode } from '../core/layout/arrange';
 import { autoEdgeLabel } from '../utils/edgeLabel';
 import {
-    Copy as DuplicateIcon, GitFork as BranchIcon, Wand2, AlignStartVertical, AlignCenterVertical, AlignEndVertical,
+    GitFork as BranchIcon, Wand2, AlignStartVertical, AlignCenterVertical, AlignEndVertical,
     AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignHorizontalSpaceAround, AlignVerticalSpaceAround,
     ClipboardPaste, BoxSelect, Maximize, Map as MapIcon, Grid3x3, Unlock, CirclePlus,
 } from 'lucide-react';
@@ -35,10 +40,14 @@ export interface BoardMenuActions {
     toggleSnap: () => void;
     duplicate: (ids: string[]) => void;
     addConnected: (id: string) => void;
+    /** Select and centre a node, switching board if needed. */
+    focusNode: (id: string) => void;
 }
 
+
+
+// "No colour" is its own swatch (onClear), so no near-black entry here.
 const MENU_COLORS = [
-    '#18181b', // Zinc 300
     '#f87171', // Red 400
     '#fb923c', // Orange 400
     '#fbbf24', // Amber 400
@@ -110,30 +119,30 @@ export function useMenuOptions({
     if (!menu) return [];
 
     if (menu.type === 'node') {
-        // Check for multi-selection
+        const colorRow = (ids: string[], current?: string): ContextMenuOption => ({
+            type: 'color-grid',
+            preventClose: true,
+            colors: MENU_COLORS,
+            color: current,
+            onColorSelect: (color) => ids.forEach(id => updateNodeData(id, { color })),
+            onClear: () => ids.forEach(id => updateNodeData(id, { color: undefined })),
+        });
+        const divider = { type: 'divider' } as ContextMenuOption;
+
+        // Several nodes selected: act on all of them.
         if (menu.selectedNodeIds && menu.selectedNodeIds.length > 1) {
             const selectedNodes = nodes.filter(n => menu.selectedNodeIds!.includes(n.id));
+            const ids = selectedNodes.map(n => n.id);
             return [
-                {
-                    type: 'color-grid',
-                    preventClose: true,
-                    colors: MENU_COLORS,
-                    onColorSelect: (color) => {
-                        selectedNodes.forEach(node => updateNodeData(node.id, { color }));
-                    }
-                },
-                { type: 'divider' } as ContextMenuOption,
-                {
-                    label: `Duplicate ${selectedNodes.length} nodes`,
-                    icon: <DuplicateIcon size={14} />,
-                    onClick: () => board.duplicate(selectedNodes.map(n => n.id))
-                },
+                { type: 'label', label: `${selectedNodes.length} selected` },
+                colorRow(ids),
+                divider,
+                { label: 'Duplicate', icon: <CopyPlus size={14} />, shortcut: KEYS.duplicate, onClick: () => board.duplicate(ids) },
                 {
                     label: 'Group into a section',
                     icon: <Layout size={14} />,
                     onClick: () => {
                         if (!reactFlowInstance) return;
-                        // Calculate bounding box
                         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
                         selectedNodes.forEach(node => {
                             minX = Math.min(minX, node.position.x);
@@ -141,17 +150,15 @@ export function useMenuOptions({
                             maxX = Math.max(maxX, node.position.x + (node.width || 250));
                             maxY = Math.max(maxY, node.position.y + (node.height || 150));
                         });
-                        const padding = 40; // extra space around
-                        const width = maxX - minX + 2 * padding;
-                        const height = maxY - minY + 2 * padding;
-                        const position = { x: minX - padding, y: minY - padding };
-                        addNode('sectionNode', position, { 
-                            label: 'New Section',
-                            style: { width, height }
+                        const padding = 40;
+                        addNode('sectionNode', { x: minX - padding, y: minY - padding }, {
+                            label: 'New section',
+                            style: { width: maxX - minX + 2 * padding, height: maxY - minY + 2 * padding }
                         });
                     }
                 },
-                { type: 'divider' } as ContextMenuOption,
+                divider,
+                { type: 'label', label: 'Arrange' },
                 { label: 'Tidy up the selection', icon: <Wand2 size={14} />, onClick: board.tidySelection },
                 {
                     label: 'Align',
@@ -171,210 +178,128 @@ export function useMenuOptions({
                         { label: 'Down', icon: <AlignVerticalSpaceAround size={14} />, onClick: () => board.distribute('vertical') },
                     ]
                 }] : []),
-                { type: 'divider' } as ContextMenuOption,
-                {
-                    label: 'Delete Selected',
-                    danger: true,
-                    icon: <Trash2 size={14} />,
-                    onClick: () => {
-                        selectedNodes.forEach(node => deleteNode(node.id));
-                    }
-                }
+                divider,
+                { label: `Delete ${selectedNodes.length} nodes`, danger: true, icon: <Trash2 size={14} />, shortcut: KEYS.delete, onClick: () => ids.forEach(id => deleteNode(id)) }
             ];
         }
 
         const node = nodes.find(n => n.id === menu.id);
-        
-        const options: ContextMenuOption[] = [];
+        if (!node) return [];
+        const id = node.id;
+        const title = (node.data as { label?: string }).label?.trim();
+        const header = (kind: string): ContextMenuOption => ({ type: 'label', label: title ? `${kind} · ${title}` : kind });
+        const duplicate = { label: 'Duplicate', icon: <CopyPlus size={16} />, shortcut: KEYS.duplicate, onClick: () => board.duplicate([id]) };
+        // A row of icons reads well from two actions up; a lone one gets its label.
+        const quick = (items: { label: string; icon: React.ReactNode; onClick: () => void; preventClose?: boolean; shortcut?: ShortcutKeys }[]): ContextMenuOption[] =>
+            items.length > 1 ? [{ type: 'icon-row', items }] : items.map(({ label, icon, onClick, shortcut }) => ({ label, icon, onClick, shortcut }));
+        const remove = (what: string): ContextMenuOption => ({ label: `Delete ${what}`, danger: true, icon: <Trash2 size={14} />, shortcut: KEYS.delete, onClick: () => deleteNode(id) });
 
-        if (node && node.type === 'sectionNode') {
-             options.push(
-                {
-                    type: 'color-grid',
-                    preventClose: true,
-                    colors: MENU_COLORS,
-                    onColorSelect: (color) => updateNodeData(menu.id!, { color })
-                },
-                { type: 'divider' } as ContextMenuOption,
-                {
-                    label: 'Delete Section',
-                    danger: true,
-                    icon: <Trash2 size={14} />,
-                    onClick: () => deleteNode(menu.id!, false)
-                },
-                {
-                    label: 'Delete Section & Child',
-                    danger: true,
-                    icon: <Trash2 size={14} />,
-                    onClick: () => deleteNode(menu.id!, true)
-                }
-             );
-             return options;
+        if (node.type === 'sectionNode') {
+            return [
+                header('Section'),
+                colorRow([id], node.data.color),
+                divider,
+                { label: 'Delete section only', danger: true, icon: <Trash2 size={14} />, onClick: () => deleteNode(id, false) },
+                { label: 'Delete section and what’s inside', danger: true, icon: <Trash2 size={14} />, onClick: () => deleteNode(id, true) },
+            ];
         }
 
-        if (node && isAnnotationNode(node)) {
-            options.push(
-                {
-                    type: 'icon-row',
-                    items: [
-                        {
-                            label: 'Top Left',
-                            icon: <ArrowUpLeft size={16} />,
-                            onClick: () => updateNodeData(menu.id!, { arrowDirection: 'top-left' }),
-                            active: node.data.arrowDirection === 'top-left',
-                            preventClose: true
-                        },
-                        {
-                            label: 'Top Right',
-                            icon: <ArrowUpRight size={16} />,
-                            onClick: () => updateNodeData(menu.id!, { arrowDirection: 'top-right' }),
-                            active: node.data.arrowDirection === 'top-right',
-                            preventClose: true
-                        },
-                        {
-                            label: 'Bottom Left',
-                            icon: <ArrowDownLeft size={16} />,
-                            onClick: () => updateNodeData(menu.id!, { arrowDirection: 'bottom-left' }),
-                            active: node.data.arrowDirection === 'bottom-left',
-                            preventClose: true
-                        },
-                        {
-                            label: 'Bottom Right',
-                            icon: <ArrowDownRight size={16} />,
-                            onClick: () => updateNodeData(menu.id!, { arrowDirection: 'bottom-right' }),
-                            active: node.data.arrowDirection === 'bottom-right',
-                            preventClose: true
-                        }
-                    ]
-                },
-                { type: 'divider' } as ContextMenuOption,
-                {
-                    type: 'color-grid',
-                    preventClose: true,
-                    colors: MENU_COLORS,
-                    onColorSelect: (color) => updateNodeData(menu.id!, { color })
-                },
-                { type: 'divider' } as ContextMenuOption,
-                {
-                    label: 'Delete Annotation',
-                    danger: true,
-                    icon: <Trash2 size={14} />,
-                    onClick: () => deleteNode(menu.id!)
-                }
-            );
-            return options;
+        if (isAnnotationNode(node)) {
+            const arrow = (direction: string, label: string, icon: React.ReactNode) => ({
+                label, icon, preventClose: true, active: node.data.arrowDirection === direction,
+                onClick: () => updateNodeData(id, { arrowDirection: direction }),
+            });
+            return [
+                header('Annotation'),
+                { type: 'icon-row', items: [
+                    arrow('top-left', 'Arrow to the top left', <ArrowUpLeft size={16} />),
+                    arrow('top-right', 'Arrow to the top right', <ArrowUpRight size={16} />),
+                    arrow('bottom-left', 'Arrow to the bottom left', <ArrowDownLeft size={16} />),
+                    arrow('bottom-right', 'Arrow to the bottom right', <ArrowDownRight size={16} />),
+                ] },
+                colorRow([id], node.data.color),
+                divider,
+                remove('annotation'),
+            ];
         }
 
-        if (node && isConditionNode(node)) {
-            options.push(
+        if (isConditionNode(node)) {
+            return [
+                header('Branch'),
+                ...quick([
+                    { label: 'Add a case', icon: <Plus size={16} />, preventClose: true,
+                      onClick: () => updateNodeData(id, { branches: withNewCase(node.data.branches || DEFAULT_BRANCHES, createId('branch')) }) },
+                    duplicate,
+                ]),
+                colorRow([id], node.data.color),
+                divider,
+                remove('branch'),
+            ];
+        }
+
+        if (isJumpNode(node)) {
+            const target = node.data.jumpTargetId;
+            return [
+                header('Jump'),
+                ...quick([
+                    ...(target ? [{ label: 'Go to the target scene', icon: <LocateFixed size={16} />, onClick: () => board.focusNode(target) }] : []),
+                    duplicate,
+                ]),
+                colorRow([id], node.data.color),
+                divider,
+                remove('jump'),
+            ];
+        }
+
+        if (isElementNode(node)) {
+            const nodeAssets = (node.data.assets || [])
+                .map((assetId: string) => assets.find((a) => a.id === assetId))
+                .filter(Boolean) as Asset[];
+            const assetIcon = { image: ImageIcon, video: Film, audio: Music } as const;
+            const assetItems: ContextMenuAction[] = [
                 {
-                    label: 'Add Condition Case',
-                    icon: <GitFork size={14} />,
-                    preventClose: true,
+                    label: nodeAssets.length ? 'Attach another asset…' : 'Attach an asset…',
+                    icon: <PlusCircle size={14} />,
                     onClick: () => {
-                         const branches = node.data.branches || [
-                            { id: 'true', label: 'If', condition: 'true' },
-                            { id: 'false', label: 'Else', condition: '' }
-                         ];
-                         const elseIdx = branches.findIndex((b: any) => b.label === 'Else');
-                         const newBranch = { id: `branch-${Date.now()}`, label: 'Else If', condition: 'var == true' };
-                         const newBranches = [...branches];
-                         
-                         if (elseIdx !== -1) {
-                             newBranches.splice(elseIdx, 0, newBranch);
-                         } else {
-                             newBranches.push(newBranch);
-                         }
-                         updateNodeData(node.id, { branches: newBranches });
-                    }
-                },
-                { type: 'divider' } as ContextMenuOption
-            );
-        }
-
-        if (node && isElementNode(node)) {
-             const nodeAssetIds = node.data.assets || [];
-             const nodeAssets = nodeAssetIds
-               .map((assetId: string) => assets.find((a) => a.id === assetId))
-               .filter(Boolean) as Asset[];
-
-             const submenuItems: ContextMenuAction[] = [
-                {
-                    label: 'Add Asset',
-                    icon: <PlusCircle size={14} className="text-green-400" />,
-                    onClick: () => {
-                        setSelectedNodeForAsset(menu.id!);
+                        setSelectedNodeForAsset(id);
                         setShowAssetSelectorModal(true);
                     }
-                }
-             ];
-
-             // Add remove options for each asset
-             if (nodeAssets.length > 0) {
-                nodeAssets.forEach((asset) => {
-                    submenuItems.push({
-                        label: `Remove ${asset.name}`,
-                        icon: <X size={14} />,
+                },
+                ...nodeAssets.map((asset): ContextMenuAction => {
+                    const Icon = assetIcon[asset.type];
+                    return {
+                        label: `Detach “${asset.name}”`,
+                        icon: <Icon size={14} />,
                         danger: true,
-                        onClick: () => {
-                            const currentAssets = node.data.assets || [];
-                            const updatedAssets = currentAssets.filter((id: string) => id !== asset.id);
-                            updateNodeData(menu.id!, { assets: updatedAssets });
-                        }
-                    });
-                });
-             }
-
-             options.push(
-                {
-                    label: 'Copy as Jump Target',
-                    icon: <CopyIcon size={14} />,
-                    onClick: () => setJumpClipboard({ id: menu.id!, label: node.data.label || menu.label || 'Untitled' })
-                },
-                { type: 'divider' } as ContextMenuOption,
-                {
-                    label: 'Assets',
-                    type: 'submenu',
-                    icon: <ImageIcon size={14} />,
-                    submenu: submenuItems
-                },
-                { type: 'divider' } as ContextMenuOption,
-                {
-                    label: 'Play from here',
-                    icon: <Play size={14} />,
-                    onClick: () => startPlayFromNode(menu.id!)
-                },
-                {
-                    label: 'Add a connected scene',
-                    icon: <CirclePlus size={14} />,
-                    onClick: () => board.addConnected(menu.id!)
-                },
-                { type: 'divider' } as ContextMenuOption
-             );
+                        onClick: () => updateNodeData(id, { assets: (node.data.assets || []).filter((a: string) => a !== asset.id) })
+                    };
+                })
+            ];
+            return [
+                header('Scene'),
+                ...quick([
+                    { label: 'Play from here', icon: <Play size={16} />, shortcut: KEYS.playFromHere, onClick: () => startPlayFromNode(id) },
+                    { label: 'Add a connected scene', icon: <CirclePlus size={16} />, onClick: () => board.addConnected(id) },
+                    duplicate,
+                    { label: 'Copy as a jump target', icon: <CornerDownRight size={16} />, onClick: () => setJumpClipboard({ id, label: title || 'Untitled' }) },
+                ]),
+                colorRow([id], node.data.color),
+                divider,
+                { label: nodeAssets.length ? `Assets (${nodeAssets.length})` : 'Assets', type: 'submenu', icon: <ImageIcon size={14} />, submenu: assetItems },
+                divider,
+                remove('scene'),
+            ];
         }
 
-        options.push(
-            {
-                label: 'Duplicate',
-                icon: <DuplicateIcon size={14} />,
-                onClick: () => board.duplicate([menu.id!])
-            },
-            { type: 'divider' } as ContextMenuOption,
-            {
-                type: 'color-grid',
-                preventClose: true,
-                colors: MENU_COLORS,
-                onColorSelect: (color) => updateNodeData(menu.id!, { color })
-            },
-            { type: 'divider' } as ContextMenuOption,
-            {
-                label: 'Delete Node',
-                danger: true,
-                icon: <Trash2 size={14} />,
-                onClick: () => deleteNode(menu.id!)
-            }
-        );
-        return options;
+        // Comments and anything else.
+        return [
+            // Comments have no title of their own.
+            { type: 'label', label: 'Comment' },
+            ...quick([duplicate]),
+            colorRow([id], node.data.color),
+            divider,
+            remove('comment'),
+        ];
     }
 
     if (menu.type === 'edge') {
@@ -445,35 +370,37 @@ export function useMenuOptions({
                 ]
             },
             { type: 'divider' } as ContextMenuOption,
-            { label: 'Delete selection', danger: true, icon: <Trash2 size={14}/>, onClick: () => deleteEdge(menu.id!) }
+            { label: 'Delete connection', danger: true, icon: <Trash2 size={14}/>, shortcut: KEYS.delete, onClick: () => deleteEdge(menu.id!) }
         ];
     }
 
     if (menu.type === 'pane') {
         const at = () => reactFlowInstance?.screenToFlowPosition({ x: menu.x, y: menu.y });
-        const addHere = (type: string, label: string, icon: React.ReactNode): ContextMenuOption => ({
-            label, icon, onClick: () => { const position = at(); if (position) addNode(type, position); }
+        const addHere = (type: string, label: string, icon: React.ReactNode, shortcut: ShortcutKeys): ContextMenuOption => ({
+            label, icon, shortcut, onClick: () => { const position = at(); if (position) addNode(type, position); }
         });
         const view: ContextMenuOption[] = [
             { type: 'divider' } as ContextMenuOption,
-            { label: 'Select all', icon: <BoxSelect size={14} />, onClick: board.selectAll },
-            { label: 'Fit the board', icon: <Maximize size={14} />, onClick: board.fitView },
-            { label: board.minimap ? 'Hide minimap' : 'Show minimap', icon: <MapIcon size={14} />, onClick: board.toggleMinimap },
+            { type: 'label', label: 'View' },
+            { label: 'Select all', icon: <BoxSelect size={14} />, shortcut: KEYS.selectAll, onClick: board.selectAll },
+            { label: 'Fit the board', icon: <Maximize size={14} />, shortcut: KEYS.fitView, onClick: board.fitView },
+            { label: board.minimap ? 'Hide minimap' : 'Show minimap', icon: <MapIcon size={14} />, shortcut: KEYS.minimap, onClick: board.toggleMinimap },
             { label: board.snap ? 'Turn off snap to grid' : 'Snap to grid', icon: <Grid3x3 size={14} />, onClick: board.toggleSnap },
         ];
         if (board.locked) {
             return [{ label: 'Unlock the board', icon: <Unlock size={14} />, onClick: board.onUnlock }, ...view];
         }
         const options: ContextMenuOption[] = [
-            addHere('elementNode', 'Add scene here', <PlusCircle size={14} />),
-            addHere('conditionNode', 'Add branch here', <BranchIcon size={14} />),
-            addHere('jumpNode', 'Add jump here', <ArrowRightCircle size={14} />),
-            addHere('commentNode', 'Add comment here', <MessageSquare size={14} />),
-            addHere('sectionNode', 'Add section here', <Layout size={14} />),
-            addHere('annotationNode', 'Add annotation here', <Info size={14} />),
-            ...(board.canPaste() ? [{ type: 'divider' } as ContextMenuOption, { label: 'Paste', icon: <ClipboardPaste size={14} />, onClick: board.paste }] : []),
+            { type: 'label', label: 'Add here' },
+            addHere('elementNode', 'Scene', <PlusCircle size={14} />, KEYS.addScene),
+            addHere('conditionNode', 'Branch', <BranchIcon size={14} />, KEYS.addBranch),
+            addHere('jumpNode', 'Jump', <ArrowRightCircle size={14} />, KEYS.addJump),
+            addHere('commentNode', 'Comment', <MessageSquare size={14} />, KEYS.addComment),
+            addHere('sectionNode', 'Section', <Layout size={14} />, KEYS.addSection),
+            addHere('annotationNode', 'Annotation', <Info size={14} />, KEYS.addAnnotation),
+            ...(board.canPaste() ? [{ type: 'divider' } as ContextMenuOption, { label: 'Paste', icon: <ClipboardPaste size={14} />, shortcut: KEYS.paste, onClick: board.paste }] : []),
             { type: 'divider' } as ContextMenuOption,
-            { label: 'Tidy up the board', icon: <Wand2 size={14} />, onClick: board.tidyBoard },
+            { label: 'Tidy up the board', icon: <Wand2 size={14} />, shortcut: KEYS.tidyBoard, onClick: board.tidyBoard },
             ...view,
         ];
 

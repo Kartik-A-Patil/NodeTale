@@ -1,75 +1,43 @@
 import React, { useState } from 'react';
 import { Project, Variable, VariableType, ArrayValue, ObjectValue } from '../../models/story';
-import { Plus, X, Edit, AlertTriangle } from 'lucide-react';
+import { Check, ChevronDown, Pencil, Plus, X } from 'lucide-react';
+import { VARIABLE_TYPES, variableTypeInfo } from '../variableTypes';
 import { ArrayObjectEditorModal } from '../modals/ArrayObjectEditorModal';
+import { Dialog } from '../ui/NativeDialog';
+import { Switch } from '../ui/switch';
+import { buttonGhostIcon, buttonPrimary, buttonSecondary } from '../ui/styles';
+import { dropdownItem, dropdownPanel } from '../editor/editorStyles';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu';
 
-const typeLabels: Record<VariableType, string> = {
-  [VariableType.BOOLEAN]: 'Boolean',
-  [VariableType.NUMBER]: 'Number',
-  [VariableType.STRING]: 'String',
-  [VariableType.ARRAY]: 'Array',
-  [VariableType.OBJECT]: 'Object'
-};
+const TYPES = VARIABLE_TYPES;
+const typeInfo = variableTypeInfo;
 
-interface TypeChangeConfirmModalProps {
-  variableName: string;
-  currentType: VariableType;
-  nextType: VariableType;
-  onCancel: () => void;
-  onConfirm: () => void;
+function TypePicker({ value, onChange }: { value: VariableType; onChange: (type: VariableType) => void }) {
+  const current = typeInfo(value);
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" aria-label={`Type: ${current.label}`} title={current.label}
+          className="flex h-8 shrink-0 items-center gap-1 rounded-md px-1.5 text-nt-ink-3 transition-colors hover:bg-nt-raised hover:text-nt-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-nt-focus data-[state=open]:bg-nt-raised data-[state=open]:text-nt-ink">
+          <current.icon size={14} />
+          <ChevronDown size={12} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className={`w-64 ${dropdownPanel}`}>
+        {TYPES.map((t) => (
+          <DropdownMenuItem key={t.type} className={`items-start gap-2.5 py-2 ${dropdownItem}`} onSelect={() => onChange(t.type)}>
+            <t.icon size={15} className="mt-0.5 shrink-0" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm">{t.label}</span>
+              <span className="block text-xs text-nt-ink-3">{t.hint}</span>
+            </span>
+            {t.type === value && <Check size={14} className="mt-0.5 text-nt-accent" />}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
-
-const TypeChangeConfirmModal: React.FC<TypeChangeConfirmModalProps> = ({
-  variableName,
-  currentType,
-  nextType,
-  onCancel,
-  onConfirm
-}) => (
-  <div
-    className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md"
-    onClick={onCancel}
-  >
-    <div
-      className="w-full max-w-md rounded-2xl border border-zinc-800/80 bg-zinc-950/90 p-6 shadow-[0_20px_60px_-30px_rgba(0,0,0,0.8)]"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30">
-          <AlertTriangle size={18} />
-        </div>
-        <div className="space-y-2">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">Type change</p>
-          <div className="space-y-1">
-            <h3 className="text-sm font-semibold text-zinc-50">Reset this value?</h3>
-            <p className="text-sm text-zinc-400">
-              Changing the type for <span className="font-semibold text-zinc-100">{variableName || 'this variable'}</span> will clear its current value.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 text-xs font-medium text-zinc-300">
-            <span className="rounded-full bg-zinc-800 px-3 py-1 text-[11px] text-zinc-300">{typeLabels[currentType]}</span>
-            <span className="text-zinc-600">→</span>
-            <span className="rounded-full bg-orange-500/15 px-3 py-1 text-[11px] text-orange-300 ring-1 ring-orange-500/30">{typeLabels[nextType]}</span>
-          </div>
-        </div>
-      </div>
-      <div className="mt-5 flex justify-end gap-2">
-        <button
-          onClick={onCancel}
-          className="px-4 py-2 text-xs font-semibold text-zinc-300 rounded-lg border border-zinc-800 bg-zinc-900/80 hover:border-zinc-700 hover:text-white transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={onConfirm}
-          className="px-4 py-2 text-xs font-semibold text-white rounded-lg bg-orange-500 hover:bg-orange-600 shadow-lg shadow-orange-900/30 transition-colors"
-        >
-          Change type
-        </button>
-      </div>
-    </div>
-  </div>
-);
 
 interface VariablesListProps {
   project: Project;
@@ -175,12 +143,11 @@ export const VariablesList: React.FC<VariablesListProps> = ({ project, setProjec
 
   const getDisplayValue = (variable: Variable): string => {
     if (variable.type === VariableType.ARRAY) {
-      const arrayVal = variable.value as ArrayValue;
-      return `[${arrayVal.elements.length} items]`;
+      const count = (variable.value as ArrayValue).elements.length;
+      return `${count} ${count === 1 ? 'item' : 'items'}`;
     } else if (variable.type === VariableType.OBJECT) {
-      const objVal = variable.value as ObjectValue;
-      const keyCount = Object.keys(objVal.keys).length;
-      return `{${keyCount} keys}`;
+      const count = Object.keys((variable.value as ObjectValue).keys).length;
+      return `${count} ${count === 1 ? 'value' : 'values'}`;
     }
     return String(variable.value);
   };
@@ -189,85 +156,82 @@ export const VariablesList: React.FC<VariablesListProps> = ({ project, setProjec
     ? project.variables.find(v => v.id === pendingTypeChange.id)
     : null;
 
+  const valueInput = 'h-8 w-full min-w-0 rounded-md border border-nt-line bg-nt-bg px-2 font-mono text-xs text-nt-ink placeholder:text-nt-ink-3 transition-colors hover:border-nt-line-strong focus-visible:border-nt-line-strong focus-visible:outline-none';
+
   return (
     <>
-      <div className="space-y-0">
-         <div className="flex items-center justify-between px-4 py-3 text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-          <span>Global Variables</span>
-          <button onClick={addVariable} className="hover:text-orange-500 transition-colors"><Plus size={14} /></button>
-        </div>
-        {project.variables.map((v, idx) => (
-            <div key={v.id} className="group flex flex-col gap-2 px-4 py-3 border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors last:border-0">
-                <div className="flex items-center justify-between gap-2">
-                    <input 
-                        className="bg-transparent border-none text-zinc-200 font-medium text-xs flex-1 min-w-0 focus:outline-none placeholder-zinc-600"
-                        value={v.name}
-                        placeholder="variable_name"
-                        onChange={(e) => updateVariable(idx, 'name', e.target.value)}
-                    />
-                     <button 
-                        onClick={() => deleteVariable(v.id)} 
-                        className="text-zinc-600 hover:text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <X size={14}/>
-                      </button>
-                </div>
-                <div className="flex items-center gap-2">
-                     <div className="relative">
-                         <select 
-                            className="appearance-none bg-zinc-900 text-zinc-500 text-[10px] font-bold uppercase px-2 py-1 rounded border border-zinc-800 hover:border-zinc-700 hover:text-zinc-300 focus:outline-none cursor-pointer transition-colors"
-                            value={v.type}
-                            onChange={(e) => handleTypeChange(idx, e.target.value as VariableType)}
-                         >
-                             <option value={VariableType.BOOLEAN}>Bool</option>
-                             <option value={VariableType.NUMBER}>Num</option>
-                             <option value={VariableType.STRING}>Str</option>
-                             <option value={VariableType.ARRAY}>Array</option>
-                             <option value={VariableType.OBJECT}>Object</option>
-                         </select>
-                     </div>
-                     
-                     {v.type === VariableType.BOOLEAN ? (
-                         <button 
-                            onClick={() => updateVariable(idx, 'value', !v.value)}
-                            className={`flex-1 text-left text-xs font-mono px-2 py-1 rounded transition-colors ${v.value ? 'text-green-400 bg-green-400/10' : 'text-red-400 bg-red-400/10'}`}
-                         >
-                             {String(v.value)}
-                         </button>
-                     ) : v.type === VariableType.ARRAY || v.type === VariableType.OBJECT ? (
-                         <button
-                            onClick={() => openEditor(v)}
-                            className="flex-1 flex items-center justify-between text-xs font-mono px-2 py-1 rounded bg-zinc-900/50 border border-zinc-800 hover:border-orange-500 text-zinc-400 hover:text-zinc-200 transition-colors"
-                         >
-                           <span>{getDisplayValue(v)}</span>
-                           <Edit size={12} />
-                         </button>
-                     ) : (
-                         <input 
-                            className="flex-1 min-w-0 bg-zinc-900/50 text-zinc-300 text-xs font-mono px-2 py-1 rounded border border-transparent focus:border-zinc-700 focus:outline-none transition-colors placeholder-zinc-700"
-                            value={String(v.value)}
-                            placeholder="Value..."
-                            type={v.type === VariableType.NUMBER ? 'number' : 'text'}
-                            onChange={(e) => {
-                                const val = v.type === VariableType.NUMBER ? Number(e.target.value) : e.target.value;
-                                updateVariable(idx, 'value', val);
-                            }}
-                         />
-                     )}
-                </div>
-            </div>
-        ))}
+      <div className="flex items-center justify-between py-2 pl-4 pr-2">
+        <span className="text-xs text-nt-ink-3">{project.variables.length} {project.variables.length === 1 ? 'variable' : 'variables'}, shared by every board</span>
+        <button type="button" onClick={addVariable} className={buttonGhostIcon} aria-label="Add a variable" title="Add a variable"><Plus size={16} /></button>
       </div>
 
-      {pendingVariable && pendingTypeChange && (
-        <TypeChangeConfirmModal
-          variableName={pendingVariable.name}
-          currentType={pendingVariable.type}
-          nextType={pendingTypeChange.newType}
-          onCancel={cancelTypeChange}
-          onConfirm={confirmTypeChange}
-        />
+      {project.variables.length === 0 && (
+        <div className="px-4 py-10 text-center">
+          <p className="text-sm text-nt-ink-2">No variables yet.</p>
+          <p className="mt-1 text-xs text-nt-ink-3">They remember what happened: gold found, doors opened.</p>
+          <button type="button" onClick={addVariable} className={`${buttonSecondary} mt-4`}><Plus size={14} /> Add a variable</button>
+        </div>
       )}
+
+      <ul>
+        {project.variables.map((v, idx) => (
+          <li key={v.id} className="group border-t border-nt-line px-2 py-2">
+            <div className="flex items-center gap-1">
+              <TypePicker value={v.type} onChange={(type) => type !== v.type && handleTypeChange(idx, type)} />
+              <input
+                className="h-8 min-w-0 flex-1 rounded-md bg-transparent px-1.5 font-mono text-sm text-nt-ink placeholder:text-nt-ink-3 hover:bg-nt-raised/60 focus-visible:bg-nt-raised focus-visible:outline-none"
+                value={v.name}
+                placeholder="variable_name"
+                aria-label="Variable name"
+                spellCheck={false}
+                onChange={(e) => updateVariable(idx, 'name', e.target.value)}
+              />
+              <button type="button" onClick={() => deleteVariable(v.id)} aria-label={`Delete ${v.name}`} title="Delete"
+                className={`${buttonGhostIcon} h-7 w-7 opacity-0 hover:text-nt-danger focus-visible:opacity-100 group-hover:opacity-100`}>
+                <X size={14} />
+              </button>
+            </div>
+            <div className="mt-1 pl-[3.25rem] pr-1">
+              {v.type === VariableType.BOOLEAN ? (
+                <label className="flex h-8 cursor-pointer items-center gap-2.5 text-xs text-nt-ink-2">
+                  <Switch checked={!!v.value} onCheckedChange={(checked) => updateVariable(idx, 'value', checked)} aria-label={`${v.name} starts true`} />
+                  <span className="font-mono">{String(!!v.value)}</span>
+                </label>
+              ) : v.type === VariableType.ARRAY || v.type === VariableType.OBJECT ? (
+                <button type="button" onClick={() => openEditor(v)}
+                  className={`${valueInput} flex items-center justify-between text-left text-nt-ink-2`}>
+                  <span>{getDisplayValue(v)}</span>
+                  <Pencil size={12} className="text-nt-ink-3" />
+                </button>
+              ) : (
+                <input
+                  className={valueInput}
+                  value={String(v.value)}
+                  placeholder={v.type === VariableType.NUMBER ? '0' : 'Starting text'}
+                  aria-label={`${v.name} starting value`}
+                  type={v.type === VariableType.NUMBER ? 'number' : 'text'}
+                  onChange={(e) => updateVariable(idx, 'value', v.type === VariableType.NUMBER ? Number(e.target.value) : e.target.value)}
+                />
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      <Dialog
+        open={!!(pendingVariable && pendingTypeChange)}
+        onClose={cancelTypeChange}
+        title="Change the type?"
+        description={pendingVariable && pendingTypeChange && (
+          <>Changing <span className="font-mono text-nt-ink">{pendingVariable.name}</span> from {typeInfo(pendingVariable.type).label} to {typeInfo(pendingTypeChange.newType).label} clears its starting value.</>
+        )}
+        actions={
+          <>
+            <button type="button" className={buttonSecondary} onClick={cancelTypeChange}>Cancel</button>
+            <button type="button" className={buttonPrimary} onClick={confirmTypeChange}>Change type</button>
+          </>
+        }
+      />
 
       {editingVariable && (editingVariable.type === VariableType.ARRAY || editingVariable.type === VariableType.OBJECT) && (
         <ArrayObjectEditorModal

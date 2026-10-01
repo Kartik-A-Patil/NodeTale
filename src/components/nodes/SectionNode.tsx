@@ -1,87 +1,32 @@
-import React, { memo, useState } from 'react';
-import { NodeProps, NodeResizeControl } from 'reactflow';
+import { memo } from 'react';
+import { NodeProps } from 'reactflow';
+import { LayoutTemplate } from 'lucide-react';
 import { useEditor } from '../../editor/EditorContext';
 import { SectionNodeData } from '../../models/story';
 import JumpTargetBadge from './JumpTargetBadge';
 import { nodePropsEqual } from './nodePropsEqual';
+import { EditableTitle, NodeResizeGrip, accentStyle } from './nodeChrome';
 
 const SectionNode = ({ id, data, selected }: NodeProps<SectionNodeData>) => {
   const { updateNodeData } = useEditor();
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const primaryColor = data.color || '#71717a'; // Default zinc-500
-
-  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    updateNodeData(id, { label: e.target.value }, `${id}:label`);
-  };
+  const style = accentStyle(data.color);
 
   return (
     <>
-      <div
-        className={`group relative flex flex-col rounded-lg border-2 transition-[border-color,box-shadow,background-color] duration-300 ease-in-out`}
-        style={{
-          minWidth: 400,
-          minHeight: 300,
-          height: '100%',
-          width: '100%',
-          borderColor: selected ? primaryColor : `${primaryColor}80`, // 50% opacity when not selected
-          backgroundColor: `${primaryColor}10`, // 10% opacity background
-          boxShadow: selected ? `0 0 30px ${primaryColor}40` : 'none'
-        }}
-      >
-        <JumpTargetBadge nodeId={id} />
-        {/* Title - Outside Top Left */}
-        <div className="absolute -top-8 left-0 h-6 flex items-center">
-            {isEditingTitle ? (
-                <input
-                    className="nodrag bg-transparent border-none outline-none text-lg font-bold text-zinc-200 w-64"
-                    value={data.label}
-                    onChange={handleTitleChange}
-                    onBlur={() => setIsEditingTitle(false)}
-                    autoFocus
-                    onKeyDown={(e) => e.key === 'Enter' && setIsEditingTitle(false)}
-                />
-            ) : (
-                <span 
-                    className="text-lg font-bold text-zinc-200/80 hover:text-zinc-100 truncate cursor-text transition-colors"
-                    onDoubleClick={() => setIsEditingTitle(true)}
-                    style={{ color: primaryColor }}
-                >
-                    {data.label || 'Untitled Section'}
-                </span>
-            )}
-        </div>
-
-        {/* Content Area (Drop Zone Visual) */}
-        <div className="flex-1 w-full h-full p-4 relative">
-            {/* Optional: Subtle grid or pattern inside */}
+      <div className="nt-section relative h-full w-full" style={{ ...style, minWidth: 400, minHeight: 300 }} data-selected={selected} data-accent={!!style}>
+        {/* Title sits above the frame, so nodes inside keep the whole area. */}
+        <div className="absolute -top-8 left-1 flex h-7 max-w-full items-center gap-2">
+          <LayoutTemplate size={15} className="nt-section-icon shrink-0" aria-hidden />
+          <EditableTitle nodeId={id}
+            value={data.label}
+            placeholder="Untitled section"
+            onChange={(label) => updateNodeData(id, { label }, `${id}:label`)}
+            className="max-w-80 text-base font-semibold text-nt-ink-2"
+          />
+          <JumpTargetBadge nodeId={id} />
         </div>
       </div>
-      {selected && (
-        <NodeResizeControl 
-            style={{ 
-                background: 'transparent', 
-                border: 'none',
-                position: 'absolute',
-                bottom: 0,
-                right: 0,
-            }} 
-            minWidth={400} 
-            minHeight={300}
-        >
-            <svg
-                width="12"
-                height="12"
-                viewBox="0 0 12 12"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                className="text-zinc-500"
-            >
-                <path d="M11 1L1 11" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
-                <path d="M11 5L5 11" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
-                <path d="M11 9L9 11" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
-            </svg>
-        </NodeResizeControl>
-      )}
+      {selected && <NodeResizeGrip minWidth={400} minHeight={300} />}
     </>
   );
 };

@@ -1,384 +1,194 @@
-import React, { useState, useRef, useEffect } from "react";
-import {
-  Bold,
-  Italic,
-  Underline,
-  Code,
-  List,
-  Quote
-} from "lucide-react";
-import Prism from "prismjs";
-import "prismjs/components/prism-javascript";
-import { sanitizeDocument } from "../utils/html";
-// Note: syntax highlighting in the editor was removed to avoid duplicated markup glitches
-// when switching between edit/view states. Highlighting now happens only in the read-only view.
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { FocusEvent } from 'react';
+import { EditorContent, useEditor } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import { Placeholder } from '@tiptap/extensions';
+import { Color, TextStyle } from '@tiptap/extension-text-style';
+import { sanitizeHtml } from '../utils/html';
+import { draggedAssetId } from '../utils/nodeAssets';
+import { useEditor as useStoryEditor } from '../editor/EditorContext';
+import { variableHighlight } from './editor/extensions/variableHighlight';
+import { codeHighlight } from './editor/extensions/codeHighlight';
+import { SuggestionMenu } from './editor/extensions/suggestionMenu';
+import { codeCompletions, filterCommands, SLASH_COMMANDS, variableCommands } from './editor/extensions/commandItems';
+import { CodeCompletion } from './editor/extensions/codeCompletion';
+import { EditorBubbleMenu } from './editor/EditorBubbleMenu';
+import { SuggestionPopup, isMenuEscape, useSuggestion } from './editor/SuggestionPopup';
+import type { EditStart } from './editor/StoryText';
 
-const ToolbarButton = ({
-  icon,
-  onClick,
-  isActive
-}: {
-  icon: React.ReactNode;
-  onClick: (e: React.MouseEvent) => void;
-  isActive?: boolean;
-}) => (
-  <button
-    className={`p-1.5 rounded transition-colors ${
-      isActive
-        ? "bg-zinc-600 text-white shadow-inner"
-        : "text-zinc-400 hover:text-white hover:bg-zinc-700"
-    }`}
-    onClick={onClick}
-    onMouseDown={(e) => e.preventDefault()}
-  >
-    {icon}
-  </button>
-);
+const SAVE_DEBOUNCE_MS = 300;
 
-// One DOMParser pass does everything: sanitize, unwrap old variable highlights,
-// and (when `highlight`) re-apply Prism + variable highlighting. This used to be
-// 3-4 separate parse/serialize round-trips per keystroke.
-const processHtml = (html: string, highlight: boolean) => {
-  const doc = sanitizeDocument(new DOMParser().parseFromString(html || "", "text/html"));
+export interface RichTextEditorProps {
+  initialValue: string;
+  onChange: (value: string) => void;
+  onBlur?: () => void;
+  /** Escape with no menu open. Defaults to leaving the editor (blur). */
+  onEscape?: () => void;
+  /** An asset dragged from the sidebar was dropped onto the text. */
+  onAssetDrop?: (assetId: string) => void;
+  /** Double-click that opened the editor: caret goes there, scroll is kept. */
+  startAt?: EditStart;
+  placeholder?: string;
+}
 
-  // Remove previous variable highlight spans so we don't nest them
-  doc.querySelectorAll("span[data-variable]").forEach((span) => {
-    span.replaceWith(doc.createTextNode(span.textContent || ""));
-  });
-
-  if (!highlight) return doc.body.innerHTML;
-
-  doc.querySelectorAll("pre").forEach((pre) => {
-    const codeText = pre.textContent || "";
-    pre.classList.add("language-javascript");
-    pre.innerHTML = Prism.highlight(codeText, Prism.languages.javascript, "javascript");
-  });
-
-  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      return node.parentElement?.closest("pre") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
-    }
-  });
-
-  const replacements: { node: Text; frag: DocumentFragment }[] = [];
-  while (walker.nextNode()) {
-    const node = walker.currentNode as Text;
-    const parts = (node.nodeValue || "").split(/(\{\{[^}]+\}\})/);
-    if (parts.length <= 1) continue;
-    const frag = doc.createDocumentFragment();
-    parts.forEach((part) => {
-      if (/\{\{[^}]+\}\}/.test(part)) {
-        const span = doc.createElement("span");
-        span.setAttribute("data-variable", part.slice(2, -2).trim());
-        span.setAttribute("style", "color: #8c8c8c;");
-        span.textContent = part;
-        frag.appendChild(span);
-      } else {
-        frag.appendChild(doc.createTextNode(part));
-      }
-    });
-    replacements.push({ node, frag });
-  }
-  replacements.forEach(({ node, frag }) => node.parentNode?.replaceChild(frag, node));
-
-  return doc.body.innerHTML;
-};
-
-// Plain prose has nothing to highlight — skip the parse and the innerHTML
-// rewrite (which is what made the caret jump) entirely.
-const needsHighlight = (html: string) =>
-  html.includes("{{") || html.includes("<pre") || html.includes("data-variable");
-
-const ONCHANGE_DEBOUNCE_MS = 300;
-const HIGHLIGHT_DEBOUNCE_MS = 400;
-
-export const RichTextEditor = ({
+const RichTextEditor = ({
   initialValue,
   onChange,
-  onBlur
-}: {
-  initialValue: string;
-  onChange: (val: string) => void;
-  onBlur: () => void;
-}) => {
-  const editorRef = useRef<HTMLDivElement>(null);
-  const [activeFormats, setActiveFormats] = useState<string[]>([]);
-  const [isFocused, setIsFocused] = useState(false);
-  const isUpdatingRef = useRef(false);
-  const highlightTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
-  const changeTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
-  // Typing stays local to the contentEditable; the node (and with it the whole
-  // canvas) only hears about it after a pause, on blur, or on unmount.
+  onBlur,
+  onAssetDrop,
+  onEscape,
+  startAt,
+  placeholder = 'Write the scene… type / for blocks, {{ for variables',
+}: RichTextEditorProps) => {
+  const { variables } = useStoryEditor();
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingValueRef = useRef<string | null>(null);
-  const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
+  // Latest props for callbacks captured once by the editor/extensions.
+  const latest = useRef({ onChange, onBlur, onAssetDrop, variables });
+  latest.current = { onChange, onBlur, onAssetDrop, variables };
 
-  const flushChange = () => {
-    clearTimeout(changeTimeoutRef.current);
+  const slash = useSuggestion();
+  const variableMenu = useSuggestion();
+  const completion = useSuggestion();
+  // Menus portal next to the editor: into its <dialog> when expanded (the top
+  // layer hides anything outside it), otherwise onto the body so canvas zoom
+  // doesn't scale them.
+  const [popupContainer, setPopupContainer] = useState<HTMLElement | null>(null);
+  const wrapperRef = useCallback((el: HTMLDivElement | null) => {
+    if (el) setPopupContainer(el.closest('dialog') ?? document.body);
+  }, []);
+
+  const flushChange = useCallback(() => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = null;
+
     if (pendingValueRef.current === null) return;
     const value = pendingValueRef.current;
     pendingValueRef.current = null;
-    onChangeRef.current(value);
-  };
-
-  useEffect(() => {
-    return () => {
-      clearTimeout(highlightTimeoutRef.current);
-      flushChange();
-    };
+    latest.current.onChange(value ? sanitizeHtml(value) : '');
   }, []);
 
-  useEffect(() => {
-    if (editorRef.current) {
-      editorRef.current.innerHTML = processHtml(initialValue, needsHighlight(initialValue || ""));
-      
-      // Focus automatically when mounted
-      editorRef.current.focus();
-      setIsFocused(true);
-      
-      // Move cursor to end
-      try {
-        const range = document.createRange();
-        range.selectNodeContents(editorRef.current);
-        range.collapse(false);
-        const sel = window.getSelection();
-        sel?.removeAllRanges();
-        sel?.addRange(range);
-      } catch (e) {
-        console.error("Failed to set cursor position", e);
-      }
-    }
-    // Mount-only: initialValue seeds the uncontrolled contentEditable once;
-    // re-running on later values would clobber what the user is typing.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const scheduleChange = useCallback((value: string) => {
+    pendingValueRef.current = value;
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(flushChange, SAVE_DEBOUNCE_MS);
+  }, [flushChange]);
 
-  const checkFormats = () => {
-    const formats: string[] = [];
-    if (document.queryCommandState("bold")) formats.push("bold");
-    if (document.queryCommandState("italic")) formats.push("italic");
-    if (document.queryCommandState("underline")) formats.push("underline");
-    if (document.queryCommandState("insertUnorderedList")) formats.push("list");
+  const [extensions] = useState(() => [
+    StarterKit.configure({
+      heading: { levels: [1, 2, 3] },
+      // Logic blocks are JavaScript; the class lets Prism colour them in StoryText.
+      codeBlock: { defaultLanguage: 'javascript' },
+      // No phantom empty paragraph after a final code block: StoryText wouldn't
+      // show it, so the node would grow a line on entering edit mode.
+      trailingNode: false,
+      link: { openOnClick: false, autolink: true, defaultProtocol: 'https' },
+    }),
+    TextStyle,
+    Color,
+    Placeholder.configure({ placeholder }),
+    variableHighlight,
+    codeHighlight,
+    SuggestionMenu.extend({ name: 'slashMenu' }).configure({
+      char: '/',
+      items: (query) => filterCommands(SLASH_COMMANDS, query),
+      ...slash.handlers,
+    }),
+    SuggestionMenu.extend({ name: 'variableMenu' }).configure({
+      char: '{{',
+      allowedPrefixes: null,
+      items: (query) => variableCommands(latest.current.variables, query),
+      ...variableMenu.handlers,
+    }),
+    CodeCompletion.configure({
+      items: (prefix) => codeCompletions(latest.current.variables, prefix),
+      ...completion.handlers,
+    }),
+  ]);
 
-    const block = document.queryCommandValue("formatBlock");
-    if (block === "blockquote") formats.push("blockquote");
-    if (block === "pre") formats.push("pre");
+  const editor = useEditor({
+    extensions,
+    content: sanitizeHtml(initialValue || ''),
+    // Keep typed spaces (StoryText renders with the same rules); newlines become spaces.
+    parseOptions: { preserveWhitespace: true },
+    editorProps: {
+      attributes: {
+        class: 'tiptap nt-prose markdown-content',
+        role: 'textbox',
+        'aria-label': 'Story content',
+        'aria-multiline': 'true',
+      },
+      handleDrop: (_view, event) => {
+        const assetId = draggedAssetId(event.dataTransfer);
+        if (!assetId) return false;
+        latest.current.onAssetDrop?.(assetId);
+        return true;
+      },
+    },
+    onUpdate: ({ editor: currentEditor }) => {
+      scheduleChange(currentEditor.isEmpty ? '' : currentEditor.getHTML());
+    },
+  });
 
-    setActiveFormats((prev) => (prev.join() === formats.join() ? prev : formats));
-  };
+  // Before paint, so the swap from StoryText shows no scroll jump. The start
+  // point is read once: it only describes the click that opened this editor.
+  const startRef = useRef(startAt);
+  useLayoutEffect(() => {
+    // StrictMode destroys the first instance and useEditor hands out a new one.
+    if (!editor || editor.isDestroyed) return;
+    const start = startRef.current;
+    const scroller = editor.view.dom.parentElement;
+    if (start && scroller) scroller.scrollTop = start.scrollTop;
+    const pos = start && editor.view.posAtCoords({ left: start.x, top: start.y })?.pos;
+    editor.commands.focus(pos ?? 'end', { scrollIntoView: !start });
+  }, [editor]);
 
-  const handleInput = () => {
-    if (editorRef.current && !isUpdatingRef.current) {
-      const rawContent = editorRef.current.innerHTML;
-      pendingValueRef.current = processHtml(rawContent, false);
-      clearTimeout(changeTimeoutRef.current);
-      changeTimeoutRef.current = setTimeout(flushChange, ONCHANGE_DEBOUNCE_MS);
-      checkFormats();
+  useEffect(() => () => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    flushChange();
+  }, [flushChange]);
 
-      // Debounce highlighting to avoid cursor jumps while typing
-      clearTimeout(highlightTimeoutRef.current);
-      if (!needsHighlight(rawContent)) return;
-      highlightTimeoutRef.current = setTimeout(applyHighlighting, HIGHLIGHT_DEBOUNCE_MS);
-    }
-  };
+  const handleBlurCapture = (event: FocusEvent<HTMLDivElement>) => {
+    const next = event.relatedTarget;
+    if (next instanceof Element && (event.currentTarget.contains(next) || next.closest('[data-editor-popup]'))) return;
 
-  const exec = (command: string, value: any = null) => {
-    editorRef.current?.focus();
-
-    if (command === "formatBlock") {
-      const currentBlock = document.queryCommandValue("formatBlock");
-      if (currentBlock && currentBlock.toLowerCase() === value.toLowerCase()) {
-        document.execCommand("formatBlock", false, "div");
-      } else {
-        document.execCommand("formatBlock", false, value);
-      }
-    } else {
-      document.execCommand(command, false, value);
-    }
-
-    // ExecCommand does not always trigger an input event, so sync manually
-    handleInput();
-  };
-
-  const saveCursorPosition = () => {
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0 || !editorRef.current) return null;
-
-    const range = sel.getRangeAt(0);
-    const preCaretRange = range.cloneRange();
-    preCaretRange.selectNodeContents(editorRef.current);
-    preCaretRange.setEnd(range.endContainer, range.endOffset);
-
-    return preCaretRange.toString().length;
-  };
-
-  const restoreCursorPosition = (position: number) => {
-    if (!editorRef.current) return;
-
-    const sel = window.getSelection();
-    if (!sel) return;
-
-    let charCount = 0;
-    const nodeStack: Node[] = [editorRef.current];
-    let foundNode: Node | null = null;
-    let foundOffset = 0;
-
-    while (nodeStack.length > 0 && !foundNode) {
-      const node = nodeStack.pop()!;
-
-      if (node.nodeType === Node.TEXT_NODE) {
-        const textLength = node.textContent?.length || 0;
-        if (charCount + textLength >= position) {
-          foundNode = node;
-          foundOffset = position - charCount;
-        } else {
-          charCount += textLength;
-        }
-      } else {
-        const children = Array.from(node.childNodes);
-        for (let i = children.length - 1; i >= 0; i--) {
-          nodeStack.push(children[i]);
-        }
-      }
-    }
-
-    if (foundNode) {
-      try {
-        const range = document.createRange();
-        range.setStart(foundNode, foundOffset);
-        range.collapse(true);
-        sel.removeAllRanges();
-        sel.addRange(range);
-      } catch {
-        // Ignore cursor restoration errors
-      }
-    }
-  };
-
-  const applyHighlighting = () => {
-    if (editorRef.current && !isUpdatingRef.current) {
-      const cursorPos = saveCursorPosition();
-
-      const highlighted = processHtml(editorRef.current.innerHTML, true);
-
-      if (editorRef.current.innerHTML !== highlighted) {
-        isUpdatingRef.current = true;
-        editorRef.current.innerHTML = highlighted;
-
-        if (cursorPos !== null) {
-          restoreCursorPosition(cursorPos);
-        }
-
-        isUpdatingRef.current = false;
-      }
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    e.stopPropagation();
-    // Check if we're inside a <pre> block
-    const sel = window.getSelection();
-    if (e.key === "Enter" && sel && sel.rangeCount > 0) {
-      const range = sel.getRangeAt(0);
-      let node = range.commonAncestorContainer;
-      
-      // Traverse up to find if we're in a <pre> element
-      while (node && node.nodeType !== Node.ELEMENT_NODE) {
-        node = node.parentNode!;
-      }
-      
-      let inPre = false;
-      let preElement: Element | null = null;
-      let parent = node as Element | null;
-      while (parent) {
-        if (parent.tagName?.toLowerCase() === "pre") {
-          inPre = true;
-          preElement = parent;
-          break;
-        }
-        parent = parent.parentElement;
-      }
-      
-      // If inside <pre>, exit code block and start normal text
-      if (inPre && preElement) {
-        e.preventDefault();
-        // Insert a new paragraph after the <pre> block
-        const newPara = document.createElement("div");
-        newPara.innerHTML = "<br>";
-        preElement.parentNode?.insertBefore(newPara, preElement.nextSibling);
-        
-        // Move cursor to the new paragraph
-        const range = document.createRange();
-        range.setStart(newPara, 0);
-        range.collapse(true);
-        sel?.removeAllRanges();
-        sel?.addRange(range);
-        
-        handleInput();
-      }
-    }
+    flushChange();
+    latest.current.onBlur?.();
   };
 
   return (
-    <div className="relative w-full h-full flex flex-col group">
-      {/* Floating Context Menu Toolbar */}
-      <div
-        className={`nodrag absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-[#1e1e20] border border-[#27272a] rounded-lg shadow-2xl p-1.5 z-50 transition-opacity duration-200 ${
-          isFocused ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-        }`}
-        onMouseDown={(e) => e.preventDefault()}
-      >
-        <ToolbarButton
-          isActive={activeFormats.includes("bold")}
-          icon={<Bold size={14} />}
-          onClick={() => exec("bold")}
-        />
-        <ToolbarButton
-          isActive={activeFormats.includes("italic")}
-          icon={<Italic size={14} />}
-          onClick={() => exec("italic")}
-        />
-        <ToolbarButton
-          isActive={activeFormats.includes("underline")}
-          icon={<Underline size={14} />}
-          onClick={() => exec("underline")}
-        />
-        <div className="w-[1px] h-4 bg-zinc-700 mx-1" />
-        <ToolbarButton
-          isActive={activeFormats.includes("list")}
-          icon={<List size={14} />}
-          onClick={() => exec("insertUnorderedList")}
-        />
-        <ToolbarButton
-          isActive={activeFormats.includes("blockquote")}
-          icon={<Quote size={14} />}
-          onClick={() => exec("formatBlock", "blockquote")}
-        />
-        <ToolbarButton
-          isActive={activeFormats.includes("pre")}
-          icon={<Code size={14} />}
-          onClick={() => exec("formatBlock", "pre")}
-        />
-      </div>
-
-      <div
-        ref={editorRef}
-        className="nodrag markdown-content w-full h-full bg-transparent border-none outline-none text-zinc-300 text-xs whitespace-pre-wrap overflow-auto cursor-text"
-        contentEditable
-        onInput={handleInput}
-        onKeyDown={handleKeyDown}
-        onPaste={(e) => e.stopPropagation()}
-        onCopy={(e) => e.stopPropagation()}
-        onCut={(e) => e.stopPropagation()}
-        onFocus={() => setIsFocused(true)}
-        onBlur={() => {
-            setIsFocused(false);
-            flushChange();
-            onBlur();
-        }}
-        onMouseUp={checkFormats}
-        onKeyUp={checkFormats}
+    <div
+      ref={wrapperRef}
+      className="nt-story-editor nodrag nowheel relative flex h-full w-full flex-col"
+      onBlurCapture={handleBlurCapture}
+      onKeyDown={(event) => {
+        event.stopPropagation();
+        // ProseMirror swallows Escape (so a <dialog> never sees it); the / and {{
+        // menus close on their own Escape, and the link field handles its own.
+        if (event.key === 'Escape' && event.target === editor?.view.dom && !isMenuEscape(event.nativeEvent)) {
+          if (onEscape) onEscape();
+          else editor.commands.blur();
+        }
+      }}
+      onPaste={(event) => event.stopPropagation()}
+      onCopy={(event) => event.stopPropagation()}
+      onCut={(event) => event.stopPropagation()}
+      // The editor owns drops while editing; don't let the node attach twice.
+      onDrop={(event) => event.stopPropagation()}
+    >
+      <EditorContent editor={editor} className="h-full w-full cursor-text overflow-auto" />
+      {editor && popupContainer && <EditorBubbleMenu editor={editor} container={popupContainer} />}
+      <SuggestionPopup state={slash.state} keyHandler={slash.keyHandler} container={popupContainer} />
+      <SuggestionPopup state={completion.state} keyHandler={completion.keyHandler} container={popupContainer} mono />
+      <SuggestionPopup
+        state={variableMenu.state}
+        keyHandler={variableMenu.keyHandler}
+        mono
+        container={popupContainer}
+        emptyText={variables.length ? undefined : 'No variables yet. Add them in the Variables panel.'}
       />
     </div>
   );
 };
+
+export { RichTextEditor };

@@ -1,8 +1,11 @@
-import React, { useState, useRef } from 'react';
+import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Loader2, Pause, Play } from 'lucide-react';
 import { Asset, AudioSettings } from '../../models/story';
-import { X, Play, Pause, RotateCcw, Clock, Loader2 as Loader } from 'lucide-react';
 import { useAssetUrl } from '../../hooks/useAssetUrl';
+import { Dialog } from '../ui/NativeDialog';
+import { Switch } from '../ui/switch';
+import { buttonPrimary, buttonSecondary, input } from '../ui/styles';
 
 interface AudioSettingsModalProps {
   asset: Asset;
@@ -11,191 +14,114 @@ interface AudioSettingsModalProps {
   onClose: () => void;
 }
 
-export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
-  asset,
-  settings,
-  onSave,
-  onClose
-}) => {
-  const { url: storageUrl, isLoading: isAudioLoading } = useAssetUrl(asset.id, asset.type);
-  const audioSrc = storageUrl || asset.url || null;
-  
+const formatTime = (time: number) => `${Math.floor(time / 60)}:${Math.floor(time % 60).toString().padStart(2, '0')}`;
+
+// How a scene's sound plays: preview it, loop it, delay its start.
+// Portaled out of the canvas node so dragging the seek bar can't drag the node.
+export function AudioSettingsModal({ asset, settings, onSave, onClose }: AudioSettingsModalProps) {
+  const { url: storageUrl, isLoading } = useAssetUrl(asset.id, asset.type);
+  const src = storageUrl || asset.url || null;
+  const audioRef = useRef<HTMLAudioElement>(null);
+
   const [loop, setLoop] = useState(settings.loop);
-  const [delay, setDelay] = useState(settings.delay);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [delaySeconds, setDelaySeconds] = useState(String(settings.delay / 1000));
+  const [playing, setPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
-  const [currentTime, setCurrentTime] = useState(0);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [time, setTime] = useState(0);
 
-  const formatTime = (time: number) => {
-    const minutes = Math.floor(time / 60);
-    const seconds = Math.floor(time % 60);
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  const togglePlay = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (playing) audio.pause();
+    else void audio.play();
+    setPlaying(!playing);
   };
 
-  const handleTogglePlay = () => {
-    if (!audioRef.current) return;
-    if (isPlaying) {
-      audioRef.current.pause();
-    } else {
-      audioRef.current.play();
-    }
-    setIsPlaying(!isPlaying);
-  };
-
-  const handleTimeUpdate = () => {
-    if (audioRef.current) {
-      setCurrentTime(audioRef.current.currentTime);
-    }
-  };
-
-  const handleLoadedMetadata = () => {
-    if (audioRef.current) {
-      setDuration(audioRef.current.duration);
-    }
-  };
-
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const time = parseFloat(e.target.value);
-    if (audioRef.current) {
-      audioRef.current.currentTime = time;
-      setCurrentTime(time);
-    }
-  };
-
-  const handleSave = () => {
-    onSave({ loop, delay });
+  const save = () => {
+    const seconds = Number.parseFloat(delaySeconds);
+    onSave({ loop, delay: Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : 0 });
     onClose();
   };
 
   return createPortal(
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] animate-in fade-in duration-200">
-      <div 
-        className="bg-zinc-950 border border-zinc-800 w-[420px] flex flex-col shadow-2xl rounded-lg overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 ease-out" 
-        onClick={(e) => e.stopPropagation()}
-      >
-        
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-900/50">
-          <div className="flex flex-col gap-0.5">
-             <h3 className="text-sm font-semibold text-zinc-100 tracking-wide uppercase">Audio Configuration</h3>
-             <p className="text-xs text-zinc-400 font-mono truncate max-w-[300px]" title={asset.name}>{asset.name}</p>
-          </div>
-          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 transition-colors p-1 hover:bg-zinc-800 rounded">
-            <X size={18} strokeWidth={2} />
-          </button>
-        </div>
-
-        <div className="p-6 space-y-8">
-          {/* Preview Player */}
-          <div className="flex flex-col gap-4 bg-zinc-900/30 p-4 rounded-lg border border-zinc-800/50">
-            <div className="flex items-center gap-4">
-               <button
-                onClick={handleTogglePlay}
-                disabled={!audioSrc || isAudioLoading}
-                className={`w-10 h-10 flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 hover:border-orange-500/50 text-zinc-200 hover:text-orange-400 rounded-full transition-all shrink-0 shadow-sm ${!audioSrc || isAudioLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                {isAudioLoading ? <Loader size={18} className="animate-spin" /> : isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-0.5" />}
-              </button>
-              
-              <div className="flex-1 flex flex-col gap-2">
-                 <input
-                  type="range"
-                  min="0"
-                  max={duration || 0}
-                  step="0.01"
-                  value={currentTime}
-                  onChange={handleSeek}
-                  className="w-full h-1.5 bg-zinc-800 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-orange-500 [&::-webkit-slider-thumb]:hover:bg-orange-400 [&::-webkit-slider-thumb]:transition-colors"
-                />
-                <div className="flex justify-between text-[10px] text-zinc-500 font-mono font-medium">
-                  <span>{formatTime(currentTime)}</span>
-                  <span>{formatTime(duration)}</span>
-                </div>
-              </div>
-            </div>
-            {audioSrc && (
-              <audio
-                ref={audioRef}
-                src={audioSrc}
-                onEnded={() => setIsPlaying(false)}
-                onTimeUpdate={handleTimeUpdate}
-                onLoadedMetadata={handleLoadedMetadata}
-                loop={loop}
-              />
-            )}
-          </div>
-
-          {/* Settings */}
-          <div className="space-y-5">
-            
-            {/* Loop Toggle */}
-            <div className="flex items-center justify-between group p-2 -mx-2 rounded hover:bg-zinc-900/50 transition-colors cursor-pointer" onClick={() => setLoop(!loop)}>
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-md transition-colors ${loop ? 'bg-orange-500/10 text-orange-500' : 'bg-zinc-900 text-zinc-500'}`}>
-                  <RotateCcw size={18} />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-sm text-zinc-200 font-medium">Loop Playback</span>
-                  <span className="text-xs text-zinc-500">Restart automatically when finished</span>
-                </div>
-              </div>
-              <div
-                className={`w-10 h-5 rounded-full transition-colors relative border ${
-                  loop ? 'border-orange-500/50 bg-orange-500/20' : 'border-zinc-700 bg-zinc-900'
-                }`}
-              >
-                <div
-                  className={`absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all shadow-sm ${
-                    loop ? 'bg-orange-500 left-5' : 'bg-zinc-500 left-0.5'
-                  }`}
-                />
-              </div>
-            </div>
-
-            {/* Delay Input */}
-            <div className="flex items-center justify-between group p-2 -mx-2 rounded hover:bg-zinc-900/50 transition-colors">
-               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-md bg-zinc-900 text-zinc-500 group-hover:text-zinc-400 transition-colors">
-                  <Clock size={18} />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-sm text-zinc-200 font-medium">Start Delay</span>
-                  <span className="text-xs text-zinc-500">Wait before playing</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-700 rounded-md px-3 py-1.5 focus-within:border-orange-500/50 focus-within:ring-1 focus-within:ring-orange-500/20 transition-all">
-                <input
-                  type="number"
-                  value={delay}
-                  onChange={(e) => setDelay(parseInt(e.target.value) || 0)}
-                  className="w-16 bg-transparent text-right text-sm text-zinc-200 focus:outline-none font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  placeholder="0"
-                />
-                <span className="text-xs text-zinc-500 font-medium">ms</span>
-              </div>
-            </div>
-
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="p-6 pt-0 flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 rounded-md transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            className="px-4 py-2 text-xs font-medium bg-orange-600 hover:bg-orange-500 text-white rounded-md shadow-lg shadow-orange-900/20 transition-all"
-          >
-            Save Changes
-          </button>
-        </div>
+    <Dialog
+      open
+      onClose={onClose}
+      title="Audio settings"
+      description={<span className="block truncate" title={asset.name}>{asset.name}</span>}
+      onSubmit={(e) => { e.preventDefault(); save(); }}
+      actions={
+        <>
+          <button type="button" className={buttonSecondary} onClick={onClose}>Cancel</button>
+          <button type="submit" className={buttonPrimary}>Save</button>
+        </>
+      }
+    >
+      <div className="flex items-center gap-3 rounded-lg border border-nt-line bg-nt-bg p-3">
+        <button
+          type="button"
+          onClick={togglePlay}
+          disabled={!src || isLoading}
+          aria-label={playing ? 'Pause preview' : 'Play preview'}
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-nt-raised text-nt-ink transition-colors hover:bg-nt-accent hover:text-nt-accent-ink disabled:opacity-50"
+        >
+          {isLoading ? <Loader2 size={16} className="animate-spin" /> : playing ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
+        </button>
+        <input
+          type="range"
+          min={0}
+          max={duration || 0}
+          step={0.01}
+          value={time}
+          aria-label="Seek"
+          onChange={(e) => {
+            const next = Number(e.target.value);
+            if (audioRef.current) audioRef.current.currentTime = next;
+            setTime(next);
+          }}
+          className="h-1 min-w-0 flex-1 cursor-pointer accent-nt-accent"
+        />
+        <span className="shrink-0 font-mono text-xs tabular-nums text-nt-ink-3">{formatTime(time)} / {formatTime(duration)}</span>
+        {src && (
+          <audio
+            ref={audioRef}
+            src={src}
+            loop={loop}
+            onEnded={() => setPlaying(false)}
+            onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
+            onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+          />
+        )}
       </div>
-    </div>,
-    document.body
+
+      <div className="mt-4 divide-y divide-nt-line">
+        <label className="flex cursor-pointer items-center justify-between gap-4 py-3">
+          <span>
+            <span className="block text-sm font-medium text-nt-ink">Loop</span>
+            <span className="block text-xs text-nt-ink-3">Start again when it ends</span>
+          </span>
+          <Switch checked={loop} onCheckedChange={setLoop} aria-label="Loop" />
+        </label>
+        <label className="flex items-center justify-between gap-4 py-3">
+          <span>
+            <span className="block text-sm font-medium text-nt-ink">Start delay</span>
+            <span className="block text-xs text-nt-ink-3">Wait before it starts playing</span>
+          </span>
+          <span className="flex items-center gap-2">
+            <input
+              type="number"
+              min={0}
+              step={0.1}
+              value={delaySeconds}
+              onChange={(e) => setDelaySeconds(e.target.value)}
+              aria-label="Start delay in seconds"
+              className={`${input} w-20 text-right tabular-nums`}
+            />
+            <span className="text-xs text-nt-ink-3">sec</span>
+          </span>
+        </label>
+      </div>
+    </Dialog>,
+    document.body,
   );
-};
+}

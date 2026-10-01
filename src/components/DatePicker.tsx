@@ -11,6 +11,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import clsx from 'clsx';
+import { nodeIconButton } from './nodes/nodeChrome';
 import { useReactFlow, Node } from 'reactflow';
 import { ElementNodeData } from '../models/story';
 
@@ -188,22 +189,15 @@ export const DatePicker = ({ date, onChange, nodeId }: DatePickerProps) => {
   return (
     <>
       {/* Trigger */}
-      <div className="relative group ml-2">
-        <button
-          onClick={() => setIsOpen(true)}
-          className={clsx(
-            "flex items-center gap-2 px-2.5 py-1.5 rounded-md transition-all border-[0.5px] text-xs font-medium",
-            date 
-              ? "bg-orange-500/10 border-orange-500/30 text-orange-400 hover:bg-orange-500/20" 
-              : "border-white/20 text-white hover:text-zinc-300 hover:border-zinc-700"
-          )}
-        >
-          <CalendarIcon size={14} />
-        </button>
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-white text-black text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-          {date ? `${formatDate(new Date(date))} ${formatTime(new Date(date))}` : "Set Date"}
-        </div>
-      </div>
+      <button
+        type="button"
+        onClick={() => setIsOpen(true)}
+        className={clsx(nodeIconButton, date && "text-nt-accent hover:text-nt-accent")}
+        title={date ? `${formatDate(new Date(date))} ${formatTime(new Date(date))}` : "Set a date"}
+        aria-label={date ? `Date: ${formatDate(new Date(date))}` : "Set a date"}
+      >
+        <CalendarIcon size={14} />
+      </button>
 
       {/* Modal */}
       {isOpen && createPortal(

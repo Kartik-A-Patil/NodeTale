@@ -19,6 +19,13 @@
   --nt-focus: 0.8 0.12 230;
   --nt-danger: 0.7 0.17 25;
   --nt-success: 0.78 0.14 155;
+  /* Code colours: logic blocks and the autocomplete icons (components/variableTypes.ts). */
+  --nt-code-keyword: #569cd6;
+  --nt-code-number: #b5cea8;
+  --nt-code-string: #ce9178;
+  --nt-code-list: #4ec9b0;
+  --nt-code-object: #dcdcaa;
+  --nt-code-function: #c586c0;
   /* Branch palette: Okabe-Ito (colour-blind safe), ordered away from the accent.
      Always paired with a letter or shape, never colour alone. */
   --nt-branch-0: 0.735 0.117 236.2;
@@ -68,45 +75,177 @@
     transition: opacity 0.3s ease;
 }
 
-.markdown-content blockquote { 
-    border-left: 3px solid #52525b; 
-    padding-left: 8px; 
-    font-style: italic; 
-    color: #a1a1aa; 
-    margin: 4px 0; 
+/* Canvas nodes (components/nodes/nodeChrome.tsx). A node's own colour is only
+   an accent: the top edge, the type icon and the selection ring. Bodies stay
+   neutral so text contrast never depends on the chosen colour. */
+.nt-node {
+  --node-accent: oklch(var(--nt-accent));
+  border: 1px solid oklch(var(--nt-line));
+  border-radius: 0.625rem;
+  background: oklch(var(--nt-surface));
+  color: oklch(var(--nt-ink-2));
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
 }
-/* The extra [class*="language-"] selector outranks prism-dark.css (imported
-   after this file), whose brown background/border would otherwise win. */
-.markdown-content pre,
-.markdown-content pre[class*="language-"] { 
-    background: #18181b; 
-    box-shadow: none;
-    padding: 4px; 
-    border-radius: 4px; 
-    font-family: 'JetBrains Mono', monospace; 
-    border: 0px solid #27272a; 
-    color: #a1a1aa; 
-    margin: 6px 0; 
-    white-space: pre-wrap; 
-    min-height: 1rem; 
+/* The accent is the top border itself (2px: border + inset line), so it follows
+   the rounded corners exactly instead of sitting on top of them. */
+.nt-node[data-variant="card"][data-accent="true"] {
+  border-top-color: var(--node-accent);
+  box-shadow: inset 0 1px 0 var(--node-accent), 0 1px 2px rgb(0 0 0 / 0.35);
 }
-.markdown-content ul { 
-    list-style-type: disc; 
-    padding-left: 20px; 
-    margin: 4px 0; 
+.nt-node .nt-node-icon { color: oklch(var(--nt-ink-3)); }
+.nt-node[data-accent="true"] .nt-node-icon { color: var(--node-accent); }
+.nt-node[data-selected="true"] {
+  border-color: var(--node-accent);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--node-accent) 22%, transparent), 0 8px 24px rgb(0 0 0 / 0.35);
 }
-/* Editor Highlight Colors */
+.nt-node[data-variant="card"][data-selected="true"][data-accent="true"] {
+  box-shadow: inset 0 1px 0 var(--node-accent), 0 0 0 3px color-mix(in oklch, var(--node-accent) 22%, transparent), 0 8px 24px rgb(0 0 0 / 0.35);
+}
+.nt-node[data-target="true"]:hover { border-color: oklch(var(--nt-accent)); }
+/* Comments: the colour tints the whole note, not just the top edge. */
+.nt-node[data-variant="note"] {
+  border-style: dashed;
+  border-color: oklch(var(--nt-line-strong) / 0.6);
+  background: oklch(var(--nt-surface) / 0.72);
+}
+.nt-node[data-variant="note"][data-accent="true"] {
+  border-color: color-mix(in oklch, var(--node-accent) 50%, transparent);
+  background: color-mix(in oklch, var(--node-accent) 16%, oklch(var(--nt-surface) / 0.8));
+}
+
+/* Sections: a quiet frame around a group of nodes, tinted by their colour. */
+.nt-section {
+  --node-accent: oklch(var(--nt-accent));
+  border: 1px solid oklch(var(--nt-line-strong) / 0.35);
+  border-radius: 0.875rem;
+  background: oklch(var(--nt-ink) / 0.01);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.nt-section[data-accent="true"] {
+  border-color: color-mix(in oklch, var(--node-accent) 35%, transparent);
+  background: color-mix(in oklch, var(--node-accent) 2.5%, transparent);
+}
+.nt-section[data-selected="true"] {
+  border-color: color-mix(in oklch, var(--node-accent) 80%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--node-accent) 18%, transparent);
+}
+.nt-section .nt-section-icon { color: oklch(var(--nt-ink-3)); }
+.nt-section[data-accent="true"] .nt-section-icon { color: var(--node-accent); }
+
+/* Story text. One set of rules for the editor (.ProseMirror), the canvas
+   display and play mode, so switching between editing and reading never moves
+   a pixel. Mirrors the layout-affecting rules tiptap injects on .ProseMirror. */
+.nt-prose {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  white-space: break-spaces;
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0;
+  outline: none;
+}
+.nt-prose > :first-child { margin-top: 0; }
+.nt-prose > :last-child { margin-bottom: 0; }
+.nt-prose p { margin: 0; }
+/* Stored HTML has <p></p> where the editor draws a trailing <br>: same line box. */
+.nt-prose :is(p, h1, h2, h3):empty::before { content: '\200b'; }
+.nt-prose h1, .nt-prose h2, .nt-prose h3 {
+  margin: 0.6em 0 0.25em;
+  color: oklch(var(--nt-ink));
+  font-weight: 650;
+  line-height: 1.25;
+}
+.nt-prose h1 { font-size: 1.5em; }
+.nt-prose h2 { font-size: 1.25em; }
+.nt-prose h3 { font-size: 1.1em; }
+.nt-prose ul, .nt-prose ol { margin: 4px 0; padding-left: 20px; }
+.nt-prose ul { list-style: disc; }
+.nt-prose ol { list-style: decimal; }
+.nt-prose blockquote {
+  margin: 4px 0;
+  border-left: 3px solid oklch(var(--nt-line-strong));
+  padding-left: 8px;
+  color: oklch(var(--nt-ink-3));
+  font-style: italic;
+}
+.nt-prose a {
+  color: oklch(var(--nt-accent));
+  text-decoration: underline;
+  text-decoration-color: oklch(var(--nt-accent) / 0.45);
+  text-underline-offset: 2px;
+}
+.nt-prose hr { margin: 8px 0; border: 0; border-top: 1px solid oklch(var(--nt-line)); }
+.nt-prose code {
+  border-radius: 3px;
+  background: oklch(var(--nt-bg));
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.92em;
+}
+/* [class*="language-"] outranks prism-dark.css (imported after this file),
+   whose padding, border, line-height and font would otherwise apply to legacy
+   <pre class> and new <pre><code class> differently. */
+.nt-prose pre,
+.nt-prose pre[class*="language-"] {
+  min-height: 1rem;
+  margin: 8px 0;
+  border: 1px solid oklch(var(--nt-line) / 0.7);
+  border-radius: 6px;
+  box-shadow: none;
+  background: oklch(var(--nt-bg));
+  padding: 6px 10px;
+  color: oklch(var(--nt-ink-2));
+}
+/* Consecutive logic lines read as one block. */
+.nt-prose pre + pre,
+.nt-prose pre[class*="language-"] + pre { margin-top: -4px; }
+.nt-prose pre,
+.nt-prose pre[class*="language-"],
+.nt-prose pre code,
+.nt-prose pre code[class*="language-"] {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: inherit;
+  line-height: 1.5;
+  text-shadow: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 4;
+}
+.nt-prose pre code,
+.nt-prose pre code[class*="language-"] {
+  border-radius: 0;
+  background: none;
+  color: oklch(var(--nt-ink-2));
+}
+/* Prism tokens in the app's code palette (outranks prism-dark.css). */
+.nt-prose pre .token.keyword,
+.nt-prose pre .token.boolean { color: var(--nt-code-keyword); }
+.nt-prose pre .token.number { color: var(--nt-code-number); }
+.nt-prose pre .token.string { color: var(--nt-code-string); }
+.nt-prose pre .token.function { color: var(--nt-code-function); }
+.nt-prose pre .token.operator,
+.nt-prose pre .token.punctuation { color: oklch(var(--nt-ink-3)); opacity: 1; }
+.nt-prose pre .token.comment { color: oklch(var(--nt-ink-3)); font-style: italic; }
+/* Background + shadow only: highlighting a token must not change its width. */
+.nt-prose .nt-variable-token {
+  border-radius: 0.2rem;
+  background: oklch(var(--nt-accent) / 0.12);
+  box-shadow: 0 0 0 1px oklch(var(--nt-accent) / 0.12);
+  color: oklch(var(--nt-accent));
+}
+.nt-prose.ProseMirror { caret-color: oklch(var(--nt-accent)); }
+.nt-prose .is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: oklch(var(--nt-ink-3) / 0.75);
+  pointer-events: none;
+}
+
+/* Colour classes from content written by the old editor. */
 .markdown-content .text-blue-400 { color: #60a5fa; }
 .markdown-content .text-white { color: #ffffff; }
 .markdown-content .text-zinc-400 { color: #a1a1aa; }
 .markdown-content .text-purple-400 { color: #a78bfa; }
-
-.markdown-content pre:empty::before {
-  content: '';
-  white-space: pre-wrap;
-  display: block;
-}
-
 
 /* Keyboard focus ring for interactive SVG items in the story views (outline is unreliable on SVG). */
 .nt-svg-item .nt-focus-ring { display: none; }

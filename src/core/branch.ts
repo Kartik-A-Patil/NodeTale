@@ -10,3 +10,11 @@ export const DEFAULT_BRANCHES: Branch[] = [
 
 /** Display text for a branch: "If health > 0", or bare "Else" with no condition. */
 export const branchLabel = (b: Branch): string => (b.label === 'Else' || !b.condition ? b.label : `${b.label} ${b.condition}`);
+
+/** Branches with a new "Else If" case added just before the Else. */
+export const withNewCase = (branches: Branch[], id: string): Branch[] => {
+  const next = [...branches];
+  const elseIndex = next.findIndex((b) => b.label === 'Else');
+  next.splice(elseIndex === -1 ? next.length : elseIndex, 0, { id, label: 'Else If', condition: '' });
+  return next;
+};

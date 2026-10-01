@@ -1,15 +1,20 @@
 import React, { useRef } from 'react';
-import { Palette } from 'lucide-react';
+import { Ban, Palette } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
+import { dropdownDanger, dropdownItem, dropdownLabel, dropdownPanel } from './editor/editorStyles';
+import { ShortcutKbd } from './ui/kbd';
+import type { ShortcutKeys } from '../editor/shortcuts/types';
+import { formatShortcut } from '../editor/shortcuts/format';
 
 export type ContextMenuAction = {
   type?: 'action';
@@ -19,13 +24,20 @@ export type ContextMenuAction = {
   icon?: React.ReactNode;
   color?: string;
   preventClose?: boolean;
+  /** Keyboard shortcut shown on the right as Kbd keys. */
+  shortcut?: ShortcutKeys;
+  disabled?: boolean;
 };
 
 export type ContextMenuOption =
   | ContextMenuAction
   | { type: 'divider' }
-  | { type: 'color-grid'; color?: string; colors: string[]; onColorSelect: (color: string) => void; preventClose?: boolean }
-  | { type: 'icon-row'; items: { icon: React.ReactNode; onClick: () => void; label: string; active?: boolean; preventClose?: boolean }[] }
+  /** Small heading for the group below it. */
+  | { type: 'label'; label: string }
+  /** Swatches in a row; `onClear` adds a "no colour" swatch. */
+  | { type: 'color-grid'; color?: string; colors: string[]; onColorSelect: (color: string) => void; onClear?: () => void; preventClose?: boolean }
+  /** Icon-only quick actions in a row (labels become tooltips). */
+  | { type: 'icon-row'; items: { icon: React.ReactNode; onClick: () => void; label: string; active?: boolean; preventClose?: boolean; shortcut?: ShortcutKeys }[] }
   | { type: 'submenu'; label: string; icon?: React.ReactNode; submenu: ContextMenuAction[] };
 
 interface ContextMenuProps {
@@ -35,57 +47,75 @@ interface ContextMenuProps {
   onClose: () => void;
 }
 
-const itemClass = 'flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-xs text-nt-ink-2 outline-none focus:bg-nt-raised focus:text-nt-ink data-[disabled]:opacity-40';
-const colorClass = 'h-5 w-5 rounded-sm border border-white/10 outline-none focus-visible:ring-2 focus-visible:ring-nt-focus';
+const itemClass = `gap-2 rounded-md ${dropdownItem}`;
+const swatchClass = 'h-5 w-5 shrink-0 cursor-pointer rounded-full border border-white/10 p-0 outline-none transition-transform hover:scale-110 focus:scale-110 focus-visible:ring-2 focus-visible:ring-nt-focus data-[current=true]:ring-2 data-[current=true]:ring-nt-ink data-[current=true]:ring-offset-2 data-[current=true]:ring-offset-nt-surface';
 
-const ColorGridSubmenu = ({ option }: { option: Extract<ContextMenuOption, { type: 'color-grid' }> }) => {
-  const inputRef = useRef<HTMLInputElement>(null);
-  return (
-    <DropdownMenuSub>
-      <DropdownMenuSubTrigger className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-xs text-nt-ink-2 focus:bg-nt-raised focus:text-nt-ink">
-        <Palette size={14} /> Color
-      </DropdownMenuSubTrigger>
-      <DropdownMenuSubContent className="min-w-0 rounded-lg border border-nt-line bg-nt-surface p-2 shadow-2xl">
-        <div className="grid grid-cols-6 gap-1" aria-label="Choose color">
-          {option.colors.map((color) => (
-            <DropdownMenuItem
-              key={color}
-              aria-label={`Set color ${color}`}
-              title={color}
-              className={`${colorClass} p-0`}
-              style={{ backgroundColor: color }}
-              onSelect={(event) => {
-                if (option.preventClose) event.preventDefault();
-                option.onColorSelect(color);
-              }}
-            />
-          ))}
-          <DropdownMenuItem
-            aria-label="Choose custom color"
-            title="Custom color"
-            className={`${colorClass} relative flex items-center justify-center overflow-hidden bg-nt-raised p-0`}
-            onSelect={(event) => {
-              event.preventDefault();
-              inputRef.current?.click();
-            }}
-          >
-            <Palette size={12} />
-          </DropdownMenuItem>
-        </div>
-        <input
-          ref={inputRef}
-          type="color"
-          aria-label="Custom color"
-          defaultValue={option.color || '#ffffff'}
-          className="sr-only"
-          tabIndex={-1}
-          onChange={(event) => option.onColorSelect(event.target.value)}
-        />
-      </DropdownMenuSubContent>
-    </DropdownMenuSub>
-  );
+const keepOpen = (preventClose: boolean | undefined) => (event: Event) => {
+  if (preventClose) event.preventDefault();
 };
 
+function ColorRow({ option }: { option: Extract<ContextMenuOption, { type: 'color-grid' }> }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const current = option.color?.toLowerCase();
+  return (
+    <div className="grid grid-cols-6 justify-items-center gap-y-1.5 px-2 py-1.5" role="group" aria-label="Colour">
+      {option.onClear && (
+        <DropdownMenuItem
+          aria-label="No colour"
+          title="No colour"
+          data-current={!current}
+          className={`${swatchClass} flex items-center justify-center bg-nt-raised text-nt-ink-3`}
+          onSelect={(event) => { keepOpen(option.preventClose)(event); option.onClear!(); }}
+        >
+          <Ban size={11} />
+        </DropdownMenuItem>
+      )}
+      {option.colors.map((color) => (
+        <DropdownMenuItem
+          key={color}
+          aria-label={`Colour ${color}`}
+          title={color}
+          data-current={current === color.toLowerCase()}
+          className={swatchClass}
+          style={{ backgroundColor: color }}
+          onSelect={(event) => { keepOpen(option.preventClose)(event); option.onColorSelect(color); }}
+        />
+      ))}
+      <DropdownMenuItem
+        aria-label="Custom colour"
+        title="Custom colour"
+        className={`${swatchClass} flex items-center justify-center bg-nt-raised text-nt-ink-3`}
+        onSelect={(event) => { event.preventDefault(); inputRef.current?.click(); }}
+      >
+        <Palette size={11} />
+      </DropdownMenuItem>
+      <input
+        ref={inputRef}
+        type="color"
+        aria-label="Custom colour"
+        defaultValue={option.color || '#ffffff'}
+        className="sr-only"
+        tabIndex={-1}
+        onChange={(event) => option.onColorSelect(event.target.value)}
+      />
+    </div>
+  );
+}
+
+const ActionItem = ({ action }: { action: ContextMenuAction }) => (
+  <DropdownMenuItem
+    disabled={action.disabled}
+    className={`${itemClass} ${action.danger ? dropdownDanger : ''}`}
+    onSelect={(event) => { keepOpen(action.preventClose)(event); action.onClick?.(); }}
+  >
+    {action.icon}
+    {action.color && <span className="h-3 w-3 rounded-full border border-white/10" style={{ backgroundColor: action.color }} />}
+    <span className="min-w-0 flex-1 truncate">{action.label}</span>
+    {action.shortcut && <ShortcutKbd keys={action.shortcut} className="ml-auto" />}
+  </DropdownMenuItem>
+);
+
+// Right-click menu for the canvas: the same dropdown look as the dock's menus.
 const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => (
   <DropdownMenu open onOpenChange={(open) => { if (!open) onClose(); }}>
     <DropdownMenuTrigger asChild>
@@ -96,78 +126,48 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => 
       side="bottom"
       sideOffset={0}
       collisionPadding={8}
-      className="z-50 min-w-[200px] rounded-lg border border-nt-line bg-nt-surface py-1.5 text-nt-ink shadow-2xl shadow-black/50"
+      className={`z-50 w-60 rounded-lg ${dropdownPanel}`}
       onContextMenu={(event) => event.preventDefault()}
     >
       {options.map((option, index) => {
-        if (option.type === 'divider') return <DropdownMenuSeparator key={index} className="my-1 bg-nt-line" />;
-
-        if (option.type === 'color-grid') {
-          return <ColorGridSubmenu key={index} option={option} />;
-        }
-
-        if (option.type === 'icon-row') {
-          return (
-            <div key={index} className="flex items-center justify-around px-2 py-2">
-              {option.items.map((item, itemIndex) => (
-                <DropdownMenuItem
-                  key={itemIndex}
-                  aria-label={item.label}
-                  title={item.label}
-                  className={`h-8 min-w-8 justify-center p-1.5 ${item.active ? 'bg-nt-raised text-nt-ink' : ''}`}
-                  onSelect={(event) => {
-                    if (item.preventClose) event.preventDefault();
-                    item.onClick();
-                  }}
-                >
-                  {item.icon}
-                </DropdownMenuItem>
-              ))}
-            </div>
-          );
-        }
-
-        if (option.type === 'submenu') {
-          return (
-            <DropdownMenuSub key={index}>
-              <DropdownMenuSubTrigger className={itemClass}>
-                {option.icon}
-                <span className="flex-1">{option.label}</span>
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="min-w-[180px] rounded-lg border border-nt-line bg-nt-surface py-1.5 text-nt-ink shadow-2xl shadow-black/50">
-                {option.submenu.map((action, actionIndex) => (
+        switch (option.type) {
+          case 'divider':
+            return <DropdownMenuSeparator key={index} className="bg-nt-line" />;
+          case 'label':
+            return <DropdownMenuLabel key={index} className={`truncate ${dropdownLabel}`}>{option.label}</DropdownMenuLabel>;
+          case 'color-grid':
+            return <ColorRow key={index} option={option} />;
+          case 'icon-row':
+            return (
+              <div key={index} className="flex items-center gap-0.5 px-1 py-0.5">
+                {option.items.map((item) => (
                   <DropdownMenuItem
-                    key={actionIndex}
-                    className={`${itemClass} ${action.danger ? 'text-red-400 focus:bg-red-900/20 focus:text-red-300' : ''}`}
-                    onSelect={(event) => {
-                      if (action.preventClose) event.preventDefault();
-                      action.onClick?.();
-                    }}
+                    key={item.label}
+                    aria-label={item.label}
+                    title={item.shortcut ? `${item.label} (${formatShortcut(item.shortcut)})` : item.label}
+                    className={`h-8 flex-1 justify-center rounded-md p-0 ${dropdownItem} ${item.active ? 'bg-nt-raised text-nt-ink' : ''}`}
+                    onSelect={(event) => { keepOpen(item.preventClose)(event); item.onClick(); }}
                   >
-                    {action.icon}<span>{action.label}</span>
+                    {item.icon}
                   </DropdownMenuItem>
                 ))}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-          );
+              </div>
+            );
+          case 'submenu':
+            return (
+              <DropdownMenuSub key={index}>
+                <DropdownMenuSubTrigger className={`${itemClass} data-[state=open]:bg-nt-raised data-[state=open]:text-nt-ink`}>
+                  {option.icon}
+                  <span className="flex-1">{option.label}</span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className={`w-64 rounded-lg ${dropdownPanel}`}>
+                  {option.submenu.map((action, actionIndex) => <ActionItem key={actionIndex} action={action} />)}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            );
+          default:
+            return <ActionItem key={index} action={option} />;
         }
-
-        return (
-          <DropdownMenuItem
-            key={index}
-            className={`${itemClass} justify-between ${option.danger ? 'text-red-400 focus:bg-red-900/20 focus:text-red-300' : ''}`}
-            onSelect={(event) => {
-              if (option.preventClose) event.preventDefault();
-              option.onClick?.();
-            }}
-          >
-            <span className="flex min-w-0 items-center gap-2">
-              {option.icon}
-              {option.color && <span className="h-3 w-3 rounded-full border border-white/10" style={{ backgroundColor: option.color }} />}
-              <span>{option.label}</span>
-            </span>
-          </DropdownMenuItem>
-        );
       })}
     </DropdownMenuContent>
   </DropdownMenu>

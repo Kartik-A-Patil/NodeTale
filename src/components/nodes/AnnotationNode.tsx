@@ -3,19 +3,18 @@ import { NodeProps } from "reactflow";
 import { useEditor } from "../../editor/EditorContext";
 import { AnnotationNodeData } from "../../models/story";
 import { nodePropsEqual } from "./nodePropsEqual";
+import { EditableTitle } from "./nodeChrome";
 
 const AnnotationNode = ({ id, data,selected }: NodeProps<AnnotationNodeData>) => {
   const { updateNodeData } = useEditor();
-  const [editingField, setEditingField] = useState<"label" | "content" | null>(
-    null
-  );
+  const [editingContent, setEditingContent] = useState(false);
 
   const handleChange = (field: "label" | "content", value: string) => {
     updateNodeData(id, { [field]: value }, `${id}:${field}`);
   };
 
   const arrowDirection = data.arrowDirection || "top-left";
-  const color = data.color || "#71717a";
+  const color = data.color || "oklch(var(--nt-ink-3))";
 
   const getArrowStyle = () => {
     switch (arrowDirection) {
@@ -49,48 +48,33 @@ const AnnotationNode = ({ id, data,selected }: NodeProps<AnnotationNodeData>) =>
 
   return (
     <div
-      className={`relative flex flex-col max-w-[250px] p-3 select-none group transition-[border-color,box-shadow,background-color] duration-300 ease-in-out ${selected ? " border border-orange-500 ring-4 ring-orange-500/20 rounded-lg" : ""}`}
+      className={`group relative flex max-w-[250px] select-none flex-col rounded-lg p-3 outline-offset-2 transition-[outline-color] duration-150 ${selected ? "outline-dashed outline-1 outline-nt-accent" : "outline-none"}`}
       style={{ color: color }}
     >
-      <div className="flex items-center gap-2 mb-1">
-        {editingField === "label" ? (
-          <input
-            className="nodrag bg-transparent border-none outline-none font-bold text-base w-full"
-            style={{ color: "inherit" }}
-            value={data.label}
-            onChange={(e) => handleChange("label", e.target.value)}
-            autoFocus
-            onBlur={() => setEditingField(null)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") setEditingField(null);
-            }}
-          />
-        ) : (
-          <div
-            className="font-bold text-base cursor-text"
-            style={{ color: "inherit" }}
-            onDoubleClick={() => setEditingField("label")}
-          >
-            {data.label}
-          </div>
-        )}
+      <div className="mb-1">
+        <EditableTitle nodeId={id}
+          value={data.label}
+          placeholder="Annotation"
+          onChange={(label) => handleChange("label", label)}
+          className="text-base font-bold text-inherit"
+        />
       </div>
 
-      {editingField === "content" ? (
+      {editingContent ? (
         <textarea
           className="nodrag bg-transparent border-none outline-none text-sm leading-snug w-full resize-none h-20"
           style={{ color: "inherit", opacity: 0.8 }}
           value={data.content}
           onChange={(e) => handleChange("content", e.target.value)}
           autoFocus
-          onBlur={() => setEditingField(null)}
-          
+          onBlur={() => setEditingContent(false)}
+          onKeyDown={(e) => e.stopPropagation()}
         />
       ) : (
         <div
           className="text-sm leading-snug cursor-text min-h-[1.5rem]"
           style={{ color: "inherit", opacity: 0.8 }}
-          onDoubleClick={() => setEditingField("content")}
+          onDoubleClick={() => setEditingContent(true)}
         >
           {data.content || "Double click to edit..."}
         </div>

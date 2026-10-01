@@ -1,96 +1,63 @@
 import { memo, useState } from 'react';
-import { Handle, Position, NodeProps, useReactFlow, useStore } from 'reactflow';
+import { NodeProps, useReactFlow } from 'reactflow';
+import { CornerDownRight, LocateFixed } from 'lucide-react';
 import { useEditor } from '../../editor/EditorContext';
-import { Forward, Link as LinkIcon } from 'lucide-react';
+import { useNodeStatus } from '../../editor/nodeStatusStore';
 import { JumpNodeData } from '../../models/story';
 import { nodePropsEqual } from './nodePropsEqual';
+import { NodeFrame, StatusBadge, nodeIconButton, useFocusCanvasNode } from './nodeChrome';
 
 const JumpNode = ({ id, data, selected }: NodeProps<JumpNodeData>) => {
   const { getNodes } = useReactFlow();
   const { updateNodeData } = useEditor();
-  const connectionNodeId = useStore((state) => state.connectionNodeId);
-  const isTarget = connectionNodeId && connectionNodeId !== id;
-
+  const status = useNodeStatus(id);
+  const focusNode = useFocusCanvasNode();
   const [isEditing, setIsEditing] = useState(false);
-  const primaryColor = data.color || '#a855f7'; // Default purple
 
   const handleTargetChange = (targetId: string) => {
-      const allNodes = getNodes();
-      const target = allNodes.find(n => n.id === targetId);
-      if (!target || target.type === 'jumpNode') {
-        setIsEditing(false);
-        return;
-      }
-      
-      updateNodeData(id, { jumpTargetId: targetId, jumpTargetLabel: target.data.label || 'Unknown' });
-      setIsEditing(false);
+    const target = getNodes().find((n) => n.id === targetId);
+    if (target && target.type !== 'jumpNode') {
+      updateNodeData(id, { jumpTargetId: targetId, jumpTargetLabel: target.data.label || 'Untitled scene' });
+    }
+    setIsEditing(false);
   };
 
-  // Only allow element-type nodes as jump targets
-  const availableTargets = isEditing
-    ? getNodes().filter((n) => {
-        if (n.id === id) return false;
-        const type = String(n.type || '').toLowerCase();
-        return type.includes('element');
-      })
-    : [];
+  // Only scenes can be jumped to.
+  const targets = isEditing ? getNodes().filter((n) => n.id !== id && n.type === 'elementNode') : [];
 
   return (
-    <div
-      className={`px-3 py-2 bg-[#18181b] border rounded-lg flex items-center gap-3 min-w-[160px] transition-[border-color,box-shadow,background-color] duration-300 ease-in-out relative ${
-        selected ? 'shadow-lg ring-4 ring-orange-500/20' : ''
-      } ${isTarget ? "hover:!border-orange-500 hover:bg-orange-500/5 hover:shadow-[0_0_20px_rgba(245,158,11,0.3)]" : ""}`}
-      style={{ 
-        borderColor: selected ? primaryColor : data.color || '#581c87',
-        backgroundColor: data.color ? `${data.color}05` : '#18181b'
-      }}
-      onDoubleClick={() => setIsEditing(true)}
-    >
-      {/* Global Target Handle */}
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="!w-full !h-full !absolute !inset-0 !transform-none !border-0 !rounded-lg z-[100] !opacity-0"
-        style={{ 
-            borderRadius: "inherit",
-            pointerEvents: isTarget ? 'all' : 'none'
-        }}
-      />
-
-      <div 
-          className="p-1.5 rounded-md"
-          style={{ backgroundColor: `${primaryColor}22` }}
-      >
-        <Forward size={16} style={{ color: primaryColor }} />
-      </div>
-      
-      <div className="flex flex-col flex-1 overflow-hidden">
-          <span className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: primaryColor }}>Jump To</span>
-          
+    <NodeFrame id={id} selected={selected} color={data.color} className="min-w-[200px] max-w-[280px]">
+      <div className="flex items-center gap-2.5 py-2 pl-3 pr-1.5" onDoubleClick={() => setIsEditing(true)}>
+        <CornerDownRight size={16} className="nt-node-icon shrink-0" aria-hidden />
+        <div className="min-w-0 flex-1">
+          <div className="text-[10px] font-medium uppercase tracking-wider text-nt-ink-3">Jump to</div>
           {isEditing ? (
-              <select 
-                  className="nodrag w-full bg-[#0f0f11] border border-zinc-700 rounded text-xs text-zinc-200 p-1 focus:outline-none focus:border-purple-500"
-                  value={data.jumpTargetId || ''}
-                  onChange={(e) => handleTargetChange(e.target.value)}
-                  onBlur={() => setIsEditing(false)}
-                  autoFocus
-                  onMouseDown={(e) => e.stopPropagation()} 
-              >
-                  <option value="">Select Target...</option>
-                  {availableTargets.map(n => (
-                      <option key={n.id} value={n.id}>{n.data.label}</option>
-                  ))}
-              </select>
+            <select
+              autoFocus
+              aria-label="Jump target"
+              className="nodrag mt-0.5 w-full rounded-md border border-nt-line bg-nt-bg px-1.5 py-1 text-xs text-nt-ink outline-none focus:border-nt-line-strong"
+              value={data.jumpTargetId || ''}
+              onChange={(e) => handleTargetChange(e.target.value)}
+              onBlur={() => setIsEditing(false)}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <option value="">Choose a scene…</option>
+              {targets.map((n) => <option key={n.id} value={n.id}>{n.data.label || 'Untitled scene'}</option>)}
+            </select>
           ) : (
-            <div className="flex items-center gap-1 text-zinc-200 text-xs font-medium cursor-pointer" title="Double click to change target">
-                <LinkIcon size={10} className="text-zinc-500" />
-                <span className="truncate max-w-[100px]">
-                    {data.jumpTargetId ? (data.jumpTargetLabel || 'Target Set') : 'No Target'}
-                </span>
+            <div className="truncate text-sm font-medium text-nt-ink" title="Double click to change the target">
+              {data.jumpTargetId ? data.jumpTargetLabel || 'Untitled scene' : <span className="text-nt-ink-3">No target yet</span>}
             </div>
           )}
+        </div>
+        {status === 'dead-end' || status === 'unreachable' ? <StatusBadge status={status} /> : null}
+        {data.jumpTargetId && !isEditing && (
+          <button type="button" className={nodeIconButton} onClick={() => focusNode(data.jumpTargetId!)} title="Go to the target scene" aria-label="Go to the target scene">
+            <LocateFixed size={14} />
+          </button>
+        )}
       </div>
-    </div>
+    </NodeFrame>
   );
 };
 

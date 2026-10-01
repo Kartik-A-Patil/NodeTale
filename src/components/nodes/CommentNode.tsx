@@ -1,111 +1,52 @@
 import { memo, useState } from 'react';
-import { NodeProps, NodeResizeControl } from 'reactflow';
+import { NodeProps } from 'reactflow';
 import { useEditor } from '../../editor/EditorContext';
 import { CommentNodeData } from '../../models/story';
-import { RichTextEditor } from '../RichTextEditor';
+import { LazyRichTextEditor } from '../editor/LazyRichTextEditor';
+import { EditStart, StoryText } from '../editor/StoryText';
 import JumpTargetBadge from './JumpTargetBadge';
 import { nodePropsEqual } from './nodePropsEqual';
+import { NodeFrame, NodeResizeGrip, useNodeEditRequest } from './nodeChrome';
 
 const CommentNode = ({ id, data, selected }: NodeProps<CommentNodeData>) => {
   const { updateNodeData } = useEditor();
   const [isEditing, setIsEditing] = useState(false);
+  const [editStart, setEditStart] = useState<EditStart>();
+  useNodeEditRequest(id, 'content', () => { setEditStart(undefined); setIsEditing(true); });
 
   const handleChange = (val: string) => {
     updateNodeData(id, { text: val }, `${id}:text`);
   };
 
-  // Default to dark gray (#27272a) if no color is set
-  const baseColor = data.color || '#27272a';
-
   return (
     <>
-      <div
-        className={`h-full w-full min-w-[250px] min-h-[200px] rounded-md shadow-sm transition-[border-color,box-shadow,background-color] duration-300 ease-in-out flex flex-col group relative backdrop-blur-sm ${selected ? 'ring-4 ring-blue-500/20 border border-blue-500' : ''}`}
-        style={{
-          // Append 80 for approx 50% opacity hex code
-          backgroundColor: `${baseColor}40`, 
-      
-        }}
-        onDoubleClick={() => setIsEditing(true)}
-      >
-        <JumpTargetBadge nodeId={id} />
-        <div className="flex-1 relative min-h-0 p-4">
+      <NodeFrame id={id} selected={selected} color={data.color} connectable={false} variant="note" className="h-full w-full min-w-[250px] min-h-[200px] flex-col">
+        <JumpTargetBadge nodeId={id} className="absolute right-1.5 top-1.5 z-10" />
+        <div
+          className="relative min-h-0 flex-1 p-4 text-sm text-nt-ink-2"
+          onDoubleClick={() => { setEditStart(undefined); setIsEditing(true); }}
+        >
           {isEditing ? (
-              <div className="nodrag h-full w-full cursor-text">
-                  <RichTextEditor
-                    initialValue={data.text || ''}
-                    onChange={handleChange}
-                    onBlur={() => setIsEditing(false)}
-                  />
-              </div>
+            <LazyRichTextEditor
+              initialValue={data.text || ''}
+              startAt={editStart}
+              onChange={handleChange}
+              onBlur={() => setIsEditing(false)}
+              placeholder="Write a note… type / for blocks"
+            />
           ) : (
-              <div
-                className="text-sm text-zinc-200 whitespace-pre-wrap markdown-content h-full overflow-y-auto"
-                dangerouslySetInnerHTML={{
-                  __html:
-                    data.text ||
-                    '<span class="italic opacity-50 select-none">Double click to add comment...</span>'
-                }}
-              />
+            <StoryText
+              html={data.text || ''}
+              placeholder="Double click to add comment…"
+              onStartEdit={(start) => {
+                setEditStart(start);
+                setIsEditing(true);
+              }}
+            />
           )}
         </div>
-
-        <style>{`
-          .markdown-content blockquote { 
-              border-left: 3px solid #52525b; 
-              padding-left: 8px; 
-              font-style: italic; 
-              color: #a1a1aa; 
-              margin: 4px 0; 
-          }
-          .markdown-content pre { 
-              background: #18181b; 
-              padding: 8px; 
-              border-radius: 4px; 
-              font-family: 'JetBrains Mono', monospace; 
-              border: 1px solid #27272a; 
-              color: #a1a1aa; 
-              margin: 6px 0; 
-              white-space: pre-wrap; 
-          }
-          .markdown-content ul { 
-              list-style-type: disc; 
-              padding-left: 20px; 
-              margin: 4px 0; 
-          }
-          /* Editor Highlight Colors */
-          .markdown-content .text-blue-400 { color: #60a5fa; }
-          .markdown-content .text-white { color: #ffffff; }
-          .markdown-content .text-zinc-400 { color: #a1a1aa; }
-          .markdown-content .text-purple-400 { color: #a78bfa; }
-        `}</style>
-      </div>
-      {selected && (
-        <NodeResizeControl 
-            style={{ 
-                background: 'transparent', 
-                border: 'none',
-                position: 'absolute',
-                bottom: 0,
-                right: 0,
-            }} 
-            minWidth={250} 
-            minHeight={200}
-        >
-            <svg
-                width="12"
-                height="12"
-                viewBox="0 0 12 12"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                className="text-zinc-500"
-            >
-                <path d="M11 1L1 11" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
-                <path d="M11 5L5 11" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
-                <path d="M11 9L9 11" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
-            </svg>
-        </NodeResizeControl>
-      )}
+      </NodeFrame>
+      {selected && <NodeResizeGrip minWidth={250} minHeight={200} />}
     </>
   );
 };
