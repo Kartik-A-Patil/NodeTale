@@ -73,7 +73,7 @@ interface NodeHeaderProps {
 /** Icon, title, status, then borderless actions on the right. */
 export function NodeHeader({ icon: Icon, title, status, children }: NodeHeaderProps) {
   return (
-    <div className="flex h-8 shrink-0 items-center gap-1.5 border-b border-nt-line/40 pl-2.5 pr-1">
+    <div className="flex h-10 shrink-0 items-center gap-2 border-b border-nt-line/70 pl-3 pr-1.5">
       <Icon size={14} className="nt-node-icon shrink-0" aria-hidden />
       <div className="min-w-0 flex-1">{title}</div>
       {status}

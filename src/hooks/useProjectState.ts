@@ -18,9 +18,7 @@ const normalizeNodeDimensions = (node: Node): Node => {
   const styleHasHeight = typeof style.height === 'number';
 
   if (hasWidth && !styleHasWidth) style.width = (node as any).width;
-  // A scene fits its text: only a height set with the resize grip (kept in
-  // style.height) holds it, never one measured on a past save.
-  if (hasHeight && !styleHasHeight && node.type !== 'elementNode') style.height = (node as any).height;
+  if (hasHeight && !styleHasHeight) style.height = (node as any).height;
 
   const z = (node as any).zIndex ?? style.zIndex;
   if (typeof z === 'number') style.zIndex = z;

@@ -49,7 +49,7 @@ interface BoardDockProps {
 }
 
 const ADD: { type: NodeTypeKey; label: string; icon: typeof PlusCircle; payload: string; keys: ShortcutKeys }[] = [
-  { type: 'elementNode', label: 'Scene', icon: PlusCircle, payload: 'New scene', keys: KEYS.addScene },
+  { type: 'elementNode', label: 'Scene', icon: PlusCircle, payload: 'New Element', keys: KEYS.addScene },
   { type: 'conditionNode', label: 'Branch', icon: GitFork, payload: 'Logic Check', keys: KEYS.addBranch },
   { type: 'jumpNode', label: 'Jump', icon: ArrowRightCircle, payload: 'Jump', keys: KEYS.addJump },
   { type: 'commentNode', label: 'Comment', icon: MessageSquare, payload: '', keys: KEYS.addComment },

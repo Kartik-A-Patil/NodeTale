@@ -90,8 +90,8 @@
    neutral so text contrast never depends on the chosen colour. */
 .nt-node {
   --node-accent: oklch(var(--nt-accent));
-  border: 1px solid oklch(var(--nt-line) / 0.75);
-  border-radius: 0.5rem;
+  border: 1px solid oklch(var(--nt-line));
+  border-radius: 0.625rem;
   background: oklch(var(--nt-surface));
   color: oklch(var(--nt-ink-2));
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
@@ -107,10 +107,10 @@
 .nt-node[data-accent="true"] .nt-node-icon { color: var(--node-accent); }
 .nt-node[data-selected="true"] {
   border-color: var(--node-accent);
-  box-shadow: 0 0 0 2px color-mix(in oklch, var(--node-accent) 22%, transparent), 0 8px 24px rgb(0 0 0 / 0.35);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--node-accent) 22%, transparent), 0 8px 24px rgb(0 0 0 / 0.35);
 }
 .nt-node[data-variant="card"][data-selected="true"][data-accent="true"] {
-  box-shadow: inset 0 1px 0 var(--node-accent), 0 0 0 2px color-mix(in oklch, var(--node-accent) 22%, transparent), 0 8px 24px rgb(0 0 0 / 0.35);
+  box-shadow: inset 0 1px 0 var(--node-accent), 0 0 0 3px color-mix(in oklch, var(--node-accent) 22%, transparent), 0 8px 24px rgb(0 0 0 / 0.35);
 }
 .nt-node[data-target="true"]:hover { border-color: oklch(var(--nt-accent)); }
 /* Comments: the colour tints the whole note, not just the top edge. */
@@ -197,19 +197,17 @@
 .nt-prose pre,
 .nt-prose pre[class*="language-"] {
   min-height: 1rem;
-  margin: 6px 0;
-  border: 0;
-  border-radius: 5px;
+  margin: 8px 0;
+  border: 1px solid oklch(var(--nt-line) / 0.7);
+  border-radius: 6px;
   box-shadow: none;
   background: oklch(var(--nt-bg));
-  padding: 4px 8px;
+  padding: 6px 10px;
   color: oklch(var(--nt-ink-2));
 }
-/* Consecutive logic lines read as one block: no gap, shared corners. */
-.nt-prose pre:has(+ pre),
-.nt-prose pre[class*="language-"]:has(+ pre) { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; padding-bottom: 1px; }
+/* Consecutive logic lines read as one block. */
 .nt-prose pre + pre,
-.nt-prose pre[class*="language-"] + pre { margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; padding-top: 1px; }
+.nt-prose pre[class*="language-"] + pre { margin-top: -4px; }
 .nt-prose pre,
 .nt-prose pre[class*="language-"],
 .nt-prose pre code,
