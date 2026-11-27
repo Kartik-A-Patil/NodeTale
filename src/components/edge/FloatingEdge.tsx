@@ -2,7 +2,7 @@ import { memo, useCallback, useMemo } from 'react';
 import { useStore, getBezierPath, getStraightPath, getSmoothStepPath, EdgeProps, Node, Position, EdgeLabelRenderer, ReactFlowState } from 'reactflow';
 import { Pencil, Sparkles, Lock, Zap, SlidersHorizontal } from 'lucide-react';
 import { getEdgeParams, HandlePoint, NodeGeometry } from '../../utils/EdgeUtils';
-import { autoEdgeLabel, choiceRulesOf, ChoiceRules } from '../../utils/edgeLabel';
+import { autoEdgeLabel, choiceRulesOf, ChoiceRules, toggleLabelMode } from '../../utils/edgeLabel';
 import { ChoiceRulesPopover } from './ChoiceRulesPopover';
 import { DEFAULT_BRANCHES } from '../../core/branch';
 import { Branch } from '../../models/story';
@@ -128,16 +128,7 @@ function FloatingEdge({ id, source, target, sourceHandleId, markerEnd, style, se
     updateEdge(id, (e) => ({ ...e, label: newLabel }), `${id}:label`);
   };
 
-  // Manual -> auto: nothing to keep, the text is computed again from the board.
-  // Auto -> manual: seed the input with what was just showing, so you edit
-  // from something real instead of a blank box.
-  const toggleMode = () => {
-    if (isManual) {
-      updateEdge(id, (e) => ({ ...e, label: '', data: { ...(e.data || {}), manualLabel: false } }));
-    } else {
-      updateEdge(id, (e) => ({ ...e, label: autoText, data: { ...(e.data || {}), manualLabel: true } }));
-    }
-  };
+  const toggleMode = () => updateEdge(id, (e) => toggleLabelMode(e, autoText));
 
   return (
     <>

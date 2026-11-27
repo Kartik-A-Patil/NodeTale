@@ -15,7 +15,7 @@ import { Edge, ReactFlowInstance } from 'reactflow';
 import { MenuState } from './useContextMenu';
 import type { ShortcutKeys } from '../editor/shortcuts/types';
 import { AlignMode } from '../core/layout/arrange';
-import { autoEdgeLabel } from '../utils/edgeLabel';
+import { autoEdgeLabel, toggleLabelMode } from '../utils/edgeLabel';
 import {
     GitFork as BranchIcon, Wand2, AlignStartVertical, AlignCenterVertical, AlignEndVertical,
     AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignHorizontalSpaceAround, AlignVerticalSpaceAround,
@@ -81,7 +81,7 @@ interface UseMenuOptionsProps {
     deleteNode: (id: string, deleteChildren?: boolean) => void;
     setJumpClipboard: (data: { id: string; label: string } | null) => void;
     jumpClipboard: { id: string; label: string } | null;
-    updateEdgeLabel: (id: string, label: string) => void;
+    updateEdge: (id: string, applyPatch: (edge: Edge) => Edge) => void;
     updateEdgeColor: (id: string, color: string) => void;
     updateEdgeData: (id: string, data: any) => void;
     deleteEdge: (id: string) => void;
@@ -102,7 +102,7 @@ export function useMenuOptions({
     deleteNode,
     setJumpClipboard,
     jumpClipboard,
-    updateEdgeLabel,
+    updateEdge,
     updateEdgeColor,
     updateEdgeData,
     deleteEdge,
@@ -315,24 +315,17 @@ export function useMenuOptions({
                 label: isManual ? 'Use automatic label' : 'Use custom label',
                 preventClose: true,
                 onClick: () => {
-                    if (isManual) {
-                        updateEdgeData(menu.id!, { manualLabel: false });
-                        updateEdgeLabel(menu.id!, '');
-                    } else {
-                        // `edges` already carries the resolved-through-logic-nodes
-                        // label when this edge needed one (see resolvedEdgeLabels) —
-                        // reuse it so switching to manual pre-fills the exact same
-                        // text the canvas was just showing, not the raw target title.
-                        const autoText = typeof edge?.data?.autoResolvedLabel === 'string'
-                            ? edge.data.autoResolvedLabel
-                            : autoEdgeLabel(
-                                sourceNode ? { type: sourceNode.type, branches: (sourceNode.data as any)?.branches } : null,
-                                targetNode ? { label: (targetNode.data as any)?.label } : null,
-                                edge?.sourceHandle
-                              );
-                        updateEdgeData(menu.id!, { manualLabel: true });
-                        updateEdgeLabel(menu.id!, autoText);
-                    }
+                    // `edges` already carries the resolved-through-logic-nodes
+                    // label when this edge needed one (see resolvedEdgeLabels):
+                    // going custom pre-fills exactly what the canvas was showing.
+                    const autoText = typeof edge?.data?.autoResolvedLabel === 'string'
+                        ? edge.data.autoResolvedLabel
+                        : autoEdgeLabel(
+                            sourceNode ? { type: sourceNode.type, branches: (sourceNode.data as any)?.branches } : null,
+                            targetNode ? { label: (targetNode.data as any)?.label } : null,
+                            edge?.sourceHandle
+                          );
+                    updateEdge(menu.id!, (e) => toggleLabelMode(e, autoText));
                 }
             },
             { type: 'divider' } as ContextMenuOption,
@@ -423,7 +416,7 @@ export function useMenuOptions({
     }
 
     return [];
-    }, [menu, nodes, edges, updateNodeData, deleteNode, setJumpClipboard, jumpClipboard, updateEdgeLabel, updateEdgeColor, updateEdgeData, deleteEdge, addNode, assets, reactFlowInstance, setShowAssetSelectorModal, setSelectedNodeForAsset, startPlayFromNode, board]);
+    }, [menu, nodes, edges, updateNodeData, deleteNode, setJumpClipboard, jumpClipboard, updateEdge, updateEdgeColor, updateEdgeData, deleteEdge, addNode, assets, reactFlowInstance, setShowAssetSelectorModal, setSelectedNodeForAsset, startPlayFromNode, board]);
 
   return getMenuOptions;
 }

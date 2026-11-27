@@ -3,7 +3,7 @@ import { Project } from '../models/story';
 import { CanvasNode } from '../adapters/reactFlow';
 import { INITIAL_PROJECT } from '../constants';
 import { saveProject, loadProject } from '../services/storageService';
-import { Node, Edge, MarkerType } from 'reactflow';
+import { Node, Edge } from 'reactflow';
 import { withDefaultZIndex } from '../core/nodes/nodeRegistry';
 import { computeBoardHash, hashString } from '../utils/contentHash';
 import { toCanvasEdge, toCanvasNode, toStoryEdge, toStoryNode } from '../adapters/reactFlow';
@@ -51,11 +51,7 @@ export const migrateEdgeLabel = (e: Edge): Edge => {
 // to be enforced by per-node mount effects and a forever-running edge effect).
 const normalizeBoard = (nodes: Project['boards'][number]['nodes'], edges: Project['boards'][number]['edges']): { nodes: Node[]; edges: Edge[] } => ({
   nodes: stripContext(nodes.map(toCanvasNode)).map(n => normalizeNodeDimensions(withDefaultZIndex(n as CanvasNode))),
-  edges: edges.map(toCanvasEdge).map(e => migrateEdgeLabel(
-    e.type === 'floating' && (e.animated || !e.markerEnd)
-      ? { ...e, animated: false, markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 20 } }
-      : e
-  )),
+  edges: edges.map(toCanvasEdge).map(migrateEdgeLabel),
 });
 
 const projectMetaHash = (project: Project): string =>

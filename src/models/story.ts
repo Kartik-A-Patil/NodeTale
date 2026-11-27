@@ -118,16 +118,10 @@ interface StoryNodeBase<T extends StoryNodeType, D extends NodeData> {
   height?: number | null;
   zIndex?: number;
   style?: Record<string, string | number | undefined>;
-  hidden?: boolean;
-  draggable?: boolean;
-  selectable?: boolean;
-  connectable?: boolean;
-  deletable?: boolean;
-  focusable?: boolean;
-  dragHandle?: string;
-  expandParent?: boolean;
-  className?: string;
 }
+
+/** Stacking a node type gets unless it says otherwise: sections behind comments behind everything. */
+export const DEFAULT_Z_INDEX: Partial<Record<StoryNodeType, number>> = { commentNode: -1, sectionNode: -10 };
 
 /** Persisted story content and authored position, without canvas runtime state. */
 export type StoryNode =
@@ -138,30 +132,25 @@ export type StoryNode =
   | StoryNodeBase<'sectionNode', SectionNodeData>
   | StoryNodeBase<'annotationNode', AnnotationNodeData>;
 
-/** Persisted graph connection fields; selection and measured canvas state are transient. */
+/** Colour of a connection the author hasn't recoloured. */
+export const DEFAULT_EDGE_STROKE = '#71717a';
+
+/** A connection as stored: only what the author chose. Canvas defaults (edge
+ *  type, arrow, default colour) are filled in on load by toCanvasEdge. */
 export interface StoryEdge {
   id: string;
   source: string;
   target: string;
+  /** Which branch of a condition node this leaves from. */
   sourceHandle?: string | null;
   targetHandle?: string | null;
   type?: string;
+  /** Custom choice text (when data.manualLabel). */
   label?: string;
-  animated?: boolean;
-  markerStart?: { type: string; width?: number; height?: number; color?: string };
-  markerEnd?: { type: string; width?: number; height?: number; color?: string };
+  /** Custom colour. */
   style?: Record<string, string | number | undefined>;
+  /** manualLabel, pathType, and the choice rules (see ChoiceRules). */
   data?: Record<string, unknown>;
-  hidden?: boolean;
-  deletable?: boolean;
-  focusable?: boolean;
-  reconnectable?: boolean | 'source' | 'target';
-  interactionWidth?: number;
-  labelStyle?: Record<string, string | number | undefined>;
-  labelBgStyle?: Record<string, string | number | undefined>;
-  labelBgPadding?: [number, number];
-  labelBgBorderRadius?: number;
-  className?: string;
 }
 
 export interface Board {

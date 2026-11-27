@@ -49,3 +49,11 @@ export interface ChoiceRules {
 }
 
 export const choiceRulesOf = (edge: Pick<StoryEdge, 'data'>): ChoiceRules => (edge.data ?? {}) as ChoiceRules;
+
+/** Flip an edge between its automatic label and a custom one. Going custom
+ *  seeds the text with what it was showing, so you edit from something real. */
+export function toggleLabelMode<E extends { label?: unknown; data?: Record<string, unknown> }>(edge: E, shownText: string): E {
+  return edge.data?.manualLabel
+    ? { ...edge, label: '', data: { ...edge.data, manualLabel: false } }
+    : { ...edge, label: shownText, data: { ...(edge.data || {}), manualLabel: true } };
+}

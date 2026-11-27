@@ -10,6 +10,7 @@ import {
   SectionNodeData,
   AnnotationNodeData,
   Board,
+  DEFAULT_Z_INDEX,
 } from '../../models/story';
 import { CanvasNode } from '../../adapters/reactFlow';
 import { evaluateCondition, Rng } from '../runtime/scriptInterpreter';
@@ -101,13 +102,13 @@ export const nodeRegistry: Record<NodeTypeKey, NodeRegistryEntry<any>> = {
   commentNode: {
     component: CommentNode,
     create: (extraFields = {}): CommentNodeData => ({ label: '', text: '', ...extraFields }),
-    defaultZIndex: -1,
+    defaultZIndex: DEFAULT_Z_INDEX.commentNode,
   } satisfies NodeRegistryEntry<CommentNodeData>,
 
   sectionNode: {
     component: SectionNode,
     create: (extraFields = {}): SectionNodeData => ({ label: 'New Section', ...extraFields }),
-    defaultZIndex: -10,
+    defaultZIndex: DEFAULT_Z_INDEX.sectionNode,
   } satisfies NodeRegistryEntry<SectionNodeData>,
 
   annotationNode: {

@@ -1,7 +1,16 @@
-import { Edge, Node } from 'reactflow';
-import { NodeData, StoryEdge, StoryNode } from '../models/story';
+import { Edge, MarkerType, Node } from 'reactflow';
+import { NodeData, StoryEdge, StoryNode, DEFAULT_EDGE_STROKE } from '../models/story';
 
 export type CanvasNode = Node<NodeData>;
+
+/** What every connection looks like on the canvas unless the author changed it.
+ *  Not stored per edge: filled in here on load, and by new connections. */
+export const EDGE_DEFAULTS = {
+  type: 'floating',
+  animated: false,
+  markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 20 },
+  style: { stroke: DEFAULT_EDGE_STROKE },
+} satisfies Partial<Edge>;
 
 export const toCanvasNode = (node: StoryNode): CanvasNode => ({
   ...node,
@@ -22,40 +31,26 @@ export const toStoryNode = (node: CanvasNode): StoryNode => ({
   ...(typeof node.height === 'number' ? { height: node.height } : {}),
   ...(typeof node.zIndex === 'number' ? { zIndex: node.zIndex } : {}),
   ...(node.style ? { style: node.style as StoryNode['style'] } : {}),
-  ...(node.hidden ? { hidden: true } : {}),
-  ...(node.draggable !== undefined ? { draggable: node.draggable } : {}),
-  ...(node.selectable !== undefined ? { selectable: node.selectable } : {}),
-  ...(node.connectable !== undefined ? { connectable: node.connectable } : {}),
-  ...(node.deletable !== undefined ? { deletable: node.deletable } : {}),
-  ...(node.focusable !== undefined ? { focusable: node.focusable } : {}),
-  ...(node.dragHandle ? { dragHandle: node.dragHandle } : {}),
-  ...(node.expandParent !== undefined ? { expandParent: node.expandParent } : {}),
-  ...(node.className ? { className: node.className } : {}),
 } as StoryNode);
 
-export const toCanvasEdge = (edge: StoryEdge): Edge => ({ ...edge } as Edge);
+export const toCanvasEdge = (edge: StoryEdge): Edge => ({
+  ...EDGE_DEFAULTS,
+  ...edge,
+  type: edge.type || EDGE_DEFAULTS.type,
+  // Saves from before this always had the arrow and an `animated` flag.
+  animated: false,
+  markerEnd: EDGE_DEFAULTS.markerEnd,
+  style: edge.style ?? EDGE_DEFAULTS.style,
+} as Edge);
 
 export const toStoryEdge = (edge: Edge): StoryEdge => ({
   id: edge.id,
   source: edge.source,
   target: edge.target,
-  ...(edge.sourceHandle !== undefined ? { sourceHandle: edge.sourceHandle } : {}),
-  ...(edge.targetHandle !== undefined ? { targetHandle: edge.targetHandle } : {}),
+  ...(edge.sourceHandle != null ? { sourceHandle: edge.sourceHandle } : {}),
+  ...(edge.targetHandle != null ? { targetHandle: edge.targetHandle } : {}),
   ...(edge.type ? { type: edge.type } : {}),
   ...(typeof edge.label === 'string' ? { label: edge.label } : {}),
-  ...(edge.animated ? { animated: true } : {}),
-  ...(edge.markerStart ? { markerStart: edge.markerStart as StoryEdge['markerStart'] } : {}),
-  ...(edge.markerEnd ? { markerEnd: edge.markerEnd as StoryEdge['markerEnd'] } : {}),
   ...(edge.style ? { style: edge.style as StoryEdge['style'] } : {}),
   ...(edge.data ? { data: edge.data } : {}),
-  ...(edge.hidden ? { hidden: true } : {}),
-  ...(edge.deletable !== undefined ? { deletable: edge.deletable } : {}),
-  ...(edge.focusable !== undefined ? { focusable: edge.focusable } : {}),
-  ...(edge.reconnectable !== undefined ? { reconnectable: edge.reconnectable } : {}),
-  ...(edge.interactionWidth !== undefined ? { interactionWidth: edge.interactionWidth } : {}),
-  ...(edge.labelStyle ? { labelStyle: edge.labelStyle as StoryEdge['labelStyle'] } : {}),
-  ...(edge.labelBgStyle ? { labelBgStyle: edge.labelBgStyle as StoryEdge['labelBgStyle'] } : {}),
-  ...(edge.labelBgPadding ? { labelBgPadding: edge.labelBgPadding as [number, number] } : {}),
-  ...(edge.labelBgBorderRadius !== undefined ? { labelBgBorderRadius: edge.labelBgBorderRadius } : {}),
-  ...(edge.className ? { className: edge.className } : {}),
 });

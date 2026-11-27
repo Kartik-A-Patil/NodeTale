@@ -2,12 +2,11 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   useNodesState,
   useEdgesState,
-  MarkerType,
   Connection,
   Edge,
   Node
 } from 'reactflow';
-import { CanvasNode } from '../adapters/reactFlow';
+import { CanvasNode, EDGE_DEFAULTS } from '../adapters/reactFlow';
 import { useProjectState } from './useProjectState';
 import { nodeRegistry, NodeTypeKey } from '../core/nodes/nodeRegistry';
 import { useCommandHistory } from '../editor/history/useCommandHistory';
@@ -147,10 +146,7 @@ export function useFlowLogic(projectIdOrName?: string) {
             id: `e-${sourceId}-${id}`,
             source: sourceId,
             target: id,
-            type: 'floating',
-            animated: false,
-            markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 20 },
-            style: { stroke: '#71717a' },
+            ...EDGE_DEFAULTS,
         };
         execute(addElementsCommand(ctx, [newNode], [edge], true));
     }, [ctx, execute]);
@@ -175,10 +171,6 @@ export function useFlowLogic(projectIdOrName?: string) {
 
   const updateEdgeColor = useCallback((id: string, color: string) => {
       execute(updateEdgeCommand(ctx, id, (e) => ({ ...e, style: { ...e.style, stroke: color } })));
-  }, [ctx, execute]);
-
-  const updateEdgeLabel = useCallback((id: string, label: string) => {
-      execute(updateEdgeCommand(ctx, id, (e) => ({ ...e, label })));
   }, [ctx, execute]);
 
   const onConnect = useCallback((params: Connection) => {
@@ -214,11 +206,8 @@ export function useFlowLogic(projectIdOrName?: string) {
         target: params.target,
         sourceHandle: params.sourceHandle,
         targetHandle: params.targetHandle,
-        type: 'floating',
         id: createId('edge'),
-        animated: false,
-        markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 20 },
-        style: { stroke: '#71717a'}
+        ...EDGE_DEFAULTS,
     };
     execute(connectEdgeCommand(ctx, edge, existingBranchEdge));
   }, [ctx, execute]);
@@ -264,7 +253,6 @@ export function useFlowLogic(projectIdOrName?: string) {
     updateEdge,
     updateEdgeData,
     updateEdgeColor,
-    updateEdgeLabel,
     project,
     setProject,
     isInitializing,
