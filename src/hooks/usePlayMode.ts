@@ -1,6 +1,6 @@
 import { useCallback, useReducer, useRef } from "react";
 import { Project } from "../models/story";
-import { StoryRuntime } from "../core/runtime/StoryRuntime";
+import { StoryRuntime, PlaySnapshot } from "../core/runtime/StoryRuntime";
 
 // Thin React wrapper around StoryRuntime (src/core/runtime/StoryRuntime.ts),
 // which holds all the actual play-mode logic and has no React dependency. This
@@ -28,6 +28,17 @@ export const usePlayModeLogic = (
     forceRender();
   }, [runtime]);
 
+  const rewindTo = useCallback((index: number) => {
+    runtime.rewindTo(index);
+    forceRender();
+  }, [runtime]);
+
+  const restore = useCallback((snapshot: PlaySnapshot) => {
+    const ok = runtime.restore(snapshot);
+    forceRender();
+    return ok;
+  }, [runtime]);
+
   const restart = useCallback(() => {
     runtime.restart();
     forceRender();
@@ -47,6 +58,10 @@ export const usePlayModeLogic = (
     handleOptionClick,
     restart,
     goBack,
+    rewindTo,
+    restore,
+    getLog: () => runtime.getLog(),
+    snapshot: () => runtime.snapshot(),
     canGoBack: state.canGoBack,
     projectAssets: state.projectAssets,
     errors: state.errors,

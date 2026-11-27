@@ -262,6 +262,8 @@ const PlayMode = () => (
       <>Keys: <Inline>1</Inline>–<Inline>9</Inline> pick a choice, <Inline>Enter</Inline> skips the text fade-in (or takes the only choice), <Inline>Backspace</Inline> goes back, <Inline>Esc</Inline> leaves.</>,
       <>Click the eye next to a variable in the Variables panel to show it to players in a status bar. A short note appears whenever a choice changes it (every change, if none are shown).</>,
       'Choices already taken in this playthrough are marked “seen”.',
+      'The scroll button shows the story so far: return to any earlier scene from it. The save button keeps three save slots per story in this browser, and endings you reach are counted (“2 of 5 endings found”).',
+      'A choice can take itself after some seconds: set it in the choice’s rules (the sliders button on its connection).',
       'Branches and jumps are followed automatically; only choices wait for the player.',
     ]} />
   </>

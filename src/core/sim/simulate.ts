@@ -32,6 +32,8 @@ export interface Transition {
   lockedReason?: string;
   /** Script that runs when this choice is taken. */
   effect?: string;
+  /** Seconds after which Play Mode takes this choice by itself. */
+  timeout?: number;
 }
 
 export interface StepResult {
@@ -95,6 +97,7 @@ export function createSimulator(project: Project): Simulator {
           edgeId: e.id,
           customLabel: !!custom,
           effect: rules.effect?.trim() || undefined,
+          timeout: rules.timeout && rules.timeout > 0 ? rules.timeout : undefined,
           ...(open ? {} : {
             locked: true,
             hidden: !!rules.hideWhenLocked,

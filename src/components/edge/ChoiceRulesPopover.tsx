@@ -58,6 +58,19 @@ export function ChoiceRulesPopover({ rules, onChange, children }: ChoiceRulesPop
             placeholder={'gold -= 10\ntrust += 1'}
           />
         </label>
+        <label className="flex items-center gap-2 text-zinc-400">
+          <span className="flex-1">Take it by itself after</span>
+          <input
+            type="number"
+            min={0}
+            className={`${field.replace('w-full ', '')} w-16 text-right`}
+            value={rules.timeout ?? ''}
+            onChange={(e) => onChange({ timeout: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value)) })}
+            placeholder="—"
+            aria-label="Seconds before this choice is taken automatically"
+          />
+          <span>sec</span>
+        </label>
       </PopoverContent>
     </Popover>
   );

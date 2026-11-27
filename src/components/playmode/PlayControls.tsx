@@ -1,5 +1,5 @@
 import React from "react";
-import { X, RefreshCcw, Volume2, VolumeX, CornerUpLeft } from "lucide-react";
+import { X, RefreshCcw, Volume2, VolumeX, CornerUpLeft, ScrollText, Save } from "lucide-react";
 
 interface PlayControlsProps {
   onClose: () => void;
@@ -9,6 +9,8 @@ interface PlayControlsProps {
   hasAudio: boolean;
   onBack: () => void;
   canGoBack: boolean;
+  onOpenLog?: () => void;
+  onOpenSaves?: () => void;
 }
 
 export const PlayControls: React.FC<PlayControlsProps> = ({
@@ -19,7 +21,10 @@ export const PlayControls: React.FC<PlayControlsProps> = ({
   hasAudio,
   onBack,
   canGoBack,
+  onOpenLog,
+  onOpenSaves,
 }) => {
+  const round = "p-2 bg-black/20 hover:bg-black/40 backdrop-blur-sm border border-white/5 hover:border-white/10 rounded-full text-zinc-400 hover:text-zinc-100 transition-all";
   return (
     <>
       {canGoBack && (
@@ -35,6 +40,16 @@ export const PlayControls: React.FC<PlayControlsProps> = ({
         </div>
       )}
       <div className="absolute top-4 right-4 z-50 flex gap-2">
+        {onOpenLog && (
+          <button onClick={onOpenLog} className={round} title="Story so far" aria-label="Story so far">
+            <ScrollText size={18} />
+          </button>
+        )}
+        {onOpenSaves && (
+          <button onClick={onOpenSaves} className={round} title="Saves" aria-label="Saves">
+            <Save size={18} />
+          </button>
+        )}
         {hasAudio && (
           <button
             onClick={onToggleMute}

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Project, ElementNodeData, Asset } from "../models/story";
 import { sanitizeHtml } from "../utils/html";
 import { usePlayModeLogic } from "../hooks/usePlayMode";
@@ -7,6 +7,9 @@ import { DebugOverlay } from "./playmode/DebugOverlay";
 import { MediaDisplay } from "./playmode/MediaDisplay";
 import { StoryNode } from "./playmode/StoryNode";
 import { PlayerStatus } from "./playmode/PlayerStatus";
+import { LogPanel, SavesPanel, SaveSlot } from "./playmode/PlayPanels";
+import { useLocalPref } from "../utils/localPrefs";
+import { buildStoryGraph } from "../core/graph/storyGraph";
 
 import { useAssetUrl } from "../hooks/useAssetUrl";
 import { stripScriptBlocks } from "../utils/html";
@@ -95,9 +98,60 @@ const PlayMode: React.FC<PlayModeProps> = ({
     errors,
     changes,
     turn,
+    rewindTo,
+    restore,
+    getLog,
+    snapshot,
   } = usePlayModeLogic(project, startNodeId);
 
   const [muted, setMuted] = useState(false);
+  const [panel, setPanel] = useState<"log" | "saves" | null>(null);
+  const [slots, setSlots] = useLocalPref<(SaveSlot | null)[]>(`nodetale:saves:${project.id}`, []);
+  const [foundEndings, setFoundEndings] = useLocalPref<string[]>(`nodetale:endings:${project.id}`, []);
+  const endingIds = useMemo(() => buildStoryGraph(project).endings, [project]);
+  const endings = { found: foundEndings.filter((id) => endingIds.includes(id)).length, total: endingIds.length };
+
+  // Reaching an ending counts it on this device.
+  const atEnding = !!currentNode && endingIds.includes(currentNode.id) && !foundEndings.includes(currentNode.id);
+  useEffect(() => {
+    if (atEnding && currentNode) setFoundEndings([...foundEndings, currentNode.id]);
+  }, [atEnding, currentNode, foundEndings, setFoundEndings]);
+
+  const saveTo = (i: number) => {
+    const snap = snapshot();
+    if (!snap) return;
+    const next = [...slots];
+    next[i] = { savedAt: Date.now(), sceneLabel: currentNode?.data?.label || "Untitled", snapshot: snap };
+    setSlots(next);
+  };
+  const loadFrom = (i: number) => {
+    const slot = slots[i];
+    if (!slot || !restore(slot.snapshot)) return false;
+    setPanel(null);
+    return true;
+  };
+  const panels = (
+    <>
+      {panel === "log" && (
+        <LogPanel entries={getLog()} endings={endings} onClose={() => setPanel(null)} onRewind={(i) => { rewindTo(i); setPanel(null); }} />
+      )}
+      {panel === "saves" && (
+        <SavesPanel
+          slots={slots}
+          canSave={!!currentNode}
+          onSave={saveTo}
+          onLoad={loadFrom}
+          onDelete={(i) => { const next = [...slots]; next[i] = null; setSlots(next); }}
+          onClose={() => setPanel(null)}
+        />
+      )}
+    </>
+  );
+  const controls = {
+    onClose, onRestart: restart, muted, onToggleMute: () => setMuted(!muted), onBack: goBack, canGoBack,
+    onOpenLog: () => setPanel(panel === "log" ? null : "log"),
+    onOpenSaves: () => setPanel(panel === "saves" ? null : "saves"),
+  };
 
   // Esc leaves, Backspace steps back (choices/reveal keys live in StoryNode).
   useEffect(() => {
@@ -105,15 +159,16 @@ const PlayMode: React.FC<PlayModeProps> = ({
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const typing = e.target instanceof HTMLElement && (e.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName));
       if (typing) return;
-      if (e.key === "Escape") onClose();
-      else if (e.key === "Backspace" && canGoBack) {
+      if (e.key === "Escape") return panel ? setPanel(null) : onClose();
+      if (panel) return;
+      if (e.key === "Backspace" && canGoBack) {
         e.preventDefault();
         goBack();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, goBack, canGoBack]);
+  }, [onClose, goBack, canGoBack, panel]);
 
   if (!currentNode) {
     return (
@@ -129,17 +184,10 @@ const PlayMode: React.FC<PlayModeProps> = ({
   if (currentNode.type !== "elementNode") {
     return (
       <div className="fixed inset-0 z-50 bg-black text-zinc-200 font-sans select-none">
-        <PlayControls
-          onClose={onClose}
-          onRestart={restart}
-          muted={muted}
-          onToggleMute={() => setMuted(!muted)}
-          hasAudio={false}
-          onBack={goBack}
-          canGoBack={canGoBack}
-        />
+        <PlayControls {...controls} hasAudio={false} />
         <DebugOverlay variables={runtimeVars} errors={errors} />
-        <StoryNode key={currentNode.id} label="The End" content="" options={[]} onOptionClick={handleOptionClick} hasVisual={false} />
+        <StoryNode key={`${turn}-${currentNode.id}`} label="The End" content="" options={[]} onOptionClick={handleOptionClick} hasVisual={false} paused={!!panel} />
+        {panels}
       </div>
     );
   }
@@ -167,15 +215,8 @@ const PlayMode: React.FC<PlayModeProps> = ({
   return (
     <div className="fixed inset-0 z-50 bg-black text-zinc-200 font-sans select-none">
       {/* UI Layer */}
-      <PlayControls 
-        onClose={onClose} 
-        onRestart={restart} 
-        muted={muted}
-        onToggleMute={() => setMuted(!muted)}
-        hasAudio={audioAssets.length > 0}
-        onBack={goBack}
-        canGoBack={canGoBack}
-      />
+      <PlayControls {...controls} hasAudio={audioAssets.length > 0} />
+      {panels}
       
       <DebugOverlay variables={runtimeVars} errors={errors} />
       <PlayerStatus variables={runtimeVars} changes={changes} turn={turn} />
@@ -207,6 +248,8 @@ const PlayMode: React.FC<PlayModeProps> = ({
               options={getOptions()}
               onOptionClick={handleOptionClick}
               hasVisual={!!visualAsset}
+              paused={!!panel}
+              endings={endings}
             />
          </div>
       </div>

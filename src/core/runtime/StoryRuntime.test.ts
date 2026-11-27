@@ -105,3 +105,44 @@ describe('player feedback', () => {
     expect(rt.getOptions()[0].visited).toBe(false);
   });
 });
+
+describe('log, rewind and saves', () => {
+  const story = () => project(
+    [scene('s', 'Start'), scene('h', 'Hall', '<pre>gold += 5</pre>'), scene('c', 'Cellar', '<pre>gold += 1</pre>')],
+    [
+      { id: 'e1', source: 's', target: 'h', label: 'Go in', data: { manualLabel: true, timeout: 8 } },
+      { id: 'e2', source: 'h', target: 'c' },
+    ],
+  );
+
+  it('logs scenes with the choice made, and rewinds to any of them', () => {
+    const rt = new StoryRuntime(story());
+    expect(rt.getOptions()[0].timeout).toBe(8);
+    rt.choose('e1');
+    rt.choose('e2');
+    expect(rt.getLog()).toEqual([
+      { index: 0, nodeId: 's', label: 'Start', choice: 'Go in' },
+      { index: 1, nodeId: 'h', label: 'Hall', choice: 'Cellar' },
+      { index: -1, nodeId: 'c', label: 'Cellar' },
+    ]);
+    rt.rewindTo(0);
+    expect(rt.getState()).toMatchObject({ currentNode: { id: 's' }, values: { gold: 0 } });
+    expect(rt.getLog()).toHaveLength(1);
+  });
+
+  it('saves and resumes a playthrough, refusing one the story no longer fits', () => {
+    const rt = new StoryRuntime(story());
+    rt.choose('e1');
+    const save = JSON.parse(JSON.stringify(rt.snapshot()));
+    const other = new StoryRuntime(story());
+    expect(other.restore(save)).toBe(true);
+    expect(other.getState()).toMatchObject({ currentNode: { id: 'h' }, values: { gold: 5 } });
+    other.back();
+    expect(other.getState().currentNode?.id).toBe('s');
+    expect(other.getOptions()[0].visited).toBe(true);
+    const edited = project([scene('s', 'Start')], []);
+    const stale = new StoryRuntime(edited);
+    expect(stale.restore(save)).toBe(false);
+    expect(stale.getState().currentNode?.id).toBe('s');
+  });
+});

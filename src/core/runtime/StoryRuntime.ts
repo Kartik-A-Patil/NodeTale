@@ -7,6 +7,26 @@ interface HistoryItem {
   values: Values;
   /** The scene's choices as they were, so Back doesn't re-run its script. */
   choices: Transition[];
+  /** What the player picked here. */
+  choice?: string;
+}
+
+/** One scene in the story log. `index` is what rewindTo takes; -1 is now. */
+export interface LogEntry {
+  index: number;
+  nodeId: string;
+  label: string;
+  choice?: string;
+}
+
+/** Everything needed to resume a playthrough later. Plain data, JSON-safe. */
+export interface PlaySnapshot {
+  nodeId: string;
+  values: Values;
+  history: HistoryItem[];
+  choices: Transition[];
+  taken: string[];
+  startId: string | null;
 }
 
 export interface PlayError {
@@ -44,6 +64,8 @@ export interface StoryOption {
   lockedReason?: string;
   /** Taken before in this playthrough. */
   visited?: boolean;
+  /** Taken automatically after this many seconds. */
+  timeout?: number;
 }
 
 const MAX_ERRORS = 20;
@@ -139,7 +161,7 @@ export class StoryRuntime {
   choose(edgeId: string) {
     const choice = this.choices.find((c) => c.edgeId === edgeId);
     if (!choice || choice.locked || !this.currentNodeId) return;
-    this.history.push({ nodeId: this.currentNodeId, values: this.values, choices: this.choices });
+    this.history.push({ nodeId: this.currentNodeId, values: this.values, choices: this.choices, choice: this.labelOf(choice) });
     const before = this.values;
     const { values, error } = this.sim.follow(choice, this.values, this.rng);
     if (error) this.reportError(this.currentNodeId, error);
@@ -152,19 +174,50 @@ export class StoryRuntime {
       .map((v) => ({ name: v.name, before: before[v.name], after: this.values[v.name] }));
   }
 
+  /** Step back to the last scene the player saw (logic nodes are skipped). */
   back() {
-    const history = [...this.history];
-    // Skip logic nodes back to the last scene the player saw.
-    while (history.length) {
-      const item = history.pop()!;
-      if (this.sim.node(item.nodeId)?.node.type !== 'elementNode' && history.length) continue;
-      this.history = history;
-      this.currentNodeId = item.nodeId;
-      this.values = item.values;
-      this.choices = item.choices;
-      this.changes = [];
-      return;
+    for (let i = this.history.length - 1; i >= 0; i--) {
+      if (i === 0 || this.sim.node(this.history[i].nodeId)?.node.type === 'elementNode') return this.rewindTo(i);
     }
+  }
+
+  /** Return to a scene from the log, as it was then. Its script doesn't re-run. */
+  rewindTo(index: number) {
+    const item = this.history[index];
+    if (!item) return;
+    this.history = this.history.slice(0, index);
+    this.currentNodeId = item.nodeId;
+    this.values = item.values;
+    this.choices = item.choices;
+    this.changes = [];
+  }
+
+  getLog(): LogEntry[] {
+    const label = (id: string) => this.sim.node(id)?.node.data?.label || 'Untitled';
+    const past = this.history
+      .map((h, index) => ({ index, nodeId: h.nodeId, label: label(h.nodeId), choice: h.choice }))
+      .filter((e) => this.sim.node(e.nodeId)?.node.type === 'elementNode');
+    return this.currentNodeId ? [...past, { index: -1, nodeId: this.currentNodeId, label: label(this.currentNodeId) }] : past;
+  }
+
+  snapshot(): PlaySnapshot | null {
+    if (!this.currentNodeId) return null;
+    return { nodeId: this.currentNodeId, values: this.values, history: this.history, choices: this.choices, taken: [...this.taken], startId: this.initialStartNodeId };
+  }
+
+  /** Resume a saved playthrough. False (and nothing changes) if the story no
+   *  longer has a scene the save depends on. */
+  restore(s: PlaySnapshot): boolean {
+    const ids = [s.nodeId, ...s.history.map((h) => h.nodeId)];
+    if (!ids.every((id) => this.sim.node(id))) return false;
+    this.currentNodeId = s.nodeId;
+    this.values = s.values;
+    this.history = s.history;
+    this.choices = s.choices;
+    this.taken = new Set(s.taken);
+    this.changes = [];
+    if (s.startId && this.sim.node(s.startId)) this.initialStartNodeId = s.startId;
+    return true;
   }
 
   restart() {
@@ -180,11 +233,20 @@ export class StoryRuntime {
   getOptions(): StoryOption[] {
     return this.choices
       .filter((c) => !c.hidden && c.edgeId)
-      .map((c) => {
-        // A choice into a condition/jump node names the scene the player really lands on.
-        const label = c.customLabel ? c.label : resolveVisibleNode(this.sim, c.target, this.values)?.data?.label || c.label;
-        return { label, targetId: c.target, edgeId: c.edgeId!, locked: c.locked, lockedReason: c.lockedReason, visited: this.taken.has(c.edgeId!) };
-      });
+      .map((c) => ({
+        label: this.labelOf(c),
+        targetId: c.target,
+        edgeId: c.edgeId!,
+        locked: c.locked,
+        lockedReason: c.lockedReason,
+        visited: this.taken.has(c.edgeId!),
+        timeout: c.timeout,
+      }));
+  }
+
+  // A choice into a condition/jump node names the scene the player really lands on.
+  private labelOf(c: Transition): string {
+    return c.customLabel ? c.label : resolveVisibleNode(this.sim, c.target, this.values)?.data?.label || c.label;
   }
 
   getState(): RuntimeState {

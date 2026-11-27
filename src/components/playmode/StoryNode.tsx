@@ -8,6 +8,10 @@ interface StoryNodeProps {
   options: StoryOption[];
   onOptionClick: (id: string) => void;
   hasVisual: boolean;
+  /** A panel is open over the scene: keys and timers wait. */
+  paused?: boolean;
+  /** Shown on an ending: how many of the story's endings this device has found. */
+  endings?: { found: number; total: number };
 }
 
 // Paragraphs fade in one after another; the choices wait until the text is in.
@@ -22,7 +26,7 @@ const isTyping = (e: KeyboardEvent) =>
   e.target instanceof HTMLElement && (e.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName));
 
 // One scene. Mounted fresh per scene (keyed by node id), so the reveal restarts.
-export const StoryNode: React.FC<StoryNodeProps> = ({ label, content, options, onOptionClick, hasVisual }) => {
+export const StoryNode: React.FC<StoryNodeProps> = ({ label, content, options, onOptionClick, hasVisual, paused = false, endings }) => {
   const textRef = useRef<HTMLDivElement>(null);
   const [revealed, setRevealed] = useState(prefersReducedMotion);
 
@@ -36,9 +40,24 @@ export const StoryNode: React.FC<StoryNodeProps> = ({ label, content, options, o
 
   const open = options.filter((o) => !o.locked);
 
+  // Timed choice: the open choice with the shortest timeout is taken when its
+  // time runs out. The clock starts once the text is in and stops while paused.
+  const auto = open.filter((o) => o.timeout).sort((a, b) => a.timeout! - b.timeout!)[0];
+  const [elapsed, setElapsed] = useState(0);
+  const ticking = !!auto && revealed && !paused;
+  useEffect(() => {
+    if (!ticking) return;
+    const timer = setInterval(() => setElapsed((e) => e + 100), 100);
+    return () => clearInterval(timer);
+  }, [ticking]);
+  useEffect(() => {
+    if (auto && elapsed >= auto.timeout! * 1000) onOptionClick(auto.edgeId);
+  }, [auto, elapsed, onOptionClick]);
+  const secondsLeft = auto ? Math.max(0, Math.ceil(auto.timeout! - elapsed / 1000)) : 0;
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || isTyping(e)) return;
+      if (paused || e.repeat || e.ctrlKey || e.metaKey || e.altKey || isTyping(e)) return;
       const digit = /^[1-9]$/.test(e.key) ? Number(e.key) : 0;
       if (!digit && e.key !== "Enter" && e.key !== " ") return;
       // A focused choice button already handles Enter/Space itself.
@@ -54,7 +73,7 @@ export const StoryNode: React.FC<StoryNodeProps> = ({ label, content, options, o
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [revealed, options, open, onOptionClick]);
+  }, [paused, revealed, options, open, onOptionClick]);
 
   return (
     <div
@@ -77,6 +96,14 @@ export const StoryNode: React.FC<StoryNodeProps> = ({ label, content, options, o
           className={`flex flex-col gap-3 pt-4 transition-opacity duration-300 ${revealed ? "opacity-100" : "opacity-0 pointer-events-none"}`}
           aria-hidden={!revealed}
         >
+          {auto && (
+            <div className="h-1 overflow-hidden rounded-full bg-zinc-800" aria-hidden>
+              <div
+                className="h-full bg-orange-500/70 transition-[width] duration-100 ease-linear"
+                style={{ width: `${Math.max(0, 100 - (elapsed / (auto.timeout! * 1000)) * 100)}%` }}
+              />
+            </div>
+          )}
           {options.map((opt, idx) => {
             const key = idx < 9 ? <kbd className="shrink-0 w-6 text-center rounded border border-current/30 font-mono text-xs opacity-60" aria-hidden>{idx + 1}</kbd> : null;
             return opt.locked ? (
@@ -103,6 +130,9 @@ export const StoryNode: React.FC<StoryNodeProps> = ({ label, content, options, o
                 <div className={`relative flex items-center gap-3 ${opt.visited ? "text-zinc-500" : "text-zinc-200"}`}>
                   {key}
                   <span className="flex-1 group-hover:text-white transition-colors">{opt.label}</span>
+                  {auto?.edgeId === opt.edgeId && (
+                    <span className="text-xs font-mono text-orange-400">auto in {secondsLeft}s</span>
+                  )}
                   {opt.visited && (
                     <span className="flex items-center gap-1 text-xs font-mono uppercase tracking-wider">
                       <Check size={12} aria-hidden /> seen
@@ -117,6 +147,11 @@ export const StoryNode: React.FC<StoryNodeProps> = ({ label, content, options, o
           {options.length === 0 && (
             <div className="text-center p-8 border border-dashed border-zinc-800 rounded-lg">
               <span className="text-zinc-500 italic font-serif">End of story</span>
+              {endings && endings.total > 0 && (
+                <div className="mt-2 font-mono text-sm text-zinc-400">
+                  {endings.found} of {endings.total} {endings.total === 1 ? "ending" : "endings"} found
+                </div>
+              )}
             </div>
           )}
         </div>

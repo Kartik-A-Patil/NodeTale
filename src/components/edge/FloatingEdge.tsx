@@ -1,6 +1,6 @@
 import { memo, useCallback, useMemo } from 'react';
 import { useStore, getBezierPath, getStraightPath, getSmoothStepPath, EdgeProps, Node, Position, EdgeLabelRenderer, ReactFlowState } from 'reactflow';
-import { Pencil, Sparkles, Lock, Zap, SlidersHorizontal } from 'lucide-react';
+import { Pencil, Sparkles, Lock, Zap, Timer, SlidersHorizontal } from 'lucide-react';
 import { getEdgeParams, HandlePoint, NodeGeometry } from '../../utils/EdgeUtils';
 import { autoEdgeLabel, choiceRulesOf, ChoiceRules, toggleLabelMode } from '../../utils/edgeLabel';
 import { ChoiceRulesPopover } from './ChoiceRulesPopover';
@@ -186,10 +186,11 @@ function FloatingEdge({ id, source, target, sourceHandleId, markerEnd, style, se
           className="nodrag nopan group relative"
           onMouseDown={(e) => e.stopPropagation()}
         >
-          {isChoice && (rules.condition?.trim() || rules.effect?.trim()) && (
+          {isChoice && (rules.condition?.trim() || rules.effect?.trim() || rules.timeout) && (
             <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 flex gap-0.5 text-orange-400 pointer-events-none" aria-hidden>
               {rules.condition?.trim() && <Lock size={10} />}
               {rules.effect?.trim() && <Zap size={10} />}
+              {!!rules.timeout && <Timer size={10} />}
             </div>
           )}
           {isManual ? (

@@ -46,6 +46,8 @@ export interface ChoiceRules {
   lockedText?: string;
   /** Script run when the choice is taken, e.g. `gold -= 10`. */
   effect?: string;
+  /** Play Mode takes this choice by itself after this many seconds. */
+  timeout?: number;
 }
 
 export const choiceRulesOf = (edge: Pick<StoryEdge, 'data'>): ChoiceRules => (edge.data ?? {}) as ChoiceRules;
