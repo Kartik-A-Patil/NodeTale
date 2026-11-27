@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 import { Variable, VariableType, ArrayValue, ObjectValue } from "../../models/story";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, AlertTriangle } from "lucide-react";
+import type { PlayError } from "../../core/runtime/StoryRuntime";
 
 interface DebugOverlayProps {
   variables: Variable[];
+  errors?: PlayError[];
 }
 
 const isArrayValue = (value: any): value is ArrayValue => {
@@ -14,14 +16,14 @@ const isObjectValue = (value: any): value is ObjectValue => {
   return value !== null && typeof value === "object" && "keys" in value && typeof value.keys === "object";
 };
 
-export const DebugOverlay: React.FC<DebugOverlayProps> = ({ variables }) => {
+export const DebugOverlay: React.FC<DebugOverlayProps> = ({ variables, errors = [] }) => {
   const [isHovered, setIsHovered] = useState(false);
 
   const VISIBLE_COUNT = 3;
   const visibleVars = variables.slice(0, VISIBLE_COUNT);
   const hiddenVars = variables.slice(VISIBLE_COUNT);
 
-  if (variables.length === 0) return null;
+  if (variables.length === 0 && errors.length === 0) return null;
 
   return (
     <div 
@@ -29,8 +31,24 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({ variables }) => {
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
+      {errors.length > 0 && (
+        <details className="mb-2 max-w-xs bg-black/70 backdrop-blur-sm border border-rose-500/30 rounded-md text-xs font-mono text-rose-300">
+          <summary className="flex items-center gap-2 px-2 py-1.5 cursor-pointer select-none">
+            <AlertTriangle size={12} aria-hidden />
+            {errors.length} {errors.length === 1 ? "problem" : "problems"} while playing
+          </summary>
+          <ul className="px-2 pb-2 space-y-1.5 max-h-48 overflow-y-auto">
+            {errors.map((e, i) => (
+              <li key={i}>
+                <span className="text-zinc-400">{e.nodeLabel}:</span> {e.message}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
       {/* Main minimal display */}
-      <div className="bg-black/40 backdrop-blur-sm border border-white/10 p-2 rounded-md text-xs font-mono text-zinc-400 transition-all hover:bg-black/60 hover:border-white/20 cursor-default">
+      <div hidden={variables.length === 0} className="bg-black/40 backdrop-blur-sm border border-white/10 p-2 rounded-md text-xs font-mono text-zinc-400 transition-all hover:bg-black/60 hover:border-white/20 cursor-default">
         <div className="flex items-center justify-between gap-4 mb-1 opacity-50 uppercase text-[10px] tracking-wider font-bold">
           <span>Variables</span>
           {hiddenVars.length > 0 && (

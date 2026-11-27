@@ -3,10 +3,17 @@ import { executeNode } from '../nodes/nodeRegistry';
 import { runScript } from './scriptInterpreter';
 import { toJSValue, applyScopeToVariables } from './variableCoercion';
 import { extractScriptCode } from './htmlScript';
+import { manualEdgeLabel } from '../../utils/edgeLabel';
 
 interface HistoryItem {
   nodeId: string;
   variables: Variable[];
+}
+
+export interface PlayError {
+  nodeId: string;
+  nodeLabel: string;
+  message: string;
 }
 
 export interface RuntimeState {
@@ -14,7 +21,10 @@ export interface RuntimeState {
   runtimeVars: Variable[];
   canGoBack: boolean;
   projectAssets: Asset[];
+  errors: PlayError[];
 }
+
+const MAX_ERRORS = 20;
 
 export interface StoryOption {
   label: string;
@@ -30,6 +40,7 @@ export class StoryRuntime {
   private initialStartNodeId: string | null = null;
   private history: HistoryItem[] = [];
   private runtimeVars: Variable[];
+  private errors: PlayError[] = [];
 
   constructor(project: Project, startNodeId?: string | null) {
     this.project = project;
@@ -45,7 +56,12 @@ export class StoryRuntime {
     return null;
   }
 
-  private runScriptContent(content: string) {
+  private reportError(node: StoryNode, message: string) {
+    console.warn(`[PlayMode] ${node.data?.label || node.id}: ${message}`);
+    this.errors = [...this.errors, { nodeId: node.id, nodeLabel: node.data?.label || 'Untitled', message }].slice(-MAX_ERRORS);
+  }
+
+  private runScriptContent(node: StoryNode, content: string) {
     const code = extractScriptCode(content);
     if (!code) return;
 
@@ -53,9 +69,7 @@ export class StoryRuntime {
     this.runtimeVars.forEach((v) => { readScope[v.name] = toJSValue(v); });
 
     const { changes, error } = runScript(code, readScope);
-    if (error) {
-      console.warn('[PlayMode] Script error:', error);
-    }
+    if (error) this.reportError(node, error);
     if (Object.keys(changes).length > 0) {
       this.runtimeVars = applyScopeToVariables(this.runtimeVars, changes);
     }
@@ -70,7 +84,8 @@ export class StoryRuntime {
 
     while (this.currentNodeId) {
       if (visited.has(this.currentNodeId)) {
-        console.warn(`[PlayMode] Cycle detected in auto-advance chain at node ${this.currentNodeId}; stopping.`);
+        const looped = this.findNode(this.currentNodeId)?.node;
+        if (looped) this.reportError(looped, 'Logic loops back on itself without reaching a scene; stopped here.');
         return;
       }
       visited.add(this.currentNodeId);
@@ -79,12 +94,20 @@ export class StoryRuntime {
       if (!ctx) return;
       const { node, board } = ctx;
 
-      const result = executeNode(node, { board, runtimeVars: this.runtimeVars });
+      const result = executeNode(node, {
+        board,
+        runtimeVars: this.runtimeVars,
+        onError: (message) => this.reportError(node, message),
+      });
       if (result.scriptContent !== undefined) {
-        this.runScriptContent(result.scriptContent);
+        this.runScriptContent(node, result.scriptContent);
       }
 
-      if (!result.nextNodeId) return;
+      if (!result.nextNodeId) {
+        if (node.type === 'conditionNode') this.reportError(node, 'No branch matched and there is no connected Else; the story ends here.');
+        else if (node.type === 'jumpNode') this.reportError(node, 'Jump has no target; the story ends here.');
+        return;
+      }
 
       this.history.push({ nodeId: node.id, variables: JSON.parse(JSON.stringify(this.runtimeVars)) });
       this.currentNodeId = result.nextNodeId;
@@ -139,6 +162,7 @@ export class StoryRuntime {
     if (!this.initialStartNodeId) return;
     this.history = [];
     this.runtimeVars = JSON.parse(JSON.stringify(this.project.variables));
+    this.errors = [];
     this.enterNode(this.initialStartNodeId);
   }
 
@@ -170,8 +194,10 @@ export class StoryRuntime {
       .map((edge) => {
         const target = board.nodes.find((n) => n.id === edge.target);
         if (!target) return { label: '', targetId: undefined };
+        const custom = manualEdgeLabel(edge);
+        if (custom) return { label: custom, targetId: target.id };
         const resolved = target.type === 'elementNode' ? target : this.resolveDisplayNode(target.id);
-        return { label: (resolved?.data as any)?.label || 'Continue', targetId: target.id };
+        return { label: resolved?.data?.label || 'Continue', targetId: target.id };
       })
       .filter((opt): opt is StoryOption => !!opt.targetId);
   }
@@ -183,6 +209,7 @@ export class StoryRuntime {
       runtimeVars: this.runtimeVars,
       canGoBack: this.history.length > 0,
       projectAssets: this.project.assets,
+      errors: this.errors,
     };
   }
 }

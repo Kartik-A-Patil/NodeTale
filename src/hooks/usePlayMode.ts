@@ -48,5 +48,6 @@ export const usePlayModeLogic = (
     goBack,
     canGoBack: state.canGoBack,
     projectAssets: state.projectAssets,
+    errors: state.errors,
   };
 };

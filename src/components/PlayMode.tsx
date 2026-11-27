@@ -9,6 +9,7 @@ import { MediaDisplay } from "./playmode/MediaDisplay";
 import { StoryNode } from "./playmode/StoryNode";
 
 import { useAssetUrl } from "../hooks/useAssetUrl";
+import { stripScriptBlocks } from "../core/runtime/htmlScript";
 
 interface PlayModeProps {
   project: Project;
@@ -58,6 +59,7 @@ const PlayMode: React.FC<PlayModeProps> = ({
     projectAssets,
     goBack,
     canGoBack,
+    errors,
   } = usePlayModeLogic(project, startNodeId);
 
   const [muted, setMuted] = useState(false);
@@ -70,26 +72,27 @@ const PlayMode: React.FC<PlayModeProps> = ({
     );
   }
 
-  // Don't render content for logic nodes, they should flicker past instantly.
-  const isLogicNode =
-    currentNode.type === "conditionNode" || currentNode.type === "jumpNode";
-
-  if (isLogicNode) {
+  // The runtime only stops on a logic node when it has nowhere to go (no
+  // matching branch, no jump target, or a loop): that is an ending, and the
+  // reason is in `errors` for the debug overlay.
+  if (currentNode.type !== "elementNode") {
     return (
-      <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center text-zinc-600 font-mono text-xs">
-        <span className="animate-pulse">Processing Logic...</span>
-        <button
-          onClick={onClose}
-          className="mt-4 hover:text-zinc-400 underline transition-colors"
-        >
-          Force Exit
-        </button>
+      <div className="fixed inset-0 z-50 bg-black text-zinc-200 font-sans select-none">
+        <PlayControls
+          onClose={onClose}
+          onRestart={restart}
+          muted={muted}
+          onToggleMute={() => setMuted(!muted)}
+          hasAudio={false}
+          onBack={goBack}
+          canGoBack={canGoBack}
+        />
+        <DebugOverlay variables={runtimeVars} errors={errors} />
+        <StoryNode label="The End" content="" options={[]} onOptionClick={handleOptionClick} hasVisual={false} />
       </div>
     );
   }
 
-  // Only elementNode is expected to reach this point (conditionNode/jumpNode
-  // returned above); other node types have no assets/content/audioSettings.
   const elementData = currentNode.data as ElementNodeData;
 
   // Assets resolution
@@ -106,7 +109,7 @@ const PlayMode: React.FC<PlayModeProps> = ({
   // Content processing
   // Imported projects can carry arbitrary HTML; never render it unsanitized.
   const processedContent = sanitizeHtml(replaceVariablesInText(
-    elementData.content,
+    stripScriptBlocks(elementData.content),
     runtimeVars
   ));
 
@@ -123,7 +126,7 @@ const PlayMode: React.FC<PlayModeProps> = ({
         canGoBack={canGoBack}
       />
       
-      <DebugOverlay variables={runtimeVars} />
+      <DebugOverlay variables={runtimeVars} errors={errors} />
 
       {/* Main Content Layout */}
       <div className="flex h-full w-full">

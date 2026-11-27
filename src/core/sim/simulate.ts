@@ -3,6 +3,7 @@ import { executeNode } from '../nodes/nodeRegistry';
 import { runScript } from '../runtime/scriptInterpreter';
 import { extractScriptCode } from '../runtime/htmlScript';
 import { DEFAULT_BRANCHES, branchLabel } from '../branch';
+import { manualEdgeLabel } from '../../utils/edgeLabel';
 
 export { branchLabel };
 
@@ -80,7 +81,7 @@ export function createSimulator(project: Project): Simulator {
     if (node.type === 'elementNode') {
       const next = board.edges
         .filter((e) => e.source === node.id && index.has(e.target))
-        .map((e): Transition => ({ target: e.target, label: index.get(e.target)!.node.data?.label || 'Continue', kind: 'choice' }));
+        .map((e): Transition => ({ target: e.target, label: manualEdgeLabel(e) || index.get(e.target)!.node.data?.label || 'Continue', kind: 'choice' }));
       return { after, changed, error, next };
     }
     if (isConditionNode(node)) {

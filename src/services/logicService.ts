@@ -3,7 +3,11 @@ import { parseExpression } from '../core/expression/parser';
 import { evaluate } from '../core/expression/evaluator';
 
 // Evaluate conditions with the expression parser used by scripts.
-export const evaluateCondition = (conditionStr: string | undefined, variables: Variable[]): boolean => {
+export const evaluateCondition = (
+  conditionStr: string | undefined,
+  variables: Variable[],
+  onError?: (message: string) => void
+): boolean => {
   if (!conditionStr) return true;
 
   try {
@@ -16,8 +20,10 @@ export const evaluateCondition = (conditionStr: string | undefined, variables: V
       },
     });
     return Boolean(result);
-  } catch {
-    // Invalid conditions should stop matching without interrupting play mode.
+  } catch (err) {
+    // Invalid conditions stop matching without interrupting play mode; the
+    // caller can still surface why.
+    onError?.(`Condition "${conditionStr}": ${(err as Error)?.message || String(err)}`);
     return false;
   }
 };

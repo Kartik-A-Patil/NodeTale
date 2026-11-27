@@ -25,6 +25,7 @@ import AnnotationNode from '../../components/nodes/AnnotationNode';
 export interface NodeExecutionContext {
   board: Board;
   runtimeVars: Variable[];
+  onError?: (message: string) => void;
 }
 
 export interface NodeExecutionResult {
@@ -75,7 +76,7 @@ export const nodeRegistry: Record<NodeTypeKey, NodeRegistryEntry<any>> = {
           targetHandleId = branch.id;
           continue;
         }
-        if (evaluateCondition(branch.condition, ctx.runtimeVars)) {
+        if (evaluateCondition(branch.condition, ctx.runtimeVars, ctx.onError)) {
           targetHandleId = branch.id;
           break;
         }

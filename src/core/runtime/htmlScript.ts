@@ -12,3 +12,10 @@ export function extractScriptCode(htmlContent: string): string {
     .map((block) => block.textContent || (block as HTMLElement).innerText || '')
     .join('\n');
 }
+
+// The player sees the story text, never the script that drives it.
+export function stripScriptBlocks(htmlContent: string): string {
+  const doc = new DOMParser().parseFromString(htmlContent || '', 'text/html');
+  doc.querySelectorAll('pre').forEach((pre) => pre.remove());
+  return doc.body.innerHTML;
+}

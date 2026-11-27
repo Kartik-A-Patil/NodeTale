@@ -29,3 +29,9 @@ export function autoEdgeLabel(
   }
   return target?.label || 'Untitled';
 }
+
+/** The author's custom label for an edge, or null when it uses the auto label
+ *  (same rule FloatingEdge uses, so Play Mode shows exactly what the canvas shows). */
+export function manualEdgeLabel(edge: { label?: string; data?: Record<string, unknown> }): string | null {
+  return edge.data?.manualLabel && typeof edge.label === 'string' && edge.label.trim() ? edge.label : null;
+}
