@@ -1,4 +1,4 @@
-import JSZip from 'jszip';
+import type JSZip from 'jszip';
 import { Project } from '../models/story';
 import { getStorageAdapter } from './storage';
 import { saveProject, checkProjectNameExists } from './storageService';
@@ -102,7 +102,9 @@ export async function importProjectFile(file: File): Promise<Project> {
   return finalizeAndSaveImportedProject(importedProject);
 }
 
-const EXTENSION_MIME: Record<string, string> = {
+// File extension <-> media type, for assets going into and out of .zip exports.
+// Listed preferred-extension first, so reverse lookups pick jpg over jpeg.
+export const EXTENSION_MIME: Record<string, string> = {
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
   png: 'image/png',
@@ -112,10 +114,13 @@ const EXTENSION_MIME: Record<string, string> = {
   mp3: 'audio/mpeg',
   wav: 'audio/wav',
   ogg: 'audio/ogg',
-  webm: 'video/webm',
-  mp4: 'video/mp4',
-  mov: 'video/quicktime',
+  opus: 'audio/opus',
   m4a: 'audio/mp4',
+  weba: 'audio/webm',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  ogv: 'video/ogg',
+  mov: 'video/quicktime',
 };
 
 const getMimeFromPath = (path: string) => {
@@ -183,7 +188,9 @@ const rehydrateEmbeddedImages = async (project: Project, zip: JSZip) => {
 };
 
 const importZipProject = async (file: File): Promise<Project> => {
-  const zip = await JSZip.loadAsync(file);
+  // Loaded on demand: zip support is ~30 KB gzipped that most visits never use.
+  const { default: JSZipLib } = await import('jszip');
+  const zip = await JSZipLib.loadAsync(file);
   const projectFile = zip.file('Project.json');
   if (!projectFile) throw new Error('Project.json not found in ZIP');
 

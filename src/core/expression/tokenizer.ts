@@ -34,7 +34,8 @@ export function tokenize(source: string): Token[] {
       continue;
     }
 
-    if (ch === ' ' || ch === '\t' || ch === '\r') { i++; continue; }
+    // \u00a0: a non-breaking space typed in the story editor
+    if (ch === ' ' || ch === '\t' || ch === '\r' || ch === '\u00a0') { i++; continue; }
 
     // Line comment
     if (ch === '/' && source[i + 1] === '/') {

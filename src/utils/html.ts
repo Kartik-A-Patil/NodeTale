@@ -29,20 +29,25 @@ export const htmlToText = (html: string): string => parse(html).body.textContent
 export const VARIABLE_PATTERN = /\{\{\s*([^{}]+?)\s*\}\}/g;
 
 // Story text is HTML: `{{hp > 0}}` arrives as `{{hp &gt; 0}}`.
-const ENTITIES: Record<string, string> = { gt: '>', lt: '<', amp: '&', quot: '"', '#39': "'", apos: "'", nbsp: ' ' };
-export const decodeEntities = (s: string) => s.replace(/&(gt|lt|amp|quot|#39|apos|nbsp);/g, (_, e: string) => ENTITIES[e]);
+const ENTITIES: Record<string, string> = { gt: '>', lt: '<', amp: '&', quot: '"', apos: "'", nbsp: '\u00a0' };
+export const decodeEntities = (s: string) =>
+  s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, e: string) =>
+    e[0] === '#' ? String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : ENTITIES[e.toLowerCase()] ?? match);
+
+// <pre> blocks can't nest, and the editor writes them as plain <pre><code>…</code></pre>,
+// so a pattern finds them without building a DOM. That matters: this runs for
+// every scene on every validation, graph rebuild and simulator start, where
+// DOMParser was most of the cost.
+const PRE_BLOCK = /<pre\b[^>]*>([\s\S]*?)<\/pre>/gi;
 
 /** A scene's logic: the text of all its <pre> blocks, one after another. */
-export const extractScriptCode = (html: string): string =>
-  html?.includes('<pre') ? Array.from(parse(html).querySelectorAll('pre'), (pre) => pre.textContent || '').join('\n') : '';
+export const extractScriptCode = (html: string): string => {
+  if (!html?.includes('<pre')) return '';
+  return Array.from(html.matchAll(PRE_BLOCK), (m) => decodeEntities(m[1].replace(/<[^>]*>/g, ''))).join('\n');
+};
 
 /** The player sees the story text, never the logic that drives it. */
-export const stripScriptBlocks = (html: string): string => {
-  if (!html?.includes('<pre')) return html || '';
-  const doc = parse(html);
-  doc.querySelectorAll('pre').forEach((pre) => pre.remove());
-  return doc.body.innerHTML;
-};
+export const stripScriptBlocks = (html: string): string => (html?.includes('<pre') ? html.replace(PRE_BLOCK, '') : html || '');
 export const VARIABLE_TOKEN_CLASS = 'nt-variable-token';
 
 /** Elements holding blocks, not text: whitespace between their children is formatting. */

@@ -28,6 +28,13 @@ class Parser {
     return this.advance();
   }
 
+  expectEnd() {
+    this.skipStatementEnds();
+    if (!this.at('EOF')) {
+      throw new ExpressionSyntaxError(`Unexpected '${this.peek().value}' at position ${this.peek().pos}`);
+    }
+  }
+
   private skipStatementEnds() {
     while (this.at('STATEMENT_END')) this.advance();
   }
@@ -310,14 +317,36 @@ class Parser {
   }
 }
 
+// The same few scripts and conditions are parsed over and over (every
+// simulator visit, validation pass and text render), and the trees are never
+// mutated, so each source text is parsed once. Failures aren't cached: they
+// throw again, with the same message.
+// ponytail: cleared wholesale when full; an LRU only if huge stories thrash it.
+const CACHE_LIMIT = 2000;
+const exprCache = new Map<string, Expr>();
+const scriptCache = new Map<string, Stmt[]>();
+const cached = <T,>(cache: Map<string, T>, source: string, parse: () => T): T => {
+  let hit = cache.get(source);
+  if (hit === undefined) {
+    hit = parse();
+    if (cache.size >= CACHE_LIMIT) cache.clear();
+    cache.set(source, hit);
+  }
+  return hit;
+};
+
 export function parseExpression(source: string): Expr {
-  const parser = new Parser(tokenize(source));
-  const expr = parser.parseExpression();
-  return expr;
+  return cached(exprCache, source, () => {
+    const parser = new Parser(tokenize(source));
+    const expr = parser.parseExpression();
+    // A condition is one expression: `gold > 5 junk` is an error, not `gold > 5`.
+    parser.expectEnd();
+    return expr;
+  });
 }
 
 export function parseScript(source: string): Stmt[] {
-  return new Parser(tokenize(source)).parseProgram();
+  return cached(scriptCache, source, () => new Parser(tokenize(source)).parseProgram());
 }
 
 export { ExpressionSyntaxError } from './tokenizer';

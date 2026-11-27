@@ -1,7 +1,6 @@
 import { Project } from '../models/story';
 import { compactProject } from '../services/storageService';
-import JSZip from 'jszip';
-import { saveAs } from 'file-saver';
+import { EXTENSION_MIME } from '../services/projectImport';
 import { getStorageAdapter } from '../services/storage';
 
 const sanitizeProjectForExport = (project: Project, includeAssets: boolean): Project => {
@@ -13,22 +12,26 @@ const sanitizeProjectForExport = (project: Project, includeAssets: boolean): Pro
     return cloned;
 };
 
+// A plain <a download>: every browser and Electron support it, no library needed.
+const downloadBlob = (blob: Blob, fileName: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+};
+
 export const exportProject = (project: Project) => {
     const sanitized = sanitizeProjectForExport(project, false);
     const jsonString = JSON.stringify(sanitized); // no pretty print
-    const blob = new Blob([jsonString], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute('href', url);
-    downloadAnchorNode.setAttribute('download', project.name.replace(/\s+/g, '_') + '.json');
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
-    URL.revokeObjectURL(url);
+    downloadBlob(new Blob([jsonString], { type: 'application/json' }), project.name.replace(/\s+/g, '_') + '.json');
 };
 
 export const exportProjectAsZip = async (project: Project, includeAssets: boolean) => {
+    const { default: JSZip } = await import('jszip');
     const zip = new JSZip();
     
     // Sanitize upfront to drop bulky or unused fields
@@ -48,27 +51,8 @@ export const exportProjectAsZip = async (project: Project, includeAssets: boolea
         return { type, data };
     };
 
-    // Helper to get extension from mime type
-    const getExtension = (mimeType: string) => {
-        switch (mimeType) {
-            case 'image/jpeg': return 'jpg';
-            case 'image/png': return 'png';
-            case 'image/gif': return 'gif';
-            case 'image/webp': return 'webp';
-            case 'image/svg+xml': return 'svg';
-            case 'audio/mpeg': return 'mp3';
-            case 'audio/wav': return 'wav';
-            case 'audio/ogg': return 'ogg';
-            case 'audio/webm': return 'webm';
-            case 'audio/opus': return 'opus';
-            case 'audio/mp4': return 'm4a';
-            case 'video/mp4': return 'mp4';
-            case 'video/webm': return 'webm';
-            case 'video/ogg': return 'ogv';
-            case 'video/quicktime': return 'mov';
-            default: return 'bin';
-        }
-    };
+    const getExtension = (mimeType: string) =>
+        Object.keys(EXTENSION_MIME).find((ext) => EXTENSION_MIME[ext] === mimeType.split(';')[0]) ?? 'bin';
 
     // 1. Handle Cover Image (always strip from JSON, optionally export as file)
     if (projectToSave.coverImage && projectToSave.coverImage.startsWith('data:')) {
@@ -108,7 +92,6 @@ export const exportProjectAsZip = async (project: Project, includeAssets: boolea
                 // If it has a Blob URL (modern), fetch via ID.
                 
                 let blob: Blob | null = null;
-                const ext = getExtension(asset.type);
 
                 if (asset.url && asset.url.startsWith('data:')) {
                      // Fallback for non-migrated assets?
@@ -122,6 +105,7 @@ export const exportProjectAsZip = async (project: Project, includeAssets: boolea
                 }
 
                 if (blob) {
+                    const ext = getExtension(blob.type);
                     const folderPath = getFolderPath(asset.parentId);
                     const fileName = asset.name; 
                     const hasExt = fileName.includes('.');
@@ -212,5 +196,5 @@ export const exportProjectAsZip = async (project: Project, includeAssets: boolea
 
     // Generate ZIP
     const content = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
-    saveAs(content, `${project.name.replace(/\s+/g, "_")}.zip`);
+    downloadBlob(content, `${project.name.replace(/\s+/g, '_')}.zip`);
 };
