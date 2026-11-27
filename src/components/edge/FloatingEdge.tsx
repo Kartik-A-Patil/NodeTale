@@ -1,8 +1,9 @@
 import { memo, useCallback, useMemo } from 'react';
 import { useStore, getBezierPath, getStraightPath, getSmoothStepPath, EdgeProps, Node, Position, EdgeLabelRenderer, ReactFlowState } from 'reactflow';
-import { Pencil, Sparkles } from 'lucide-react';
+import { Pencil, Sparkles, Lock, Zap, SlidersHorizontal } from 'lucide-react';
 import { getEdgeParams, HandlePoint, NodeGeometry } from '../../utils/EdgeUtils';
-import { autoEdgeLabel } from '../../utils/edgeLabel';
+import { autoEdgeLabel, choiceRulesOf, ChoiceRules } from '../../utils/edgeLabel';
+import { ChoiceRulesPopover } from './ChoiceRulesPopover';
 import { DEFAULT_BRANCHES } from '../../core/branch';
 import { Branch } from '../../models/story';
 import { useEditor } from '../../editor/EditorContext';
@@ -118,6 +119,11 @@ function FloatingEdge({ id, source, target, sourceHandleId, markerEnd, style, se
       [edgePath, labelX, labelY] = getBezierPath(params);
   }
 
+  const rules = choiceRulesOf({ data });
+  const isChoice = sourceNode.type === 'elementNode';
+  const updateRules = (patch: Partial<ChoiceRules>) =>
+    updateEdge(id, (e) => ({ ...e, data: { ...(e.data || {}), ...patch } }), `${id}:rules`);
+
   const updateLabel = (newLabel: string) => {
     updateEdge(id, (e) => ({ ...e, label: newLabel }), `${id}:label`);
   };
@@ -189,6 +195,12 @@ function FloatingEdge({ id, source, target, sourceHandleId, markerEnd, style, se
           className="nodrag nopan group relative"
           onMouseDown={(e) => e.stopPropagation()}
         >
+          {isChoice && (rules.condition?.trim() || rules.effect?.trim()) && (
+            <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 flex gap-0.5 text-orange-400 pointer-events-none" aria-hidden>
+              {rules.condition?.trim() && <Lock size={10} />}
+              {rules.effect?.trim() && <Zap size={10} />}
+            </div>
+          )}
           {isManual ? (
             <input
               className="nodrag w-full bg-transparent border-none outline-none px-2.5 py-1.5 text-xs text-center text-zinc-300 placeholder-zinc-500"
@@ -209,6 +221,17 @@ function FloatingEdge({ id, source, target, sourceHandleId, markerEnd, style, se
           >
             {isManual ? <Sparkles size={10} /> : <Pencil size={10} />}
           </button>
+          {isChoice && (
+            <ChoiceRulesPopover rules={rules} onChange={updateRules}>
+              <button
+                title="Choice rules: when it can be taken, what it does"
+                onClick={(e) => e.stopPropagation()}
+                className="nodrag absolute -top-2 -left-2 p-0.5 rounded-full bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 transition-opacity"
+              >
+                <SlidersHorizontal size={10} />
+              </button>
+            </ChoiceRulesPopover>
+          )}
         </div>
       </EdgeLabelRenderer>
     </>

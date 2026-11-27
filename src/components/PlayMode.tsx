@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { Project, ElementNodeData, Asset } from "../models/story";
-import { replaceVariablesInText } from "../services/logicService";
 import { sanitizeHtml } from "../utils/html";
 import { usePlayModeLogic } from "../hooks/usePlayMode";
 import { PlayControls } from "./playmode/PlayControls";
@@ -10,6 +9,7 @@ import { StoryNode } from "./playmode/StoryNode";
 
 import { useAssetUrl } from "../hooks/useAssetUrl";
 import { stripScriptBlocks } from "../core/runtime/htmlScript";
+import { interpolateText } from "../core/runtime/scriptInterpreter";
 
 interface PlayModeProps {
   project: Project;
@@ -53,6 +53,7 @@ const PlayMode: React.FC<PlayModeProps> = ({
   const {
     currentNode,
     runtimeVars,
+    values,
     getOptions,
     handleOptionClick,
     restart,
@@ -108,9 +109,9 @@ const PlayMode: React.FC<PlayModeProps> = ({
 
   // Content processing
   // Imported projects can carry arbitrary HTML; never render it unsanitized.
-  const processedContent = sanitizeHtml(replaceVariablesInText(
+  const processedContent = sanitizeHtml(interpolateText(
     stripScriptBlocks(elementData.content),
-    runtimeVars
+    values
   ));
 
   return (

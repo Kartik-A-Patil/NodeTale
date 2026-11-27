@@ -1,13 +1,12 @@
-import { Project, Variable, StoryNode, Board, Asset } from '../../models/story';
-import { executeNode } from '../nodes/nodeRegistry';
-import { runScript } from './scriptInterpreter';
-import { toJSValue, applyScopeToVariables } from './variableCoercion';
-import { extractScriptCode } from './htmlScript';
-import { manualEdgeLabel } from '../../utils/edgeLabel';
+import { Project, Variable, StoryNode, Asset } from '../../models/story';
+import { createSimulator, resolveVisibleNode, Simulator, Transition, Values } from '../sim/simulate';
+import { mathRng, Rng } from './scriptInterpreter';
 
 interface HistoryItem {
   nodeId: string;
-  variables: Variable[];
+  values: Values;
+  /** The scene's choices as they were, so Back doesn't re-run its script. */
+  choices: Transition[];
 }
 
 export interface PlayError {
@@ -19,98 +18,89 @@ export interface PlayError {
 export interface RuntimeState {
   currentNode: StoryNode | undefined;
   runtimeVars: Variable[];
+  /** Variable values by name, for text interpolation. */
+  values: Values;
   canGoBack: boolean;
   projectAssets: Asset[];
   errors: PlayError[];
 }
 
-const MAX_ERRORS = 20;
-
 export interface StoryOption {
   label: string;
   targetId: string;
+  edgeId: string;
+  locked?: boolean;
+  lockedReason?: string;
 }
 
-// Pure-TS story playback engine — no React. usePlayMode.ts wraps this in a thin
-// hook that just re-renders on getState(). Snapshots `project` at construction;
-// does not react to later edits to that object.
+const MAX_ERRORS = 20;
+
+// Story playback: a thin stateful walk over the shared engine (core/sim/simulate),
+// so Play Mode and every analysis view follow the exact same rules. No React;
+// usePlayMode.ts re-renders on getState(). Snapshots `project` at construction.
 export class StoryRuntime {
   private project: Project;
+  private sim: Simulator;
+  private rng: Rng;
   private currentNodeId: string | null = null;
   private initialStartNodeId: string | null = null;
   private history: HistoryItem[] = [];
-  private runtimeVars: Variable[];
+  private values: Values;
+  private choices: Transition[] = [];
   private errors: PlayError[] = [];
 
-  constructor(project: Project, startNodeId?: string | null) {
+  constructor(project: Project, startNodeId?: string | null, rng: Rng = mathRng) {
     this.project = project;
-    this.runtimeVars = JSON.parse(JSON.stringify(project.variables));
+    this.sim = createSimulator(project);
+    this.rng = rng;
+    this.values = this.sim.initialValues();
     this.start(startNodeId);
   }
 
-  private findNode(id: string): { node: StoryNode; board: Board } | null {
-    for (const board of this.project.boards) {
-      const found = board.nodes.find((n) => n.id === id);
-      if (found) return { node: found, board };
-    }
-    return null;
+  private reportError(nodeId: string, message: string) {
+    const label = this.sim.node(nodeId)?.node.data?.label || 'Untitled';
+    console.warn(`[PlayMode] ${label}: ${message}`);
+    this.errors = [...this.errors, { nodeId, nodeLabel: label, message }].slice(-MAX_ERRORS);
   }
 
-  private reportError(node: StoryNode, message: string) {
-    console.warn(`[PlayMode] ${node.data?.label || node.id}: ${message}`);
-    this.errors = [...this.errors, { nodeId: node.id, nodeLabel: node.data?.label || 'Untitled', message }].slice(-MAX_ERRORS);
-  }
-
-  private runScriptContent(node: StoryNode, content: string) {
-    const code = extractScriptCode(content);
-    if (!code) return;
-
-    const readScope: Record<string, unknown> = {};
-    this.runtimeVars.forEach((v) => { readScope[v.name] = toJSValue(v); });
-
-    const { changes, error } = runScript(code, readScope);
-    if (error) this.reportError(node, error);
-    if (Object.keys(changes).length > 0) {
-      this.runtimeVars = applyScopeToVariables(this.runtimeVars, changes);
-    }
-  }
-
-  // Auto-advances through non-interactive nodes (jump/condition) until landing on
-  // an interactive one or a dead end. Runs synchronously, so a cyclic graph would
-  // hang the thread without the visited-set cycle check below.
+  // Runs nodes, auto-advancing through condition/jump nodes, until landing on
+  // a scene or a dead end. The visited set stops a loop of logic nodes from
+  // hanging the thread.
   private enterNode(nodeId: string) {
-    this.currentNodeId = nodeId;
     const visited = new Set<string>();
+    let id: string | undefined = nodeId;
 
-    while (this.currentNodeId) {
-      if (visited.has(this.currentNodeId)) {
-        const looped = this.findNode(this.currentNodeId)?.node;
-        if (looped) this.reportError(looped, 'Logic loops back on itself without reaching a scene; stopped here.');
+    while (id) {
+      this.currentNodeId = id;
+      if (visited.has(id)) {
+        this.reportError(id, 'Logic loops back on itself without reaching a scene; stopped here.');
+        this.choices = [];
         return;
       }
-      visited.add(this.currentNodeId);
+      visited.add(id);
 
-      const ctx = this.findNode(this.currentNodeId);
-      if (!ctx) return;
-      const { node, board } = ctx;
-
-      const result = executeNode(node, {
-        board,
-        runtimeVars: this.runtimeVars,
-        onError: (message) => this.reportError(node, message),
-      });
-      if (result.scriptContent !== undefined) {
-        this.runScriptContent(node, result.scriptContent);
-      }
-
-      if (!result.nextNodeId) {
-        if (node.type === 'conditionNode') this.reportError(node, 'No branch matched and there is no connected Else; the story ends here.');
-        else if (node.type === 'jumpNode') this.reportError(node, 'Jump has no target; the story ends here.');
+      const node = this.sim.node(id)?.node;
+      if (!node) {
+        this.choices = [];
         return;
       }
+      const result = this.sim.step(id, this.values, this.rng);
+      result.errors.forEach((m) => this.reportError(node.id, m));
+      this.values = result.after;
 
-      this.history.push({ nodeId: node.id, variables: JSON.parse(JSON.stringify(this.runtimeVars)) });
-      this.currentNodeId = result.nextNodeId;
+      if (node.type === 'elementNode') {
+        this.choices = result.next;
+        return;
+      }
+      const next: Transition | undefined = result.next[0];
+      if (!next) {
+        if (node.type === 'conditionNode') this.reportError(node.id, 'No branch matched and there is no connected Else; the story ends here.');
+        else if (node.type === 'jumpNode') this.reportError(node.id, 'Jump has no target; the story ends here.');
+        this.choices = [];
+        return;
+      }
+      this.history.push({ nodeId: node.id, values: this.values, choices: [] });
+      id = next.target;
     }
   }
 
@@ -129,84 +119,54 @@ export class StoryRuntime {
     this.enterNode(startNode.id);
   }
 
-  choose(targetId: string) {
-    if (this.currentNodeId) {
-      this.history.push({ nodeId: this.currentNodeId, variables: JSON.parse(JSON.stringify(this.runtimeVars)) });
-    }
-    this.enterNode(targetId);
+  /** Take a choice by its connection id. Locked or unknown choices do nothing. */
+  choose(edgeId: string) {
+    const choice = this.choices.find((c) => c.edgeId === edgeId);
+    if (!choice || choice.locked || !this.currentNodeId) return;
+    this.history.push({ nodeId: this.currentNodeId, values: this.values, choices: this.choices });
+    const { values, error } = this.sim.follow(choice, this.values, this.rng);
+    if (error) this.reportError(this.currentNodeId, error);
+    this.values = values;
+    this.enterNode(choice.target);
   }
 
   back() {
-    if (this.history.length === 0) return;
-
-    const newHistory = [...this.history];
-    let prevItem = newHistory.pop();
-
-    // Skip logic nodes to find the last interactive node
-    while (prevItem) {
-      const nodeContext = this.findNode(prevItem.nodeId);
-      if (nodeContext && nodeContext.node.type === 'elementNode') break;
-      if (newHistory.length === 0) break;
-      prevItem = newHistory.pop();
-    }
-
-    if (prevItem) {
-      this.history = newHistory;
-      // Set directly, not via enterNode: no re-running the node's script.
-      this.currentNodeId = prevItem.nodeId;
-      this.runtimeVars = prevItem.variables;
+    const history = [...this.history];
+    // Skip logic nodes back to the last scene the player saw.
+    while (history.length) {
+      const item = history.pop()!;
+      if (this.sim.node(item.nodeId)?.node.type !== 'elementNode' && history.length) continue;
+      this.history = history;
+      this.currentNodeId = item.nodeId;
+      this.values = item.values;
+      this.choices = item.choices;
+      return;
     }
   }
 
   restart() {
     if (!this.initialStartNodeId) return;
     this.history = [];
-    this.runtimeVars = JSON.parse(JSON.stringify(this.project.variables));
+    this.values = this.sim.initialValues();
     this.errors = [];
     this.enterNode(this.initialStartNodeId);
   }
 
-  // A choice into a condition/jump node must show what the player actually
-  // lands on, not that logic node's own name — same reasoning as enterNode,
-  // but read-only (no script side effects; condition/jump nodes have none).
-  private resolveDisplayNode(nodeId: string): StoryNode | null {
-    let current = this.findNode(nodeId)?.node ?? null;
-    const visited = new Set<string>();
-    while (current && current.type !== 'elementNode') {
-      if (visited.has(current.id)) return null;
-      visited.add(current.id);
-      const ctx = this.findNode(current.id);
-      if (!ctx) return null;
-      const result = executeNode(ctx.node, { board: ctx.board, runtimeVars: this.runtimeVars });
-      current = result.nextNodeId ? this.findNode(result.nextNodeId)?.node ?? null : null;
-    }
-    return current;
-  }
-
   getOptions(): StoryOption[] {
-    const ctx = this.currentNodeId ? this.findNode(this.currentNodeId) : null;
-    if (!ctx || ctx.node.type !== 'elementNode') return [];
-
-    const { node: currentNode, board } = ctx;
-    const edges = board.edges.filter((e) => e.source === currentNode.id);
-
-    return edges
-      .map((edge) => {
-        const target = board.nodes.find((n) => n.id === edge.target);
-        if (!target) return { label: '', targetId: undefined };
-        const custom = manualEdgeLabel(edge);
-        if (custom) return { label: custom, targetId: target.id };
-        const resolved = target.type === 'elementNode' ? target : this.resolveDisplayNode(target.id);
-        return { label: resolved?.data?.label || 'Continue', targetId: target.id };
-      })
-      .filter((opt): opt is StoryOption => !!opt.targetId);
+    return this.choices
+      .filter((c) => !c.hidden && c.edgeId)
+      .map((c) => {
+        // A choice into a condition/jump node names the scene the player really lands on.
+        const label = c.customLabel ? c.label : resolveVisibleNode(this.sim, c.target, this.values)?.data?.label || c.label;
+        return { label, targetId: c.target, edgeId: c.edgeId!, locked: c.locked, lockedReason: c.lockedReason };
+      });
   }
 
   getState(): RuntimeState {
-    const ctx = this.currentNodeId ? this.findNode(this.currentNodeId) : null;
     return {
-      currentNode: ctx?.node,
-      runtimeVars: this.runtimeVars,
+      currentNode: this.currentNodeId ? this.sim.node(this.currentNodeId)?.node : undefined,
+      runtimeVars: this.sim.toVariables(this.values),
+      values: this.values,
       canGoBack: this.history.length > 0,
       projectAssets: this.project.assets,
       errors: this.errors,

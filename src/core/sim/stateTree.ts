@@ -1,5 +1,5 @@
 import { Branch } from '../../models/story';
-import { Simulator, Transition, Values } from './simulate';
+import { Simulator, StepResult, Transition, Values, stepOutcomes } from './simulate';
 
 // The story as a tree of *states*: every node is a scene together with the
 // variable values the story has when it gets there on that path. The same
@@ -61,8 +61,7 @@ export function buildStateTree(sim: Simulator, initial: Values, budget = DEFAULT
   let size = 0;
   let truncated = false;
 
-  const make = (key: string, nodeId: string, before: Values, via: Transition | undefined, onPath: Map<string, string>, visit: number) => {
-    const result = sim.step(nodeId, before);
+  const make = (key: string, nodeId: string, before: Values, result: StepResult, via: Transition | undefined, onPath: Map<string, string>, visit: number) => {
     const visitKey = `${nodeId}|${stateKey(result.after)}`;
     const node = sim.node(nodeId)?.node;
     const isCondition = node?.type === 'conditionNode';
@@ -71,7 +70,7 @@ export function buildStateTree(sim: Simulator, initial: Values, budget = DEFAULT
       branchTaken: result.branchTaken,
       visit,
       noBranch: isCondition && !result.branchTaken,
-      isEnding: !isCondition && result.next.length === 0,
+      isEnding: !isCondition && result.next.every((t) => t.locked),
       children: [] as StateTreeNode[],
     };
     let treeNode: StateTreeNode;
@@ -83,37 +82,43 @@ export function buildStateTree(sim: Simulator, initial: Values, budget = DEFAULT
       size++;
     }
     byKey.set(key, treeNode);
-    return { treeNode, next: result.next, visitKey };
+    // Locked choices can't be taken, so they lead nowhere in the tree.
+    return { treeNode, next: result.next.filter((t) => !t.locked), visitKey };
   };
 
-  const rootMade = make('0', sim.startId, initial, undefined, new Map(), 1);
+  // ponytail: luck in the Start scene's own script takes its first outcome
+  // here (the tree has one root); every later chance()/random() branches.
+  const rootMade = make('0', sim.startId, initial, sim.step(sim.startId, initial), undefined, new Map(), 1);
   const queue: { parent: StateTreeNode; next: Transition[]; onPath: Map<string, string>; visits: Map<string, number> }[] = [
     { parent: rootMade.treeNode, next: rootMade.next, onPath: new Map([[rootMade.visitKey, '0']]), visits: new Map([[sim.startId, 1]]) },
   ];
 
   for (let head = 0; head < queue.length; head++) {
     const { parent, next, onPath, visits } = queue[head];
-    for (let i = 0; i < next.length; i++) {
-      if (size >= budget) {
-        truncated = true;
-        const key = `${parent.key}.${i}`;
-        const stub: StateTreeNode = {
-          key, nodeId: next[i].target, kind: 'more', via: next[i], before: parent.after, after: parent.after,
-          changed: [], noBranch: false, isEnding: false, children: [], visit: (visits.get(next[i].target) ?? 0) + 1,
-        };
-        byKey.set(key, stub);
-        parent.children.push(stub);
-        break;
-      }
-      const visit = (visits.get(next[i].target) ?? 0) + 1;
-      const made = make(`${parent.key}.${i}`, next[i].target, parent.after, next[i], onPath, visit);
-      parent.children.push(made.treeNode);
-      if (made.treeNode.kind === 'scene' && made.next.length) {
-        queue.push({
-          parent: made.treeNode, next: made.next,
-          onPath: new Map(onPath).set(made.visitKey, made.treeNode.key),
-          visits: new Map(visits).set(next[i].target, visit),
-        });
+    let i = 0;
+    outer: for (const t of next) {
+      for (const { before, result } of stepOutcomes(sim, t, parent.after)) {
+        const key = `${parent.key}.${i++}`;
+        const visit = (visits.get(t.target) ?? 0) + 1;
+        if (size >= budget) {
+          truncated = true;
+          const stub: StateTreeNode = {
+            key, nodeId: t.target, kind: 'more', via: t, before, after: before,
+            changed: [], noBranch: false, isEnding: false, children: [], visit,
+          };
+          byKey.set(key, stub);
+          parent.children.push(stub);
+          break outer;
+        }
+        const made = make(key, t.target, before, result, t, onPath, visit);
+        parent.children.push(made.treeNode);
+        if (made.treeNode.kind === 'scene' && made.next.length) {
+          queue.push({
+            parent: made.treeNode, next: made.next,
+            onPath: new Map(onPath).set(made.visitKey, made.treeNode.key),
+            visits: new Map(visits).set(t.target, visit),
+          });
+        }
       }
     }
   }

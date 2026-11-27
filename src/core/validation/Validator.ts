@@ -4,6 +4,7 @@ import { parseExpression, parseScript, ExpressionSyntaxError } from '../expressi
 import { collectExprIdentifiers, collectScriptIdentifiers } from './identifierCollector';
 import { extractScriptCode } from '../runtime/htmlScript';
 import { validateVariableReferences } from '../../services/logicService';
+import { choiceRulesOf } from '../../utils/edgeLabel';
 
 // Story-flow node types — the ones reachability/graph rules care about.
 // commentNode/sectionNode/annotationNode are editor-only decoration.
@@ -154,6 +155,29 @@ function ruleUnknownVariables(project: Project): Diagnostic[] {
               });
             }
           }
+        }
+
+        // A scene's choices: their conditions and effects.
+        for (const edge of board.edges) {
+          if (edge.source !== node.id) continue;
+          const { condition, effect } = choiceRulesOf(edge);
+          const check = (src: string | undefined, what: string, parse: (s: string) => Set<string>) => {
+            if (!src?.trim()) return;
+            try {
+              flagMissing(parse(src), board, node, what);
+            } catch (err) {
+              if (!(err instanceof ExpressionSyntaxError)) return;
+              diagnostics.push({
+                severity: 'error',
+                code: 'choice-syntax-error',
+                message: `${what} on "${node.data.label}" has a syntax error: ${err.message}`,
+                boardId: board.id,
+                nodeId: node.id,
+              });
+            }
+          };
+          check(condition, `Choice condition "${condition}"`, (c) => collectExprIdentifiers(parseExpression(c)));
+          check(effect, 'Choice effect', (e) => collectScriptIdentifiers(parseScript(e)));
         }
 
         const textResult = validateVariableReferences(node.data.content, project.variables);

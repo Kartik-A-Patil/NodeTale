@@ -10,10 +10,9 @@ import {
   SectionNodeData,
   AnnotationNodeData,
   Board,
-  Variable,
 } from '../../models/story';
 import { CanvasNode } from '../../adapters/reactFlow';
-import { evaluateCondition } from '../../services/logicService';
+import { evaluateCondition, Rng } from '../runtime/scriptInterpreter';
 import { DEFAULT_BRANCHES } from '../branch';
 import ElementNode from '../../components/nodes/ElementNode';
 import ConditionNode from '../../components/nodes/ConditionNode';
@@ -24,7 +23,10 @@ import AnnotationNode from '../../components/nodes/AnnotationNode';
 
 export interface NodeExecutionContext {
   board: Board;
-  runtimeVars: Variable[];
+  /** Variable values by name. */
+  values: Record<string, unknown>;
+  /** Luck for chance()/random() in branch conditions. */
+  rng?: Rng;
   onError?: (message: string) => void;
 }
 
@@ -76,7 +78,7 @@ export const nodeRegistry: Record<NodeTypeKey, NodeRegistryEntry<any>> = {
           targetHandleId = branch.id;
           continue;
         }
-        if (evaluateCondition(branch.condition, ctx.runtimeVars, ctx.onError)) {
+        if (evaluateCondition(branch.condition, ctx.values, { rng: ctx.rng, onError: ctx.onError })) {
           targetHandleId = branch.id;
           break;
         }

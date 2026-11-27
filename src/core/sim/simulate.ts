@@ -1,24 +1,37 @@
 import { Project, StoryNode, Board, Variable, Branch, isConditionNode } from '../../models/story';
 import { executeNode } from '../nodes/nodeRegistry';
-import { runScript } from '../runtime/scriptInterpreter';
+import { runScript, evaluateCondition, firstOutcomeRng, Rng } from '../runtime/scriptInterpreter';
 import { extractScriptCode } from '../runtime/htmlScript';
 import { DEFAULT_BRANCHES, branchLabel } from '../branch';
-import { manualEdgeLabel } from '../../utils/edgeLabel';
+import { manualEdgeLabel, choiceRulesOf } from '../../utils/edgeLabel';
+
+export type { ChoiceRules } from '../../utils/edgeLabel';
 
 export { branchLabel };
 
-// Story state simulation. `step` applies exactly the runtime's rules (it calls
-// the same executeNode / runScript as StoryRuntime), and both the automatic
-// analysis and the interactive walkthrough are built on it, so what they show
-// is what Play mode would do.
+// The story engine. `step` (enter a node) and `follow` (take a choice) are the
+// only rules there are: Play Mode (StoryRuntime), the automatic analysis and
+// the interactive walkthrough all run on them, so what they show is what Play
+// mode does.
 
 export type Values = Record<string, unknown>;
 
 export interface Transition {
   target: string;
-  /** Choice text (the target scene's label, as Play shows it) or the branch taken. */
+  /** Choice text (custom edge label, else the target scene's label) or the branch taken. */
   label: string;
   kind: 'choice' | 'branch' | 'jump';
+  /** Choices: the connection this is. */
+  edgeId?: string;
+  /** Choices: `label` is the author's own text, not derived from the target. */
+  customLabel?: boolean;
+  /** Choices whose condition doesn't hold right now: they can't be taken. */
+  locked?: boolean;
+  /** Locked, and the author asked to hide it rather than show it greyed out. */
+  hidden?: boolean;
+  lockedReason?: string;
+  /** Script that runs when this choice is taken. */
+  effect?: string;
 }
 
 export interface StepResult {
@@ -26,6 +39,8 @@ export interface StepResult {
   after: Values;
   /** Names whose value changed on entering. */
   changed: string[];
+  /** Every problem met on entering, in order; `error` is them joined. */
+  errors: string[];
   error?: string;
   /** Where the story can go next. Condition/jump nodes have at most one (they auto-advance). */
   next: Transition[];
@@ -38,7 +53,11 @@ export interface Simulator {
   variables: Variable[];
   node: (id: string) => { node: StoryNode; board: Board } | undefined;
   initialValues: (overrides?: Values) => Values;
-  step: (nodeId: string, values: Values) => StepResult;
+  toVariables: (values: Values) => Variable[];
+  /** Enter a node. Without an rng, chance()/random() take their first outcome. */
+  step: (nodeId: string, values: Values, rng?: Rng) => StepResult;
+  /** Take a transition: runs a choice's effect. The values to enter `t.target` with. */
+  follow: (t: Transition, values: Values, rng?: Rng) => { values: Values; error?: string };
 }
 
 export const valuesEqual = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
@@ -60,42 +79,70 @@ export function createSimulator(project: Project): Simulator {
 
   const toVariables = (values: Values): Variable[] => variables.map((v) => ({ ...v, value: (values[v.name] ?? v.value) as Variable['value'] }));
 
-  const step = (nodeId: string, values: Values): StepResult => {
+  // A scene's choices. Conditions get no rng: a choice must not flicker
+  // between locked and open each time it is looked at.
+  const choicesOf = (node: StoryNode, board: Board, values: Values, errors: string[]): Transition[] =>
+    board.edges
+      .filter((e) => e.source === node.id && index.has(e.target))
+      .map((e): Transition => {
+        const rules = choiceRulesOf(e);
+        const open = evaluateCondition(rules.condition, values, { onError: (m) => errors.push(m) });
+        const custom = manualEdgeLabel(e);
+        return {
+          target: e.target,
+          label: custom || index.get(e.target)!.node.data?.label || 'Continue',
+          kind: 'choice',
+          edgeId: e.id,
+          customLabel: !!custom,
+          effect: rules.effect?.trim() || undefined,
+          ...(open ? {} : {
+            locked: true,
+            hidden: !!rules.hideWhenLocked,
+            lockedReason: rules.lockedText?.trim() || `Needs ${rules.condition!.trim()}`,
+          }),
+        };
+      });
+
+  const step = (nodeId: string, values: Values, rng: Rng = firstOutcomeRng): StepResult => {
     const ctx = index.get(nodeId);
-    if (!ctx) return { after: values, changed: [], next: [], error: 'Scene not found' };
+    if (!ctx) return { after: values, changed: [], errors: ['Scene not found'], error: 'Scene not found', next: [] };
     const { node, board } = ctx;
-    const result = executeNode(node, { board, runtimeVars: toVariables(values) });
+    const errors: string[] = [];
+    const result = executeNode(node, { board, values, rng, onError: (m) => errors.push(m) });
 
     let after = values;
-    let error: string | undefined;
     if (result.scriptContent !== undefined) {
       const code = scriptOf(nodeId, result.scriptContent);
       if (code) {
-        const run = runScript(code, values);
-        error = run.error;
+        const run = runScript(code, values, rng);
+        if (run.error) errors.push(run.error);
         if (Object.keys(run.changes).length) after = { ...values, ...run.changes };
       }
     }
     const changed = variables.map((v) => v.name).filter((n) => !valuesEqual(values[n], after[n]));
+    const done = (next: Transition[], branchTaken?: Branch): StepResult =>
+      ({ after, changed, errors, error: errors.length ? errors.join('; ') : undefined, next, branchTaken });
 
-    if (node.type === 'elementNode') {
-      const next = board.edges
-        .filter((e) => e.source === node.id && index.has(e.target))
-        .map((e): Transition => ({ target: e.target, label: manualEdgeLabel(e) || index.get(e.target)!.node.data?.label || 'Continue', kind: 'choice' }));
-      return { after, changed, error, next };
-    }
+    if (node.type === 'elementNode') return done(choicesOf(node, board, after, errors));
     if (isConditionNode(node)) {
       const edge = result.nextNodeId ? board.edges.find((e) => e.source === node.id && e.target === result.nextNodeId) : undefined;
       const branchTaken = edge ? (node.data.branches || DEFAULT_BRANCHES).find((b) => b.id === edge.sourceHandle) : undefined;
       const next = result.nextNodeId && index.has(result.nextNodeId)
         ? [{ target: result.nextNodeId, label: branchTaken ? branchLabel(branchTaken) : 'Branch', kind: 'branch' as const }]
         : [];
-      return { after, changed, error, next, branchTaken };
+      return done(next, branchTaken);
     }
     const next = result.nextNodeId && index.has(result.nextNodeId)
       ? [{ target: result.nextNodeId, label: `Jump to ${index.get(result.nextNodeId)!.node.data?.label}`, kind: 'jump' as const }]
       : [];
-    return { after, changed, error, next };
+    return done(next);
+  };
+
+  const follow = (t: Transition, values: Values, rng: Rng = firstOutcomeRng) => {
+    if (!t.effect) return { values };
+    const run = runScript(t.effect, values, rng);
+    const after = Object.keys(run.changes).length ? { ...values, ...run.changes } : values;
+    return run.error ? { values: after, error: `Choice "${t.label}": ${run.error}` } : { values: after };
   };
 
   return {
@@ -103,16 +150,57 @@ export function createSimulator(project: Project): Simulator {
     variables,
     node: (id) => index.get(id),
     initialValues: (overrides = {}) => Object.fromEntries(variables.map((v) => [v.name, v.name in overrides ? overrides[v.name] : v.value])),
+    toVariables,
     step,
+    follow,
   };
+}
+
+// ---------- luck: exploring every outcome of chance()/random() ----------
+
+/** Most outcomes explored for one step (dice in dice in dice multiply fast). */
+export const MAX_OUTCOMES = 16;
+
+// Small ranges are explored value by value (a d6 is six outcomes); larger
+// ones by their low end, middle and high end.
+const spread = (lo: number, hi: number): number[] =>
+  hi - lo < 6 ? Array.from({ length: hi - lo + 1 }, (_, i) => lo + i) : [lo, Math.round((lo + hi) / 2), hi];
+
+/**
+ * Runs `run` once per combination of luck it can meet: each chance() as both
+ * true and false, each random() over its spread. Replays from the start with a
+ * forced prefix of picks, so `run` needs no knowledge of this.
+ */
+export function enumerateOutcomes<T>(run: (rng: Rng) => T, limit = MAX_OUTCOMES): T[] {
+  const results: T[] = [];
+  const pending: number[][] = [[]];
+  while (pending.length && results.length < limit) {
+    const forced = pending.pop()!;
+    const picks: number[] = [];
+    const pick = <V>(options: V[]): V => {
+      const i = picks.length;
+      if (i >= forced.length) for (let alt = options.length - 1; alt > 0; alt--) pending.push([...picks, alt]);
+      const k = i < forced.length ? forced[i] : 0;
+      picks.push(k);
+      return options[k];
+    };
+    results.push(run({ int: (lo, hi) => pick(spread(lo, hi)), chance: () => pick([true, false]) }));
+  }
+  return results;
+}
+
+/** Every way entering `t.target` through `t` can turn out: effect outcomes x step outcomes. */
+export function stepOutcomes(sim: Simulator, t: Transition, values: Values): { before: Values; result: StepResult }[] {
+  return enumerateOutcomes((rng) => {
+    const before = sim.follow(t, values, rng).values;
+    return { before, result: sim.step(t.target, before, rng) };
+  });
 }
 
 // A condition/jump node is a "logic check" — StoryRuntime skips straight
 // through it, the player never sees it. A generous but finite bound: a real
 // story won't chain this many in a row, and it also catches loops that
-// `visited` alone wouldn't (a cycle through 3+ distinct nodes still
-// terminates once `visited` has seen them all, but this is the belt to that
-// suspenders in case that reasoning is ever wrong).
+// `visited` alone wouldn't.
 const MAX_RESOLVE_HOPS = 64;
 
 /**
@@ -168,28 +256,29 @@ export function analyzeStates(project: Project, overrides?: Values): StateAnalys
   const sim = createSimulator(project);
   const byNode = new Map<string, NodeStates>();
   const seen = new Set<string>();
+  const expanded = new Set<string>();
   let visits = 0;
   let incomplete = false;
 
   if (!sim.startId) return { startId: null, byNode, incomplete, visits };
 
   // BFS over (scene, state). A repeated pair is a loop the story can repeat
-  // forever with no new state, so it is explored once.
-  const queue: { nodeId: string; values: Values; route: string[] }[] = [
-    { nodeId: sim.startId, values: sim.initialValues(overrides), route: [] },
-  ];
+  // forever with no new state, so it is explored once. Luck fans out: every
+  // outcome of a chance()/random() is its own queue entry.
+  const initial = sim.initialValues(overrides);
+  const queue: { nodeId: string; values: Values; result: StepResult; route: string[] }[] =
+    enumerateOutcomes((rng) => sim.step(sim.startId!, initial, rng)).map((result) => ({ nodeId: sim.startId!, values: initial, result, route: [] }));
   for (let head = 0; head < queue.length; head++) {
     if (visits >= MAX_VISITS) {
       incomplete = true;
       break;
     }
-    const { nodeId, values, route } = queue[head];
-    const visitKey = `${nodeId}|${keyOf(values)}`;
+    const { nodeId, values, result, route } = queue[head];
+    const visitKey = `${nodeId}|${keyOf(values)}|${keyOf(result.after)}`;
     if (seen.has(visitKey)) continue;
     seen.add(visitKey);
     visits++;
 
-    const result = sim.step(nodeId, values);
     let entry = byNode.get(nodeId);
     if (!entry) byNode.set(nodeId, (entry = { states: [], truncated: false, routes: [], errors: [] }));
     const afterKey = keyOf(result.after);
@@ -201,7 +290,7 @@ export function analyzeStates(project: Project, overrides?: Values): StateAnalys
         entry.truncated = true;
       }
     }
-    if (result.error && !entry.errors.includes(result.error)) entry.errors.push(result.error);
+    for (const e of result.errors) if (!entry.errors.includes(e)) entry.errors.push(e);
     const node = sim.node(nodeId)?.node;
     if (node && isConditionNode(node)) {
       entry.branchCounts ??= {};
@@ -210,7 +299,16 @@ export function analyzeStates(project: Project, overrides?: Values): StateAnalys
     }
     // Keep routes short in memory: only the tail is needed to show "how you get here".
     const nextRoute = route.length > 60 ? [...route.slice(-60), nodeId] : [...route, nodeId];
-    for (const t of result.next) queue.push({ nodeId: t.target, values: result.after, route: nextRoute });
+    for (const t of result.next) {
+      if (t.locked) continue;
+      // Taking the same way from the same state always fans out the same way.
+      const wayKey = `${t.target}|${t.effect ?? ''}|${afterKey}`;
+      if (expanded.has(wayKey)) continue;
+      expanded.add(wayKey);
+      for (const o of stepOutcomes(sim, t, result.after)) {
+        queue.push({ nodeId: t.target, values: o.before, result: o.result, route: nextRoute });
+      }
+    }
   }
 
   return { startId: sim.startId, byNode, incomplete, visits };

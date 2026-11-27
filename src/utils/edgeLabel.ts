@@ -1,4 +1,4 @@
-import { Branch } from '../models/story';
+import { Branch, StoryEdge } from '../models/story';
 import { DEFAULT_BRANCHES, branchLabel } from '../core/branch';
 
 // The minimal shape needed from an edge's endpoints — not full ReactFlow
@@ -35,3 +35,17 @@ export function autoEdgeLabel(
 export function manualEdgeLabel(edge: { label?: string; data?: Record<string, unknown> }): string | null {
   return edge.data?.manualLabel && typeof edge.label === 'string' && edge.label.trim() ? edge.label : null;
 }
+
+/** Per-choice rules an author can put on a connection out of a scene. */
+export interface ChoiceRules {
+  /** Only takeable while this holds, e.g. `gold >= 50`. */
+  condition?: string;
+  /** Hide the choice instead of showing it locked. */
+  hideWhenLocked?: boolean;
+  /** Shown on a locked choice; defaults to "Needs <condition>". */
+  lockedText?: string;
+  /** Script run when the choice is taken, e.g. `gold -= 10`. */
+  effect?: string;
+}
+
+export const choiceRulesOf = (edge: Pick<StoryEdge, 'data'>): ChoiceRules => (edge.data ?? {}) as ChoiceRules;

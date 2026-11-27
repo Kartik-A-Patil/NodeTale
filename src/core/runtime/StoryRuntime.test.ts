@@ -13,7 +13,7 @@ const project = (nodes: any[], edges: any[]): Project =>
     boards: [{ id: 'b', name: 'b', nodes, edges }],
   }) as any;
 
-describe('StoryRuntime phase 1', () => {
+describe('StoryRuntime', () => {
   it('uses a custom edge label as choice text, else the target title', () => {
     const rt = new StoryRuntime(project(
       [scene('s', 'Start'), scene('a', 'Hall'), scene('c', 'Cellar')],
@@ -32,7 +32,7 @@ describe('StoryRuntime phase 1', () => {
       [scene('s', 'Start'), cond, scene('r', 'Rich')],
       [{ id: 'e1', source: 's', target: 'k' }, { id: 'e2', source: 'k', target: 'r', sourceHandle: 'yes' }],
     ));
-    rt.choose('k');
+    rt.choose('e1');
     const state = rt.getState();
     expect(state.currentNode?.id).toBe('k');
     expect(state.errors.at(-1)?.message).toMatch(/No branch matched/);
@@ -45,7 +45,7 @@ describe('StoryRuntime phase 1', () => {
       [scene('s', 'Start', '<pre>missing = 1</pre>'), cond, scene('x', 'X')],
       [{ id: 'e1', source: 's', target: 'k' }, { id: 'e2', source: 'k', target: 'x', sourceHandle: 'no' }],
     ));
-    rt.choose('k');
+    rt.choose('e1');
     const msgs = rt.getState().errors.map((e) => e.message);
     expect(msgs[0]).toMatch(/Unknown variable: missing/);
     expect(msgs[1]).toMatch(/Condition "nope > 1"/);
@@ -56,5 +56,33 @@ describe('StoryRuntime phase 1', () => {
 
   it('strips script blocks from player-facing text', () => {
     expect(stripScriptBlocks('<p>Hi</p><pre>gold += 1</pre><p>there</p>')).toBe('<p>Hi</p><p>there</p>');
+  });
+});
+
+describe('choice rules', () => {
+  const shop = (data: Record<string, unknown>) => project(
+    [scene('s', 'Start', '<pre>gold = 30</pre>'), scene('b', 'Bought'), scene('l', 'Leave')],
+    [{ id: 'buy', source: 's', target: 'b', data }, { id: 'go', source: 's', target: 'l' }],
+  );
+
+  it('locks a choice whose condition fails, with a reason, and refuses it', () => {
+    const rt = new StoryRuntime(shop({ condition: 'gold >= 50' }));
+    expect(rt.getOptions()[0]).toMatchObject({ label: 'Bought', locked: true, lockedReason: 'Needs gold >= 50' });
+    rt.choose('buy');
+    expect(rt.getState().currentNode?.id).toBe('s');
+  });
+
+  it('hides a locked choice when asked', () => {
+    const rt = new StoryRuntime(shop({ condition: 'gold >= 50', hideWhenLocked: true }));
+    expect(rt.getOptions().map((o) => o.edgeId)).toEqual(['go']);
+  });
+
+  it('runs a choice effect when taken, and Back undoes it', () => {
+    const rt = new StoryRuntime(shop({ condition: 'gold >= 10', effect: 'gold -= 10' }));
+    rt.choose('buy');
+    expect(rt.getState().values.gold).toBe(20);
+    rt.back();
+    expect(rt.getState().values.gold).toBe(30);
+    expect(rt.getOptions()[0].locked).toBeFalsy();
   });
 });

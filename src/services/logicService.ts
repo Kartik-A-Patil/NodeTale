@@ -1,32 +1,6 @@
 import { Variable, VariableType, ArrayValue, ObjectValue } from '../models/story';
-import { parseExpression } from '../core/expression/parser';
-import { evaluate } from '../core/expression/evaluator';
-
-// Evaluate conditions with the expression parser used by scripts.
-export const evaluateCondition = (
-  conditionStr: string | undefined,
-  variables: Variable[],
-  onError?: (message: string) => void
-): boolean => {
-  if (!conditionStr) return true;
-
-  try {
-    const expr = parseExpression(conditionStr);
-    const result = evaluate(expr, {
-      resolveIdentifier: (name) => {
-        const variable = variables.find(v => v.name === name);
-        if (!variable) throw new Error(`Unknown variable: ${name}`);
-        return variable.value;
-      },
-    });
-    return Boolean(result);
-  } catch (err) {
-    // Invalid conditions stop matching without interrupting play mode; the
-    // caller can still surface why.
-    onError?.(`Condition "${conditionStr}": ${(err as Error)?.message || String(err)}`);
-    return false;
-  }
-};
+import { parseExpression, parseScript } from '../core/expression/parser';
+import { collectExprIdentifiers } from '../core/validation/identifierCollector';
 
 /**
  * Helper function to check if a value is an ObjectValue
@@ -48,67 +22,6 @@ function isArrayValue(value: any): value is ArrayValue {
          'elements' in value && 
          Array.isArray(value.elements);
 }
-
-/**
- * Replace variable interpolations in text with their actual values.
- * Supports: {{varName}}, {{obj.key}}, {{arr[0]}}
- */
-export const replaceVariablesInText = (text: string, variables: Variable[]): string => {
-  if (!text) return '';
-  let processed = text;
-  
-  // Match {{anything}} patterns
-  const pattern = /\{\{([^}]+)\}\}/g;
-  
-  processed = processed.replace(pattern, (match, expression) => {
-    const trimmed = expression.trim();
-    
-    // Check for array index access: varName[index]
-    const arrayMatch = trimmed.match(/^(\w+)\[(\d+)\]$/);
-    if (arrayMatch) {
-      const [, varName, indexStr] = arrayMatch;
-      const variable = variables.find(v => v.name === varName);
-      if (!variable) return match; // Keep original if not found
-      
-      if (variable.type === VariableType.ARRAY && isArrayValue(variable.value)) {
-        const index = parseInt(indexStr, 10);
-        const element = variable.value.elements[index];
-        return element !== undefined ? String(element) : match;
-      }
-      return match; // Not an array or out of bounds
-    }
-    
-    // Check for object property access: varName.key
-    const objectMatch = trimmed.match(/^(\w+)\.(\w+)$/);
-    if (objectMatch) {
-      const [, varName, key] = objectMatch;
-      const variable = variables.find(v => v.name === varName);
-      if (!variable) return match; // Keep original if not found
-      
-      if (variable.type === VariableType.OBJECT && isObjectValue(variable.value)) {
-        const entry = variable.value.keys[key];
-        return entry !== undefined ? String(entry.value) : match;
-      }
-      return match; // Not an object or key doesn't exist
-    }
-    
-    // Simple variable: varName
-    const variable = variables.find(v => v.name === trimmed);
-    if (!variable) return match; // Keep original if not found
-    
-    // Handle different types
-    if (variable.type === VariableType.ARRAY && isArrayValue(variable.value)) {
-      return JSON.stringify(variable.value.elements);
-    }
-    if (variable.type === VariableType.OBJECT && isObjectValue(variable.value)) {
-      return JSON.stringify(variable.value.keys);
-    }
-    
-    return String(variable.value);
-  });
-  
-  return processed;
-};
 
 /**
  * Helper function to throw a clear error for non-array values
@@ -228,7 +141,8 @@ export const objectSpread = (obj: ObjectValue, overrides: Record<string, any>): 
     keys: {
       ...obj.keys,
       ...Object.entries(overrides).reduce((acc, [key, value]) => {
-        acc[key] = { type: VariableType.STRING, value };
+        const type = typeof value === 'number' ? VariableType.NUMBER : typeof value === 'boolean' ? VariableType.BOOLEAN : VariableType.STRING;
+        acc[key] = { type, value };
         return acc;
       }, {} as any)
     }
@@ -236,7 +150,7 @@ export const objectSpread = (obj: ObjectValue, overrides: Record<string, any>): 
 };
 
 /**
- * Syntax Validation - Check JavaScript code in nodes for syntax errors
+ * Syntax check for a logic block
  */
 export interface SyntaxError {
   valid: boolean;
@@ -255,24 +169,20 @@ export const validateCodeSyntax = (code: string): SyntaxError => {
   }
 
   try {
-    // Try to parse as function body
-    new Function(code);
+    // The story's own grammar, not JavaScript's: what parses here is what runs.
+    parseScript(code);
     return { valid: true, errors };
-  } catch (err: any) {
-    // Extract error info
-    const errorMsg = err.message || 'Unknown syntax error';
-    const lineMatch = errorMsg.match(/line (\d+)/i);
-    const line = lineMatch ? parseInt(lineMatch[1]) : 1;
-
-    errors.push({
-      message: errorMsg.split('\n')[0], // Get first line of error
-      line,
-      column: 0
-    });
-
+  } catch (err) {
+    const message = (err as Error).message || 'Unknown syntax error';
+    const pos = Number(message.match(/position (\d+)/)?.[1] ?? 0);
+    errors.push({ message, line: code.slice(0, pos).split('\n').length, column: 0 });
     return { valid: false, errors };
   }
 };
+
+// Story text is HTML: `{{hp > 0}}` arrives as `{{hp &gt; 0}}`.
+export const decodeEntities = (s: string) =>
+  s.replace(/&(gt|lt|amp|quot|#39|apos|nbsp);/g, (_, e) => ({ gt: '>', lt: '<', amp: '&', quot: '"', '#39': "'", apos: "'", nbsp: ' ' })[e as string]!);
 
 /**
  * Validate variable references in text ({{variableName}} format)
@@ -286,15 +196,16 @@ export const validateVariableReferences = (text: string, variables: Variable[]):
 
   const regex = /\{\{([^}]+)\}\}/g;
   let match;
+  const known = new Set(variables.map((v) => v.name));
 
   while ((match = regex.exec(text)) !== null) {
-    const varName = match[1].trim();
-    if (!variables.some(v => v.name === varName)) {
-      errors.push({
-        message: `Undefined variable: ${varName}`,
-        line: text.substring(0, match.index).split('\n').length,
-        column: match.index
-      });
+    const line = text.substring(0, match.index).split('\n').length;
+    try {
+      for (const name of collectExprIdentifiers(parseExpression(decodeEntities(match[1])))) {
+        if (!known.has(name)) errors.push({ message: `Undefined variable: ${name}`, line, column: match.index });
+      }
+    } catch (err) {
+      errors.push({ message: `Text expression {{${match[1].trim()}}} has a syntax error: ${(err as Error).message}`, line, column: match.index });
     }
   }
 

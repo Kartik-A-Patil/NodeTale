@@ -18,6 +18,19 @@ export function collectExprIdentifiers(expr: Expr, bound: Set<string> = new Set(
       collectExprIdentifiers(expr.left, bound, out);
       collectExprIdentifiers(expr.right, bound, out);
       break;
+    case 'ternary':
+      collectExprIdentifiers(expr.test, bound, out);
+      collectExprIdentifiers(expr.then, bound, out);
+      collectExprIdentifiers(expr.otherwise, bound, out);
+      break;
+    case 'member':
+      // `.hp` is a key, not a variable.
+      collectExprIdentifiers(expr.object, bound, out);
+      break;
+    case 'index':
+      collectExprIdentifiers(expr.object, bound, out);
+      collectExprIdentifiers(expr.index, bound, out);
+      break;
     case 'call':
       // expr.callee is a function name (array/object helper), not a variable.
       expr.args.forEach((a) => collectExprIdentifiers(a, bound, out));
@@ -37,10 +50,13 @@ export function collectExprIdentifiers(expr: Expr, bound: Set<string> = new Set(
 
 // Same, but for a full script (sequence of statements). An assignment's target
 // (`health = ...`) is also treated as a variable reference — it has to exist.
-export function collectScriptIdentifiers(statements: Stmt[]): Set<string> {
-  const out = new Set<string>();
+export function collectScriptIdentifiers(statements: Stmt[], out: Set<string> = new Set()): Set<string> {
   for (const stmt of statements) {
-    if (stmt.kind === 'assign') {
+    if (stmt.kind === 'if') {
+      collectExprIdentifiers(stmt.test, new Set(), out);
+      collectScriptIdentifiers(stmt.then, out);
+      if (stmt.otherwise) collectScriptIdentifiers(stmt.otherwise, out);
+    } else if (stmt.kind === 'assign') {
       out.add(stmt.name);
       collectExprIdentifiers(stmt.value, new Set(), out);
     } else {

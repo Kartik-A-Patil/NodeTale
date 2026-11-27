@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Simulator, StateAnalysis, Values, formatValue, valuesEqual } from '../../../core/sim/simulate';
+import { Simulator, StateAnalysis, Transition, Values, formatValue, valuesEqual } from '../../../core/sim/simulate';
 import { StoryGraph } from '../../../core/graph/storyGraph';
 import { FocusNode } from '../shared';
 import { focusRing } from '../../ui/styles';
@@ -30,10 +30,16 @@ function replay(sim: Simulator, analysis: StateAnalysis, initial: Values, pick: 
   if (!route) return null;
   const steps: Step[] = [];
   let values = initial;
+  let next: Transition[] = [];
+  // ponytail: replays with the first outcome of any chance()/random(), so a
+  // lucky route can show different numbers than the analysis found for it.
   for (const nodeId of route) {
+    const via = next.find((t) => t.target === nodeId && !t.locked);
+    if (via) values = sim.follow(via, values).values;
     const r = sim.step(nodeId, values);
     steps.push({ nodeId, changed: r.changed, before: values, after: r.after });
     values = r.after;
+    next = r.next;
   }
   return { steps, final: values };
 }

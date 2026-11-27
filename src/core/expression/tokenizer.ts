@@ -1,7 +1,7 @@
 export type TokenType =
   | 'NUMBER' | 'STRING' | 'BOOLEAN' | 'IDENT'
-  | 'LPAREN' | 'RPAREN' | 'LBRACE' | 'RBRACE' | 'COMMA' | 'COLON' | 'ARROW'
-  | 'PLUS' | 'MINUS' | 'STAR' | 'SLASH'
+  | 'LPAREN' | 'RPAREN' | 'LBRACE' | 'RBRACE' | 'LBRACKET' | 'RBRACKET' | 'COMMA' | 'COLON' | 'ARROW'
+  | 'DOT' | 'QUESTION' | 'PLUS' | 'MINUS' | 'STAR' | 'SLASH' | 'PERCENT'
   | 'EQ' | 'NEQ' | 'GTE' | 'LTE' | 'GT' | 'LT'
   | 'AND' | 'OR' | 'NOT'
   | 'ASSIGN' | 'PLUS_ASSIGN' | 'MINUS_ASSIGN' | 'STAR_ASSIGN' | 'SLASH_ASSIGN'
@@ -91,6 +91,11 @@ export function tokenize(source: string): Token[] {
       case '(': push('LPAREN', ch, i); i++; continue;
       case ')': push('RPAREN', ch, i); i++; continue;
       case '{': push('LBRACE', ch, i); i++; continue;
+      case '[': push('LBRACKET', ch, i); i++; continue;
+      case ']': push('RBRACKET', ch, i); i++; continue;
+      case '.': push('DOT', ch, i); i++; continue;
+      case '?': push('QUESTION', ch, i); i++; continue;
+      case '%': push('PERCENT', ch, i); i++; continue;
       case '}': push('RBRACE', ch, i); i++; continue;
       case ',': push('COMMA', ch, i); i++; continue;
       case ':': push('COLON', ch, i); i++; continue;

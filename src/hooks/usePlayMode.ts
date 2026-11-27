@@ -18,8 +18,8 @@ export const usePlayModeLogic = (
 
   const [, forceRender] = useReducer((x: number) => x + 1, 0);
 
-  const handleOptionClick = useCallback((targetId: string) => {
-    runtime.choose(targetId);
+  const handleOptionClick = useCallback((edgeId: string) => {
+    runtime.choose(edgeId);
     forceRender();
   }, [runtime]);
 
@@ -42,6 +42,7 @@ export const usePlayModeLogic = (
   return {
     currentNode: state.currentNode,
     runtimeVars: state.runtimeVars,
+    values: state.values,
     getOptions,
     handleOptionClick,
     restart,

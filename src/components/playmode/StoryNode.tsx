@@ -1,10 +1,11 @@
 import React from "react";
-import { Play } from "lucide-react";
+import { Play, Lock } from "lucide-react";
+import type { StoryOption } from "../../core/runtime/StoryRuntime";
 
 interface StoryNodeProps {
   label: string;
   content: string;
-  options: { label: string; targetId: string }[];
+  options: StoryOption[];
   onOptionClick: (id: string) => void;
   hasVisual: boolean;
 }
@@ -37,10 +38,22 @@ export const StoryNode: React.FC<StoryNodeProps> = ({
 
         {/* Choices */}
         <div className="flex flex-col gap-3 pt-4">
-          {options.map((opt, idx) => (
+          {options.map((opt) => opt.locked ? (
+            <div
+              key={opt.edgeId}
+              aria-disabled="true"
+              className="px-6 py-4 border border-zinc-900 bg-zinc-950/60 rounded-lg text-lg text-zinc-600 cursor-not-allowed"
+            >
+              <div className="flex items-center justify-between gap-4">
+                <span>{opt.label}</span>
+                <Lock size={16} aria-hidden />
+              </div>
+              <div className="mt-1 text-sm font-mono text-zinc-500">{opt.lockedReason}</div>
+            </div>
+          ) : (
             <button
-              key={idx}
-              onClick={() => onOptionClick(opt.targetId)}
+              key={opt.edgeId}
+              onClick={() => onOptionClick(opt.edgeId)}
               className="group relative px-6 py-4 bg-zinc-900/50 border border-zinc-800 hover:border-orange-500/50 hover:bg-zinc-800/80 text-left rounded-lg transition-all duration-300 text-lg overflow-hidden"
             >
               <div className="absolute inset-0 bg-gradient-to-r from-orange-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />

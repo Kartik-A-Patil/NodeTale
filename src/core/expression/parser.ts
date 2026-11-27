@@ -38,11 +38,54 @@ class Parser {
     const statements: Stmt[] = [];
     this.skipStatementEnds();
     while (!this.at('EOF')) {
-      statements.push(this.parseStatement());
-      if (!this.at('EOF')) this.expectStatementEnd();
+      const stmt = this.parseStatement();
+      statements.push(stmt);
+      if (stmt.kind !== 'if' && !this.at('EOF')) this.expectStatementEnd();
       this.skipStatementEnds();
     }
     return statements;
+  }
+
+  private isWord(word: string, offset = 0): boolean {
+    const t = this.peek(offset);
+    return t.type === 'IDENT' && t.value === word;
+  }
+
+  // if (test) { ... } else if (test) { ... } else { ... }
+  private parseIf(): Stmt {
+    this.advance();
+    this.expect('LPAREN');
+    const test = this.parseExpression();
+    this.expect('RPAREN');
+    const then = this.parseBlock('if (...)');
+    const beforeElse = this.pos;
+    this.skipStatementEnds();
+    if (this.isWord('else')) {
+      this.advance();
+      if (this.isWord('if')) return { kind: 'if', test, then, otherwise: [this.parseIf()] };
+      return { kind: 'if', test, then, otherwise: this.parseBlock('else') };
+    }
+    this.pos = beforeElse;
+    return { kind: 'if', test, then };
+  }
+
+  private parseBlock(after: string): Stmt[] {
+    this.skipStatementEnds();
+    if (!this.at('LBRACE')) {
+      throw new ExpressionSyntaxError(`Expected '{' after ${after} at position ${this.peek().pos}`);
+    }
+    this.advance();
+    const body: Stmt[] = [];
+    this.skipStatementEnds();
+    while (!this.at('RBRACE')) {
+      if (this.at('EOF')) throw new ExpressionSyntaxError(`Missing '}' to close ${after}`);
+      const stmt = this.parseStatement();
+      body.push(stmt);
+      if (stmt.kind !== 'if' && !this.at('RBRACE')) this.expectStatementEnd();
+      this.skipStatementEnds();
+    }
+    this.advance();
+    return body;
   }
 
   private expectStatementEnd() {
@@ -58,6 +101,7 @@ class Parser {
   };
 
   private parseStatement(): Stmt {
+    if (this.isWord('if') && this.peek(1).type === 'LPAREN') return this.parseIf();
     if (this.at('IDENT')) {
       const op = Parser.ASSIGN_OPS[this.peek(1).type];
       if (op) {
@@ -73,7 +117,12 @@ class Parser {
   // --- Expressions (shared by conditions and scripts) ---
 
   parseExpression(): Expr {
-    return this.parseOr();
+    const test = this.parseOr();
+    if (!this.at('QUESTION')) return test;
+    this.advance();
+    const then = this.parseExpression();
+    this.expect('COLON');
+    return { kind: 'ternary', test, then, otherwise: this.parseExpression() };
   }
 
   private parseOr(): Expr {
@@ -124,8 +173,9 @@ class Parser {
 
   private parseMultiplicative(): Expr {
     let left = this.parseUnary();
-    while (this.at('STAR') || this.at('SLASH')) {
-      const op = this.advance().type === 'STAR' ? '*' : '/';
+    while (this.at('STAR') || this.at('SLASH') || this.at('PERCENT')) {
+      const tok = this.advance().type;
+      const op = tok === 'STAR' ? '*' : tok === 'SLASH' ? '/' : '%';
       left = { kind: 'binary', op, left, right: this.parseUnary() };
     }
     return left;
@@ -144,6 +194,24 @@ class Parser {
   }
 
   private parseCallOrPrimary(): Expr {
+    let expr = this.parseCall();
+    // Postfix access: stats.hp, items[0], stats["hp"]
+    for (;;) {
+      if (this.at('DOT')) {
+        this.advance();
+        expr = { kind: 'member', object: expr, property: this.expect('IDENT').value };
+      } else if (this.at('LBRACKET')) {
+        this.advance();
+        const index = this.parseExpression();
+        this.expect('RBRACKET');
+        expr = { kind: 'index', object: expr, index };
+      } else {
+        return expr;
+      }
+    }
+  }
+
+  private parseCall(): Expr {
     const primary = this.parsePrimary();
     if (primary.kind === 'identifier' && this.at('LPAREN')) {
       this.advance();

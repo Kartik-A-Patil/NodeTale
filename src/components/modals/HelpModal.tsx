@@ -191,7 +191,7 @@ const VARIABLE_TYPES = [
   ['Text', 'name = "Alex"'],
   ['Number', 'gold = 10'],
   ['True / false', 'hasKey = true'],
-  ['List', 'inventory = arrayPush(inventory, "rope")'],
+  ['List', 'inventory = push(inventory, "rope")'],
   ['Object', 'player = objectSpread(player, { hp: 50 })'],
 ];
 
@@ -209,8 +209,10 @@ const Variables = () => (
     <Heading>Show a value in the story</Heading>
     <Text>Wrap its name in double braces. In a scene, type <Inline>{'{{'}</Inline> to pick one from a list.</Text>
     <Code>{'You have {{gold}} coins, {{name}}.'}</Code>
+    <Text>Braces can hold any expression: maths, list items, object keys or a pick between two texts.</Text>
+    <Code>{"Double or nothing: {{gold * 2}}\nFirst item: {{inventory[0]}} · HP: {{player.hp}}\nYou feel {{hp > 50 ? 'strong' : 'weak'}}."}</Code>
     <Heading>Use it in a branch</Heading>
-    <Text>Conditions compare values with <Inline>==</Inline> <Inline>!=</Inline> <Inline>&gt;</Inline> <Inline>&lt;</Inline> <Inline>&gt;=</Inline> <Inline>&lt;=</Inline> and combine them with <Inline>&&</Inline> (and), <Inline>||</Inline> (or) and <Inline>!</Inline> (not).</Text>
+    <Text>Conditions can use the functions below too, like <Inline>has(inventory, "key")</Inline> or <Inline>chance(0.3)</Inline>. Conditions compare values with <Inline>==</Inline> <Inline>!=</Inline> <Inline>&gt;</Inline> <Inline>&lt;</Inline> <Inline>&gt;=</Inline> <Inline>&lt;=</Inline> and combine them with <Inline>&&</Inline> (and), <Inline>||</Inline> (or) and <Inline>!</Inline> (not).</Text>
     <Code>{'gold >= 10 && !hasKey'}</Code>
   </>
 );
@@ -218,10 +220,14 @@ const Variables = () => (
 const LogicBlocks = () => (
   <>
     <Title lead="A logic block changes variables when the player reaches its scene. Type / in a scene and choose Logic block.">Logic blocks</Title>
-    <Code>{'gold += 10\nhasKey = true\nname = "Alex"\ninventory = arrayPush(inventory, "rope")'}</Code>
+    <Code>{'gold += 10\nhasKey = true\nname = "Alex"\ninventory = push(inventory, "rope")'}</Code>
     <Text>One change per line: <Inline>=</Inline> sets a value, <Inline>+=</Inline> <Inline>-=</Inline> <Inline>*=</Inline> <Inline>/=</Inline> update it. Only variables from the Variables panel can be changed.</Text>
     <Text>While you type, suggestions show your variables and the functions below; <Inline>Tab</Inline> or <Inline>Enter</Inline> accepts one. A red Error badge on the scene means a line needs fixing.</Text>
-    <Heading>Functions for lists and objects</Heading>
+    <Heading>Decide inside a block</Heading>
+    <Code>{'roll = random(1, 6)\nif (roll >= 5) {\n  gold += 20\n} else if (roll == 1) {\n  hp -= 10\n} else {\n  gold += 1\n}\nmood = hp > 50 ? "calm" : "shaken"'}</Code>
+    <Heading>Choice rules</Heading>
+    <Text>Hover a connection out of a scene and click its sliders button. <strong className="text-nt-ink">Only when</strong> locks the choice until a condition holds (shown greyed out with a reason, or hidden). <strong className="text-nt-ink">When chosen, run</strong> is a logic block that runs as the player picks it, e.g. <Inline>gold -= 10</Inline>.</Text>
+    <Heading>Functions</Heading>
     <div className="overflow-hidden rounded-xl border border-nt-line">
       {SCRIPT_FUNCTIONS.map((fn) => (
         <div key={fn.name} className="flex flex-col gap-0.5 border-b border-nt-line px-4 py-2.5 last:border-0 sm:flex-row sm:items-center sm:gap-4">
@@ -230,7 +236,7 @@ const LogicBlocks = () => (
         </div>
       ))}
     </div>
-    <Text>These return a new value; assign it back to keep it, e.g. <Inline>{'coins = arrayFilter(coins, (c) => c > 1)'}</Inline>.</Text>
+    <Text>List and object functions return a new value; assign it back to keep it, e.g. <Inline>{'coins = remove(coins, "copper")'}</Inline>. <Inline>random</Inline> and <Inline>chance</Inline> work in logic blocks, choice effects and branch conditions, not in story text.</Text>
   </>
 );
 

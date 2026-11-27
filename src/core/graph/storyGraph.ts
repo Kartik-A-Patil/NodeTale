@@ -4,6 +4,8 @@ import { collectExprIdentifiers } from '../validation/identifierCollector';
 import { extractScriptCode } from '../runtime/htmlScript';
 import { Stmt } from '../expression/ast';
 import { DEFAULT_BRANCHES, branchLabel } from '../branch';
+import { choiceRulesOf } from '../../utils/edgeLabel';
+import { decodeEntities } from '../../services/logicService';
 
 // One analysis of a project's story structure, shared by the story views
 // (branch map, timeline, path flow, variable tracker) and dashboard stats.
@@ -68,7 +70,7 @@ export interface StoryGraph {
   variableUse: Map<string, VariableUse>;
 }
 
-const VARIABLE_MENTION = /\{\{\s*([A-Za-z_$][\w$]*)\s*\}\}/g;
+const VARIABLE_MENTION = /\{\{([^}]+)\}\}/g;
 
 const tryParse = <T>(parse: () => T): T | null => {
   try {
@@ -91,19 +93,13 @@ function collectVariableUse(project: Project, nodes: Map<string, GraphNode>): Ma
       if (!nodes.has(node.id)) continue;
       if (isElementNode(node)) {
         const content = node.data.content || '';
-        for (const m of content.matchAll(VARIABLE_MENTION)) usageOf(node.id).shown.add(m[1]);
+        for (const m of content.matchAll(VARIABLE_MENTION)) {
+          const expr = tryParse(() => parseExpression(decodeEntities(m[1])));
+          if (expr) collectExprIdentifiers(expr, new Set(), usageOf(node.id).shown);
+        }
         const code = content.includes('<pre') ? extractScriptCode(content) : '';
         const statements: Stmt[] = (code && tryParse(() => parseScript(code))) || [];
-        for (const stmt of statements) {
-          if (stmt.kind === 'assign') {
-            usageOf(node.id).set.add(stmt.name);
-            // `x += 1` reads x too
-            if (stmt.op !== '=') usageOf(node.id).checked.add(stmt.name);
-            collectExprIdentifiers(stmt.value, new Set(), usageOf(node.id).checked);
-          } else {
-            collectExprIdentifiers(stmt.expr, new Set(), usageOf(node.id).checked);
-          }
-        }
+        walkScript(statements, usageOf(node.id));
       } else if (isConditionNode(node)) {
         for (const b of node.data.branches || DEFAULT_BRANCHES) {
           if (!b.condition || b.condition === 'true') continue;
@@ -112,8 +108,34 @@ function collectVariableUse(project: Project, nodes: Map<string, GraphNode>): Ma
         }
       }
     }
+    // A choice's own condition/effect counts as its scene using those variables.
+    for (const edge of board.edges) {
+      if (!nodes.has(edge.source)) continue;
+      const { condition, effect } = choiceRulesOf(edge);
+      const expr = condition?.trim() && tryParse(() => parseExpression(condition));
+      if (expr) collectExprIdentifiers(expr, new Set(), usageOf(edge.source).checked);
+      const stmts = effect?.trim() && tryParse(() => parseScript(effect));
+      if (stmts) walkScript(stmts, usageOf(edge.source));
+    }
   }
   return uses;
+}
+
+function walkScript(statements: Stmt[], u: { set: Set<string>; checked: Set<string> }) {
+  for (const stmt of statements) {
+    if (stmt.kind === 'assign') {
+      u.set.add(stmt.name);
+      // `x += 1` reads x too
+      if (stmt.op !== '=') u.checked.add(stmt.name);
+      collectExprIdentifiers(stmt.value, new Set(), u.checked);
+    } else if (stmt.kind === 'if') {
+      collectExprIdentifiers(stmt.test, new Set(), u.checked);
+      walkScript(stmt.then, u);
+      if (stmt.otherwise) walkScript(stmt.otherwise, u);
+    } else {
+      collectExprIdentifiers(stmt.expr, new Set(), u.checked);
+    }
+  }
 }
 
 export function buildStoryGraph(project: Project): StoryGraph {
