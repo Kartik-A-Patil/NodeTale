@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   BookOpen, Boxes, Braces, Clapperboard, CornerDownRight, GitFork, Info, LayoutTemplate, MessageSquare, Play, Split, Variable, X,
+  Variable as VariableIcon,
 } from 'lucide-react';
 import { SCRIPT_FUNCTIONS } from '../../core/runtime/scriptInterpreter';
 import { KEYS } from '../../editor/shortcuts/keymap';
@@ -129,6 +130,7 @@ const NODE_TYPES = [
   { icon: Clapperboard, title: 'Scene', text: 'Story text, images and sound. Lines leaving a scene are the player’s choices.' },
   { icon: GitFork, title: 'Branch', text: 'Picks a path by itself, using conditions on your variables. The first true case wins.' },
   { icon: CornerDownRight, title: 'Jump', text: 'Continues the story at another scene, even on another board.' },
+  { icon: VariableIcon, title: 'Set values', text: 'Changes variables on the way through: pick a variable, an action and a value, or click the question mark to ask the player for it.' },
   { icon: MessageSquare, title: 'Comment', text: 'A note for you. Players never see it.' },
   { icon: LayoutTemplate, title: 'Section', text: 'A labelled frame to group part of the board.' },
   { icon: Info, title: 'Annotation', text: 'A floating label with an arrow, to explain the board.' },
@@ -136,7 +138,7 @@ const NODE_TYPES = [
 
 const Nodes = () => (
   <>
-    <Title lead="Six kinds of node. Only scenes, branches and jumps take part in the story; the rest organise the board.">Nodes</Title>
+    <Title lead="Seven kinds of node. Scenes, branches, jumps and set values take part in the story; the rest organise the board.">Nodes</Title>
     <div className="grid gap-3 sm:grid-cols-2">
       {NODE_TYPES.map(({ icon: Icon, title, text }) => (
         <div key={title} className="flex gap-3 rounded-xl border border-nt-line p-4">

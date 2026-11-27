@@ -187,3 +187,40 @@ describe('debugger', () => {
     expect(rt.getState().values.gold).toBe(99);
   });
 });
+
+describe('set values node', () => {
+  const setNode = (changes: any[]) => ({ id: 'v', type: 'setNode', position: { x: 0, y: 0 }, data: { label: 'Who are you?', changes } }) as any;
+  const story = (changes: any[]) => {
+    const p = project(
+      [scene('s', 'Start'), setNode(changes), scene('h', 'Hall', '<p>Hi</p>')],
+      [{ id: 'e1', source: 's', target: 'v' }, { id: 'e2', source: 'v', target: 'h' }],
+    );
+    p.variables.push({ id: 'n', name: 'name', type: VariableType.STRING, value: '' } as any);
+    return p;
+  };
+
+  it('applies fixed changes on the way through and labels the choice by the next scene', () => {
+    const rt = new StoryRuntime(story([{ id: 'a', variable: 'gold', op: 'add', value: 7 }]));
+    expect(rt.getOptions()[0].label).toBe('Hall');
+    rt.choose('e1');
+    expect(rt.getState()).toMatchObject({ currentNode: { id: 'h' }, values: { gold: 7 }, asking: null });
+  });
+
+  it('stops to ask, applies the answers, and Back returns to the question', () => {
+    const rt = new StoryRuntime(story([
+      { id: 'a', variable: 'gold', op: 'add', value: 1 },
+      { id: 'q', variable: 'name', op: 'set', ask: 'Your name?' },
+    ]));
+    rt.choose('e1');
+    expect(rt.getState().currentNode?.id).toBe('v');
+    expect(rt.getState().asking).toEqual([{ id: 'q', question: 'Your name?', variable: 'name', type: 'string' }]);
+    expect(rt.getState().values.gold).toBe(0); // nothing runs before the answer
+    rt.answer({ q: 'Alex' });
+    expect(rt.getState()).toMatchObject({ currentNode: { id: 'h' }, values: { gold: 1, name: 'Alex' }, asking: null });
+    expect(rt.getState().changes.map((c) => c.name)).toEqual(['gold', 'name']);
+    expect(rt.getLog().map((e) => [e.label, e.choice])).toEqual([['Start', 'Who are you?'], ['Who are you?', 'name: Alex'], ['Hall', undefined]]);
+    rt.back();
+    expect(rt.getState()).toMatchObject({ currentNode: { id: 'v' }, values: { gold: 0, name: '' } });
+    expect(rt.getState().asking).toHaveLength(1);
+  });
+});

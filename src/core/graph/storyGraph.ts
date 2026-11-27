@@ -1,4 +1,4 @@
-import { Project, isStartNode, isConditionNode, isElementNode, isJumpNode } from '../../models/story';
+import { Project, isStartNode, isSetNode, isConditionNode, isElementNode, isJumpNode } from '../../models/story';
 import { parseExpression, parseScript } from '../expression/parser';
 import { collectExprIdentifiers } from '../validation/identifierCollector';
 import { extractScriptCode } from '../../utils/html';
@@ -13,7 +13,7 @@ import { decodeEntities, VARIABLE_PATTERN } from '../../utils/html';
 // choices, a condition node's edges are keyed by branch id (sourceHandle), and
 // a jump node continues at jumpTargetId, which may be on another board.
 
-export type FlowNodeType = 'elementNode' | 'conditionNode' | 'jumpNode';
+export type FlowNodeType = 'elementNode' | 'conditionNode' | 'jumpNode' | 'setNode';
 
 export interface GraphNode {
   id: string;
@@ -99,6 +99,13 @@ function collectVariableUse(project: Project, nodes: Map<string, GraphNode>): Ma
         const code = content.includes('<pre') ? extractScriptCode(content) : '';
         const statements: Stmt[] = (code && tryParse(() => parseScript(code))) || [];
         walkScript(statements, usageOf(node.id));
+      } else if (isSetNode(node)) {
+        for (const c of node.data.changes ?? []) {
+          if (!c.variable) continue;
+          usageOf(node.id).set.add(c.variable);
+          // add / flip / add to end... read the old value too.
+          if (c.op !== 'set' && c.op !== 'clear') usageOf(node.id).checked.add(c.variable);
+        }
       } else if (isConditionNode(node)) {
         for (const b of node.data.branches || DEFAULT_BRANCHES) {
           if (!b.condition || b.condition === 'true') continue;
@@ -144,7 +151,7 @@ export function buildStoryGraph(project: Project): StoryGraph {
 
   for (const board of project.boards) {
     for (const node of board.nodes) {
-      if (node.type !== 'elementNode' && node.type !== 'conditionNode' && node.type !== 'jumpNode') continue;
+      if (node.type !== 'elementNode' && node.type !== 'conditionNode' && node.type !== 'jumpNode' && node.type !== 'setNode') continue;
       // Node IDs are generated globally; keep the first node if imported data has duplicates.
       if (nodes.has(node.id)) continue;
       nodes.set(node.id, {
@@ -172,6 +179,12 @@ export function buildStoryGraph(project: Project): StoryGraph {
         continue;
       }
       const edges = board.edges.filter((e) => e.source === node.id && nodes.has(e.target) && boardNodes.has(e.target));
+      // "Set values" passes straight through to its one connection.
+      if (isSetNode(node)) {
+        if (edges[0]) links.push({ source: node.id, target: edges[0].target, kind: 'branch' });
+        else deadEnds.push({ nodeId: node.id, what: 'next' });
+        continue;
+      }
       if (isConditionNode(node)) {
         for (const b of node.data.branches || DEFAULT_BRANCHES) {
           const edge = edges.find((e) => e.sourceHandle === b.id);

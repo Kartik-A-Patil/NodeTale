@@ -82,6 +82,24 @@ export interface JumpNodeData extends BaseNodeData {
   jumpTargetLabel?: string;
 }
 
+export type ValueOp = 'set' | 'add' | 'subtract' | 'multiply' | 'divide' | 'append' | 'clear' | 'flip' | 'push' | 'remove';
+
+/** One change in a "Set values" node. */
+export interface ValueChange {
+  id: string;
+  /** Variable name. */
+  variable: string;
+  op: ValueOp;
+  /** Fixed value, of the variable's type (a list's item type for lists). */
+  value?: string | number | boolean;
+  /** Present: the player is asked this, and the answer is the value. */
+  ask?: string;
+}
+
+export interface SetNodeData extends BaseNodeData {
+  changes?: ValueChange[];
+}
+
 export interface CommentNodeData extends BaseNodeData {
   text?: string;
 }
@@ -97,6 +115,7 @@ export type NodeData =
   | ElementNodeData
   | ConditionNodeData
   | JumpNodeData
+  | SetNodeData
   | CommentNodeData
   | SectionNodeData
   | AnnotationNodeData;
@@ -105,6 +124,7 @@ export type StoryNodeType =
   | 'elementNode'
   | 'conditionNode'
   | 'jumpNode'
+  | 'setNode'
   | 'commentNode'
   | 'sectionNode'
   | 'annotationNode';
@@ -130,6 +150,7 @@ export type StoryNode =
   | StoryNodeBase<'elementNode', ElementNodeData>
   | StoryNodeBase<'conditionNode', ConditionNodeData>
   | StoryNodeBase<'jumpNode', JumpNodeData>
+  | StoryNodeBase<'setNode', SetNodeData>
   | StoryNodeBase<'commentNode', CommentNodeData>
   | StoryNodeBase<'sectionNode', SectionNodeData>
   | StoryNodeBase<'annotationNode', AnnotationNodeData>;
@@ -186,6 +207,7 @@ type NodeShape = { type?: string; data: NodeData };
 export const isElementNode = <T extends NodeShape>(node: T): node is T & { type: 'elementNode'; data: ElementNodeData } => node.type === 'elementNode';
 export const isConditionNode = <T extends NodeShape>(node: T): node is T & { type: 'conditionNode'; data: ConditionNodeData } => node.type === 'conditionNode';
 export const isJumpNode = <T extends NodeShape>(node: T): node is T & { type: 'jumpNode'; data: JumpNodeData } => node.type === 'jumpNode';
+export const isSetNode = <T extends NodeShape>(node: T): node is T & { type: 'setNode'; data: SetNodeData } => node.type === 'setNode';
 export const isAnnotationNode = <T extends NodeShape>(node: T): node is T & { type: 'annotationNode'; data: AnnotationNodeData } => node.type === 'annotationNode';
 
 // Lightweight metadata for listing UI without loading a project's boards.

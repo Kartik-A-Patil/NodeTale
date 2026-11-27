@@ -1,9 +1,10 @@
-import { Project, StoryNode, Board, Variable, Branch, isConditionNode, isStartNode, isArrayValue, isObjectValue } from '../../models/story';
+import { Project, StoryNode, Board, Variable, Branch, isConditionNode, isStartNode, isSetNode, isArrayValue, isObjectValue } from '../../models/story';
 import { executeNode } from '../nodes/nodeRegistry';
 import { runScript, evaluateCondition, firstOutcomeRng, Rng, TraceLine } from '../runtime/scriptInterpreter';
 import { extractScriptCode } from '../../utils/html';
 import { DEFAULT_BRANCHES, branchLabel } from '../branch';
 import { manualEdgeLabel, choiceRulesOf } from '../../utils/edgeLabel';
+import { questionsOf } from '../valueChanges';
 
 export type { ChoiceRules } from '../../utils/edgeLabel';
 
@@ -57,7 +58,8 @@ export interface Simulator {
   initialValues: (overrides?: Values) => Values;
   toVariables: (values: Values) => Variable[];
   /** Enter a node. Without an rng, chance()/random() take their first outcome. */
-  step: (nodeId: string, values: Values, rng?: Rng, trace?: TraceLine[]) => StepResult;
+  /** `answers`: the player's answers for a "Set values" node that asks (by change id). */
+  step: (nodeId: string, values: Values, rng?: Rng, trace?: TraceLine[], answers?: Record<string, unknown>) => StepResult;
   /** A scene's choices for these values, without running its script. */
   choices: (nodeId: string, values: Values) => Transition[];
   /** Take a transition: runs a choice's effect. The values to enter `t.target` with. */
@@ -116,22 +118,22 @@ export function createSimulator(project: Project): Simulator {
     for (let i = from; i < trace.length; i++) trace[i].nodeId ??= nodeId;
   };
 
-  const step = (nodeId: string, values: Values, rng: Rng = firstOutcomeRng, trace?: TraceLine[]): StepResult => {
+  const step = (nodeId: string, values: Values, rng: Rng = firstOutcomeRng, trace?: TraceLine[], answers?: Record<string, unknown>): StepResult => {
     let result!: StepResult;
-    tagged(trace, nodeId, (into) => { result = stepNode(nodeId, values, rng, into); });
+    tagged(trace, nodeId, (into) => { result = stepNode(nodeId, values, rng, into, answers); });
     return result;
   };
 
-  const stepNode = (nodeId: string, values: Values, rng: Rng, trace?: TraceLine[]): StepResult => {
+  const stepNode = (nodeId: string, values: Values, rng: Rng, trace?: TraceLine[], answers?: Record<string, unknown>): StepResult => {
     const ctx = index.get(nodeId);
     if (!ctx) return { after: values, changed: [], errors: ['Scene not found'], error: 'Scene not found', next: [] };
     const { node, board } = ctx;
     const errors: string[] = [];
-    const result = executeNode(node, { board, values, rng, onError: (m) => errors.push(m), trace });
+    const result = executeNode(node, { board, values, rng, onError: (m) => errors.push(m), trace, variables, answers });
 
     let after = values;
-    if (result.scriptContent !== undefined) {
-      const code = scriptOf(nodeId, result.scriptContent);
+    if (result.scriptContent !== undefined || result.script) {
+      const code = result.script ?? scriptOf(nodeId, result.scriptContent!);
       if (code) {
         const run = runScript(code, values, rng, trace);
         if (run.error) errors.push(run.error);
@@ -152,7 +154,11 @@ export function createSimulator(project: Project): Simulator {
       return done(next, branchTaken);
     }
     const next = result.nextNodeId && index.has(result.nextNodeId)
-      ? [{ target: result.nextNodeId, label: `Jump to ${index.get(result.nextNodeId)!.node.data?.label}`, kind: 'jump' as const }]
+      ? [{
+          target: result.nextNodeId,
+          label: node.type === 'jumpNode' ? `Jump to ${index.get(result.nextNodeId)!.node.data?.label}` : index.get(result.nextNodeId)!.node.data?.label || 'Continue',
+          kind: node.type === 'jumpNode' ? 'jump' as const : 'branch' as const,
+        }]
       : [];
     return done(next);
   };
@@ -239,7 +245,9 @@ export function resolveVisibleNode(sim: Simulator, nodeId: string, values: Value
   let current = sim.node(nodeId)?.node ?? null;
   const visited = new Set<string>();
   let hops = 0;
-  while (current && current.type !== 'elementNode') {
+  // A scene is where the player lands, and so is a "Set values" node that asks them something.
+  const isStop = (n: StoryNode) => n.type === 'elementNode' || (isSetNode(n) && questionsOf(n.data.changes, sim.variables).length > 0);
+  while (current && !isStop(current)) {
     if (visited.has(current.id) || hops++ > MAX_RESOLVE_HOPS) return null;
     visited.add(current.id);
     const result = sim.step(current.id, values);

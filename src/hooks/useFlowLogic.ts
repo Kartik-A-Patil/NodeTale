@@ -195,6 +195,9 @@ export function useFlowLogic(projectIdOrName?: string) {
             e.source === params.source &&
             e.sourceHandle === params.sourceHandle
         );
+    } else if (sourceNode?.type === 'setNode') {
+        // One way out: a new line replaces the old one.
+        existingBranchEdge = edges.find(e => e.source === params.source);
     }
 
     const edge: Edge = {

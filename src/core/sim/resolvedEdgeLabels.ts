@@ -4,7 +4,7 @@ import { CanvasNode } from '../../adapters/reactFlow';
 import { createSimulator, resolveVisibleNode } from './simulate';
 import { toStoryEdge, toStoryNode } from '../../adapters/reactFlow';
 
-const LOGIC_NODE_TYPES = new Set(['conditionNode', 'jumpNode']);
+const LOGIC_NODE_TYPES = new Set(['conditionNode', 'jumpNode', 'setNode']);
 
 interface CacheEntry {
   /** The exact edge object this was computed from, so an unrelated edit to

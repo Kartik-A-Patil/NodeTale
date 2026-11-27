@@ -28,6 +28,11 @@ export const usePlayModeLogic = (
     forceRender();
   }, [runtime]);
 
+  const answer = useCallback((answers: Record<string, unknown>) => {
+    runtime.answer(answers);
+    forceRender();
+  }, [runtime]);
+
   const setValue = useCallback((name: string, value: unknown) => {
     runtime.setValue(name, value);
     forceRender();
@@ -74,5 +79,7 @@ export const usePlayModeLogic = (
     turn: state.turn,
     trace: state.trace,
     setValue,
+    asking: state.asking,
+    answer,
   };
 };

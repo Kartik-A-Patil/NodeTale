@@ -5,6 +5,7 @@ import {
   Wand2, AlignStartVertical, AlignCenterVertical, AlignEndVertical, AlignStartHorizontal, AlignCenterHorizontal,
   AlignEndHorizontal, AlignHorizontalSpaceAround, AlignVerticalSpaceAround, Search, Flag, Minus, Plus, Maximize,
   Map as MapIcon, Grid3x3, Lock, Unlock,
+  Variable as VariableIcon,
 } from 'lucide-react';
 import { NodeTypeKey } from '../../core/nodes/nodeRegistry';
 import { AlignMode } from '../../core/layout/arrange';
@@ -52,6 +53,7 @@ const ADD: { type: NodeTypeKey; label: string; icon: typeof PlusCircle; payload:
   { type: 'elementNode', label: 'Scene', icon: PlusCircle, payload: 'New scene', keys: KEYS.addScene },
   { type: 'conditionNode', label: 'Branch', icon: GitFork, payload: 'Logic Check', keys: KEYS.addBranch },
   { type: 'jumpNode', label: 'Jump', icon: ArrowRightCircle, payload: 'Jump', keys: KEYS.addJump },
+  { type: 'setNode', label: 'Set values', icon: VariableIcon, payload: 'Set values', keys: KEYS.addValues },
   { type: 'commentNode', label: 'Comment', icon: MessageSquare, payload: '', keys: KEYS.addComment },
   { type: 'sectionNode', label: 'Section', icon: LayoutTemplate, payload: 'New Section', keys: KEYS.addSection },
 ];

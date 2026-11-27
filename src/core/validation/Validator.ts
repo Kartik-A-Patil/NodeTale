@@ -1,4 +1,4 @@
-import { Project, Board, StoryNode, isStartNode, isConditionNode, isJumpNode, isElementNode } from '../../models/story';
+import { Project, Board, StoryNode, isStartNode, isSetNode, isConditionNode, isJumpNode, isElementNode } from '../../models/story';
 import { Diagnostic } from './types';
 import { parseExpression, parseScript, ExpressionSyntaxError } from '../expression/parser';
 import { collectExprIdentifiers, collectScriptIdentifiers } from './identifierCollector';
@@ -8,7 +8,7 @@ import { choiceRulesOf } from '../../utils/edgeLabel';
 
 // Story-flow node types — the ones reachability/graph rules care about.
 // commentNode/sectionNode/annotationNode are editor-only decoration.
-const FLOW_NODE_TYPES = new Set(['elementNode', 'conditionNode', 'jumpNode']);
+const FLOW_NODE_TYPES = new Set(['elementNode', 'conditionNode', 'jumpNode', 'setNode']);
 
 function ruleDuplicateNodeIds(project: Project): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
@@ -137,6 +137,10 @@ function ruleUnknownVariables(project: Project): Diagnostic[] {
             }
           }
         }
+      }
+
+      if (isSetNode(node)) {
+        flagMissing((node.data.changes ?? []).map((c) => c.variable).filter(Boolean), board, node, 'A change');
       }
 
       if (isElementNode(node)) {

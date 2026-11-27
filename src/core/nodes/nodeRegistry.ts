@@ -11,6 +11,8 @@ import {
   AnnotationNodeData,
   Board,
   DEFAULT_Z_INDEX,
+  SetNodeData,
+  Variable,
 } from '../../models/story';
 import { CanvasNode } from '../../adapters/reactFlow';
 import { evaluateCondition, Rng, TraceLine } from '../runtime/scriptInterpreter';
@@ -18,6 +20,8 @@ import { DEFAULT_BRANCHES } from '../branch';
 import ElementNode from '../../components/nodes/ElementNode';
 import ConditionNode from '../../components/nodes/ConditionNode';
 import JumpNode from '../../components/nodes/JumpNode';
+import SetNode from '../../components/nodes/SetNode';
+import { compileChanges } from '../valueChanges';
 import CommentNode from '../../components/nodes/CommentNode';
 import SectionNode from '../../components/nodes/SectionNode';
 import AnnotationNode from '../../components/nodes/AnnotationNode';
@@ -31,11 +35,17 @@ export interface NodeExecutionContext {
   onError?: (message: string) => void;
   /** Collects what was evaluated and why, for the Play Mode debugger. */
   trace?: TraceLine[];
+  /** The project's variables (types for "Set values"). */
+  variables?: Variable[];
+  /** "Set values": the player's answers, by change id. */
+  answers?: Record<string, unknown>;
 }
 
 export interface NodeExecutionResult {
   // HTML content to run as a script on entering this node, if any.
   scriptContent?: string;
+  // Plain script to run on entering this node (no HTML around it).
+  script?: string;
   // Auto-advance to this node id. Undefined/null means stay and wait for interaction.
   nextNodeId?: string | null;
 }
@@ -51,6 +61,7 @@ export type NodeTypeKey =
   | 'elementNode'
   | 'conditionNode'
   | 'jumpNode'
+  | 'setNode'
   | 'commentNode'
   | 'sectionNode'
   | 'annotationNode';
@@ -114,6 +125,16 @@ export const nodeRegistry: Record<NodeTypeKey, NodeRegistryEntry<any>> = {
     create: (extraFields = {}): JumpNodeData => ({ label: 'Jump', ...extraFields }),
     execute: (node) => ({ nextNodeId: node.data.jumpTargetId || null }),
   } satisfies NodeRegistryEntry<JumpNodeData>,
+
+  setNode: {
+    component: SetNode,
+    create: (extraFields = {}): SetNodeData => ({ label: 'Set values', changes: [], ...extraFields }),
+    // Its changes run, then the story moves on along its one connection.
+    execute: (node, ctx) => ({
+      script: compileChanges(node.data.changes, ctx.variables ?? [], ctx.answers),
+      nextNodeId: ctx.board.edges.find((e) => e.source === node.id)?.target ?? null,
+    }),
+  } satisfies NodeRegistryEntry<SetNodeData>,
 
   commentNode: {
     component: CommentNode,

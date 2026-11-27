@@ -6,6 +6,7 @@ import { PlayControls } from "./playmode/PlayControls";
 import { DebugPanel } from "./playmode/DebugPanel";
 import { MediaDisplay } from "./playmode/MediaDisplay";
 import { StoryNode } from "./playmode/StoryNode";
+import { AskScreen } from "./playmode/AskScreen";
 import { PlayerStatus } from "./playmode/PlayerStatus";
 import { LogPanel, SavesPanel, SaveSlot } from "./playmode/PlayPanels";
 import { useLocalPref } from "../utils/localPrefs";
@@ -107,6 +108,8 @@ const PlayMode: React.FC<PlayModeProps> = ({
     snapshot,
     trace,
     setValue,
+    asking,
+    answer,
   } = usePlayModeLogic(project, startNodeId);
   const [debugging, setDebugging] = useLocalPref<boolean>("nodetale:playDebug", false);
   const labels = useMemo(() => new Map(project.boards.flatMap((b) => b.nodes.map((n) => [n.id, n.data?.label || "Untitled"] as const))), [project]);
@@ -197,6 +200,19 @@ const PlayMode: React.FC<PlayModeProps> = ({
     return (
       <div className="fixed inset-0 z-50 bg-black text-white flex items-center justify-center font-mono text-sm">
         <span className="animate-pulse">Loading...</span>
+      </div>
+    );
+  }
+
+  // A "Set values" node asking the player something.
+  if (asking) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black text-zinc-200 font-sans">
+        <PlayControls {...controls} hasAudio={false} />
+        {debugPanel}
+        <PlayerStatus variables={runtimeVars} changes={changes} turn={turn} />
+        <AskScreen key={`${turn}-${currentNode.id}`} title={currentNode.data?.label || "A question"} questions={asking} onAnswer={answer} paused={!!panel} />
+        {panels}
       </div>
     );
   }

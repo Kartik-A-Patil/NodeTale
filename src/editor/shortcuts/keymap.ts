@@ -28,6 +28,7 @@ export const KEYS = {
   addScene: { key: 's' },
   addBranch: { key: 'b' },
   addJump: { key: 'j' },
+  addValues: { key: 'x' },
   addComment: { key: 'c' },
   addSection: { key: 'g' },
   addAnnotation: { key: 'a' },

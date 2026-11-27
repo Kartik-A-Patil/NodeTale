@@ -3,7 +3,8 @@ import {
     ArrowRightCircle, Trash2, PlusCircle, 
     MessageSquare, Layout, Info, ArrowUpLeft, ArrowUpRight, 
     ArrowDownLeft, ArrowDownRight, MoveUpLeft, CornerDownRight, Spline, Image as ImageIcon, Play, Film, Music,
-    LocateFixed, Plus, CopyPlus
+    LocateFixed, Plus, CopyPlus,
+  Variable as VariableIcon,
 } from 'lucide-react';
 import { ContextMenuAction, ContextMenuOption } from '../components/ContextMenu';
 import { Asset, isAnnotationNode, isConditionNode, isElementNode, isJumpNode } from '../models/story';
@@ -388,6 +389,7 @@ export function useMenuOptions({
             addHere('elementNode', 'Scene', <PlusCircle size={14} />, KEYS.addScene),
             addHere('conditionNode', 'Branch', <BranchIcon size={14} />, KEYS.addBranch),
             addHere('jumpNode', 'Jump', <ArrowRightCircle size={14} />, KEYS.addJump),
+            addHere('setNode', 'Set values', <VariableIcon size={14} />, KEYS.addValues),
             addHere('commentNode', 'Comment', <MessageSquare size={14} />, KEYS.addComment),
             addHere('sectionNode', 'Section', <Layout size={14} />, KEYS.addSection),
             addHere('annotationNode', 'Annotation', <Info size={14} />, KEYS.addAnnotation),

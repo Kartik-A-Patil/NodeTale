@@ -354,6 +354,7 @@ function ProjectEditor() {
       add('add-scene', 'Add a scene', 'elementNode', KEYS.addScene),
       add('add-branch', 'Add a branch', 'conditionNode', KEYS.addBranch),
       add('add-jump', 'Add a jump', 'jumpNode', KEYS.addJump),
+      add('add-values', 'Add set values', 'setNode', KEYS.addValues),
       add('add-comment', 'Add a comment', 'commentNode', KEYS.addComment),
       add('add-section', 'Add a section', 'sectionNode', KEYS.addSection),
       add('add-annotation', 'Add an annotation', 'annotationNode', KEYS.addAnnotation),
