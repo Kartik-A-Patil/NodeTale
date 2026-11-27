@@ -224,3 +224,12 @@ describe('set values node', () => {
     expect(rt.getState().asking).toHaveLength(1);
   });
 });
+
+it('runs a set-key change in play', () => {
+  const p = project([scene('s', 'Start'), { id: 'v', type: 'setNode', position: { x: 0, y: 0 }, data: { label: 'Stats', changes: [{ id: 'a', variable: 'stats', op: 'setKey', key: 'hp', value: 50 }] } } as any, scene('h', 'Hall')],
+    [{ id: 'e1', source: 's', target: 'v' }, { id: 'e2', source: 'v', target: 'h' }]);
+  p.variables.push({ id: 'o', name: 'stats', type: VariableType.OBJECT, value: { keys: { hp: { type: VariableType.NUMBER, value: 10 } } } } as any);
+  const rt = new StoryRuntime(p);
+  rt.choose('e1');
+  expect((rt.getState().values.stats as any).keys.hp).toEqual({ type: 'number', value: 50 });
+});

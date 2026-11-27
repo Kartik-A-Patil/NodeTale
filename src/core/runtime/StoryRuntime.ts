@@ -340,7 +340,7 @@ export class StoryRuntime {
             id: change.id,
             question: change.ask?.trim() || `${variable.name}?`,
             variable: variable.name,
-            type: valueTypeOf(variable),
+            type: valueTypeOf(variable, change.key),
           }))
         : null,
     };

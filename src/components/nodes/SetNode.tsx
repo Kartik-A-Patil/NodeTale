@@ -3,14 +3,14 @@ import type { ReactNode } from "react";
 import { Handle, NodeProps, Position } from "reactflow";
 import { ChevronDown, MessageCircleQuestion, Plus, Variable as VariableIcon, X } from "lucide-react";
 import { SetNodeData, ValueChange, Variable, VariableType } from "../../models/story";
-import { OPS_BY_TYPE, opInfo, opsFor, valueTypeOf } from "../../core/valueChanges";
+import { OPS_BY_TYPE, keysOf, opInfo, opsFor, valueTypeOf } from "../../core/valueChanges";
 import { variableTypeInfo } from "../variableTypes";
 import { createId } from "../../utils/id";
 import { cn } from "../../lib/utils";
 import { useEditor } from "../../editor/EditorContext";
 import { useNodeStatus } from "../../editor/nodeStatusStore";
 import { nodePropsEqual } from "./nodePropsEqual";
-import { EditableTitle, NodeFrame, NodeHeader, StatusBadge, nodeIconButton } from "./nodeChrome";
+import { EditableTitle, NodeFrame, NodeHeader, StatusBadge } from "./nodeChrome";
 
 // Quiet controls that read as part of a sentence: "gold · add · 10".
 const pill = "nodrag h-7 rounded-md bg-nt-bg/60 px-1.5 text-xs text-nt-ink-2 outline-none transition-colors hover:bg-nt-raised focus-visible:bg-nt-raised focus-visible:ring-1 focus-visible:ring-nt-focus";
@@ -37,36 +37,83 @@ function PillSelect({ value, onChange, label, children, invalid }: {
   );
 }
 
-/** A value of the variable's type: number field, text field, or true/false. */
-function ValueInput({ variable, value, onChange }: { variable: Variable; value: ValueChange["value"]; onChange: (value: ValueChange["value"]) => void }) {
-  const type = valueTypeOf(variable);
+/** The ? that turns a value into a question for the player. Sits inside the
+ *  value pill, so it never takes room of its own; shown on hover, or while asking. */
+function AskToggle({ asking, onToggle }: { asking: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={asking}
+      title={asking ? "Use a fixed value instead" : "Ask the player for this value"}
+      aria-label={asking ? "Use a fixed value instead" : "Ask the player for this value"}
+      className={cn(
+        "nodrag absolute right-1 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded transition-opacity",
+        asking ? "text-nt-accent hover:bg-nt-accent/15" : "bg-nt-raised text-nt-ink-3 opacity-0 hover:text-nt-ink group-hover:opacity-100 focus-visible:opacity-100",
+      )}
+    >
+      <MessageCircleQuestion size={12} />
+    </button>
+  );
+}
+
+/** The value slot: a field of the right type (or the player's question), with the ? inside. */
+function ValueSlot({ variable, change, onPatch }: {
+  variable: Variable;
+  change: ValueChange;
+  onPatch: (patch: Partial<ValueChange>, mergeKey?: string) => void;
+}) {
+  const asking = change.ask !== undefined;
+  const toggle = () => onPatch(asking ? { ask: undefined } : { ask: "", value: undefined });
+  const type = valueTypeOf(variable, change.key);
+
+  if (asking) {
+    return (
+      <span className="relative inline-flex">
+        <input
+          value={change.ask}
+          onChange={(e) => onPatch({ ask: e.target.value }, `ask:${change.id}`)}
+          placeholder="Question for the player…"
+          aria-label={`Question asking for ${variable.name}`}
+          className={cn(pill, "min-w-32 max-w-72 [field-sizing:content] bg-nt-accent/10 pr-7 text-nt-accent placeholder:text-nt-accent/60 hover:bg-nt-accent/15 focus-visible:bg-nt-accent/15")}
+        />
+        <AskToggle asking onToggle={toggle} />
+      </span>
+    );
+  }
+
   if (type === VariableType.BOOLEAN) {
     return (
-      <span className="inline-flex h-7 rounded-md bg-nt-bg/60 p-0.5" role="radiogroup" aria-label={`${variable.name} value`}>
+      <span className="relative inline-flex h-7 rounded-md bg-nt-bg/60 p-0.5 group-hover:pr-7 group-focus-within:pr-7" role="radiogroup" aria-label={`${variable.name} value`}>
         {[true, false].map((b) => (
           <button
             key={String(b)}
             type="button"
             role="radio"
-            aria-checked={value === b}
-            onClick={() => onChange(b)}
-            className={`nodrag rounded px-2 font-mono text-xs transition-colors ${value === b ? "bg-nt-raised text-nt-ink" : "text-nt-ink-3 hover:text-nt-ink-2"}`}
+            aria-checked={change.value === b}
+            onClick={() => onPatch({ value: b })}
+            className={`nodrag rounded px-2 font-mono text-xs transition-colors ${change.value === b ? "bg-nt-raised text-nt-ink" : "text-nt-ink-3 hover:text-nt-ink-2"}`}
           >
             {String(b)}
           </button>
         ))}
+        <AskToggle asking={false} onToggle={toggle} />
       </span>
     );
   }
+
   return (
-    <input
-      type={type === VariableType.NUMBER ? "number" : "text"}
-      value={value === undefined ? "" : String(value)}
-      onChange={(e) => onChange(type === VariableType.NUMBER ? (e.target.value === "" ? undefined : Number(e.target.value)) : e.target.value)}
-      placeholder={type === VariableType.NUMBER ? "0" : "text"}
-      aria-label={`${variable.name} value`}
-      className={cn(pill, "min-w-0 placeholder:text-nt-ink-3", type === VariableType.NUMBER ? "w-16 font-mono" : "w-28")}
-    />
+    <span className="relative inline-flex">
+      <input
+        type={type === VariableType.NUMBER ? "number" : "text"}
+        value={change.value === undefined ? "" : String(change.value)}
+        onChange={(e) => onPatch({ value: type === VariableType.NUMBER ? (e.target.value === "" ? undefined : Number(e.target.value)) : e.target.value }, `value:${change.id}`)}
+        placeholder={type === VariableType.NUMBER ? "0" : "text"}
+        aria-label={`${variable.name} value`}
+        className={cn(pill, "min-w-0 placeholder:text-nt-ink-3 group-hover:pr-7 focus-visible:pr-7", type === VariableType.NUMBER ? "w-16 font-mono" : "w-28")}
+      />
+      <AskToggle asking={false} onToggle={toggle} />
+    </span>
   );
 }
 
@@ -78,12 +125,23 @@ function ChangeRow({ change, variables, onPatch, onRemove }: {
 }) {
   const variable = variables.find((v) => v.name === change.variable);
   const info = opInfo(variable, change.op);
-  const asking = change.ask !== undefined;
   const TypeIcon = variable ? variableTypeInfo(variable.type).icon : VariableIcon;
+  const keys = keysOf(variable);
+  const needsKey = change.op === "setKey";
 
   return (
     <div className="group flex h-7 items-center gap-1">
-      <TypeIcon size={12} className="w-4 shrink-0 text-nt-ink-3" aria-hidden />
+      {/* The type icon doubles as the remove button on hover: no extra column. */}
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label="Remove this change"
+        title="Remove"
+        className="nodrag relative inline-flex h-5 w-4 shrink-0 items-center justify-center text-nt-ink-3 hover:text-nt-danger focus-visible:text-nt-danger"
+      >
+        <TypeIcon size={12} className="transition-opacity group-hover:opacity-0 group-focus-within:opacity-0" aria-hidden />
+        <X size={12} className="absolute opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100" aria-hidden />
+      </button>
 
       <PillSelect
         label="Variable"
@@ -91,8 +149,8 @@ function ChangeRow({ change, variables, onPatch, onRemove }: {
         invalid={!variable}
         onChange={(name) => {
           const next = variables.find((v) => v.name === name);
-          // A different type has different operators and values: start that row over.
-          onPatch({ variable: name, op: opsFor(next)[0]?.op ?? "set", value: undefined, ask: undefined });
+          // A different type has different actions and values: start that row over.
+          onPatch({ variable: name, op: opsFor(next)[0]?.op ?? "set", key: keysOf(next)[0], value: undefined, ask: undefined });
         }}
       >
         {!variable && <option value="">{change.variable ? `${change.variable} (missing)` : "variable…"}</option>}
@@ -105,40 +163,24 @@ function ChangeRow({ change, variables, onPatch, onRemove }: {
         </PillSelect>
       )}
 
-      {variable && info?.needsValue && (asking ? (
-        <input
-          value={change.ask}
-          onChange={(e) => onPatch({ ask: e.target.value }, `ask:${change.id}`)}
-          placeholder="Question for the player…"
-          aria-label={`Question asking for ${variable.name}`}
-          className={cn(pill, "w-52 min-w-0 bg-nt-accent/10 text-nt-accent placeholder:text-nt-accent/60 hover:bg-nt-accent/15 focus-visible:bg-nt-accent/15")}
-        />
+      {variable && needsKey && (keys.length ? (
+        <PillSelect
+          label="Key"
+          value={keys.includes(change.key ?? "") ? change.key! : ""}
+          invalid={!keys.includes(change.key ?? "")}
+          // Keys can differ in type: the value starts over.
+          onChange={(key) => onPatch({ key, value: undefined })}
+        >
+          {!keys.includes(change.key ?? "") && <option value="">key…</option>}
+          {keys.map((k) => <option key={k} value={k}>{k}</option>)}
+        </PillSelect>
       ) : (
-        <ValueInput variable={variable} value={change.value} onChange={(value) => onPatch({ value }, `value:${change.id}`)} />
+        <span className="px-1 text-xs text-nt-ink-3">no keys yet</span>
       ))}
 
-      {variable && info?.needsValue && (
-        <button
-          type="button"
-          onClick={() => onPatch(asking ? { ask: undefined } : { ask: "", value: undefined })}
-          aria-pressed={asking}
-          title={asking ? "Use a fixed value instead" : "Ask the player for this value"}
-          aria-label={asking ? "Use a fixed value instead" : "Ask the player for this value"}
-          className={cn(nodeIconButton, asking ? "text-nt-accent hover:text-nt-accent" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100")}
-        >
-          <MessageCircleQuestion size={13} />
-        </button>
+      {variable && info?.needsValue && (!needsKey || keys.includes(change.key ?? "")) && (
+        <ValueSlot variable={variable} change={change} onPatch={onPatch} />
       )}
-
-      <button
-        type="button"
-        onClick={onRemove}
-        aria-label="Remove this change"
-        title="Remove"
-        className={cn(nodeIconButton, "ml-auto opacity-0 hover:text-nt-danger group-hover:opacity-100 focus-visible:opacity-100")}
-      >
-        <X size={12} />
-      </button>
     </div>
   );
 }
@@ -149,7 +191,6 @@ const SetNode = ({ id, data, selected }: NodeProps<SetNodeData>) => {
   const { variables, updateNodeData } = useEditor();
   const status = useNodeStatus(id);
   const changes = data.changes ?? [];
-  // Objects have no simple operators, so they aren't offered.
   const usable = variables.filter((v) => OPS_BY_TYPE[v.type]);
 
   const save = (next: ValueChange[], mergeKey?: string) => updateNodeData(id, { changes: next }, mergeKey && `${id}:${mergeKey}`);
@@ -157,7 +198,7 @@ const SetNode = ({ id, data, selected }: NodeProps<SetNodeData>) => {
     save(changes.map((c) => (c.id === changeId ? { ...c, ...p } : c)), mergeKey);
   const add = () => {
     const first = usable[0];
-    save([...changes, { id: createId("chg"), variable: first?.name ?? "", op: opsFor(first)[0]?.op ?? "set" }]);
+    save([...changes, { id: createId("chg"), variable: first?.name ?? "", op: opsFor(first)[0]?.op ?? "set", key: keysOf(first)[0] }]);
   };
 
   return (

@@ -82,7 +82,7 @@ export interface JumpNodeData extends BaseNodeData {
   jumpTargetLabel?: string;
 }
 
-export type ValueOp = 'set' | 'add' | 'subtract' | 'multiply' | 'divide' | 'append' | 'clear' | 'flip' | 'push' | 'remove';
+export type ValueOp = 'set' | 'add' | 'subtract' | 'multiply' | 'divide' | 'append' | 'clear' | 'flip' | 'push' | 'remove' | 'setKey';
 
 /** One change in a "Set values" node. */
 export interface ValueChange {
@@ -90,7 +90,9 @@ export interface ValueChange {
   /** Variable name. */
   variable: string;
   op: ValueOp;
-  /** Fixed value, of the variable's type (a list's item type for lists). */
+  /** Objects: which key "set key" changes. */
+  key?: string;
+  /** Fixed value, of the variable's type (a list's item type, an object key's type). */
   value?: string | number | boolean;
   /** Present: the player is asked this, and the answer is the value. */
   ask?: string;

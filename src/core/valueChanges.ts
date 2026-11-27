@@ -1,4 +1,4 @@
-import { Variable, VariableType, ValueChange, ValueOp, isArrayValue } from '../models/story';
+import { Variable, VariableType, ValueChange, ValueOp, isArrayValue, isObjectValue } from '../models/story';
 
 // The "Set values" node: each change is variable + operator + value (or a
 // question for the player). Changes compile to ordinary script lines, so the
@@ -11,7 +11,7 @@ export interface OpInfo {
   needsValue: boolean;
 }
 
-/** What each type of variable can do. Objects have no simple operators. */
+/** What each type of variable can do. */
 export const OPS_BY_TYPE: Partial<Record<VariableType, OpInfo[]>> = {
   [VariableType.NUMBER]: [
     { op: 'set', label: 'set to', needsValue: true },
@@ -34,13 +34,24 @@ export const OPS_BY_TYPE: Partial<Record<VariableType, OpInfo[]>> = {
     { op: 'remove', label: 'remove item', needsValue: true },
     { op: 'clear', label: 'clear', needsValue: false },
   ],
+  [VariableType.OBJECT]: [
+    { op: 'setKey', label: 'set key', needsValue: true },
+  ],
 };
+
+/** An object variable's keys, for the key picker. */
+export const keysOf = (variable: Variable | undefined): string[] =>
+  variable && isObjectValue(variable.value) ? Object.keys(variable.value.keys) : [];
 
 export const opsFor = (variable: Variable | undefined): OpInfo[] => (variable ? OPS_BY_TYPE[variable.type] ?? [] : []);
 export const opInfo = (variable: Variable | undefined, op: ValueOp): OpInfo | undefined => opsFor(variable).find((o) => o.op === op);
 
-/** The kind of value a change takes: a list's items take the list's item type. */
-export const valueTypeOf = (variable: Variable): VariableType.NUMBER | VariableType.STRING | VariableType.BOOLEAN => {
+/** The kind of value a change takes: a list's items take the list's item type, an object key its own type. */
+export const valueTypeOf = (variable: Variable, key?: string): VariableType.NUMBER | VariableType.STRING | VariableType.BOOLEAN => {
+  if (variable.type === VariableType.OBJECT) {
+    const keyType = isObjectValue(variable.value) && key ? variable.value.keys[key]?.type : undefined;
+    return keyType === VariableType.NUMBER ? VariableType.NUMBER : keyType === VariableType.BOOLEAN ? VariableType.BOOLEAN : VariableType.STRING;
+  }
   if (variable.type === VariableType.ARRAY) {
     const itemType = isArrayValue(variable.value) ? variable.value.elementType : VariableType.STRING;
     return itemType === VariableType.NUMBER ? VariableType.NUMBER : itemType === VariableType.BOOLEAN ? VariableType.BOOLEAN : VariableType.STRING;
@@ -49,8 +60,8 @@ export const valueTypeOf = (variable: Variable): VariableType.NUMBER | VariableT
 };
 
 /** A value (typed in the editor or by the player) as a literal of the right type, or null if it isn't one. */
-export function literalFor(variable: Variable, raw: unknown): string | null {
-  const type = valueTypeOf(variable);
+export function literalFor(variable: Variable, raw: unknown, key?: string): string | null {
+  const type = valueTypeOf(variable, key);
   if (type === VariableType.NUMBER) {
     const n = typeof raw === 'number' ? raw : typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : NaN;
     return Number.isFinite(n) ? String(n) : null;
@@ -64,7 +75,8 @@ export const questionsOf = (changes: ValueChange[] | undefined, variables: Varia
   (changes ?? []).flatMap((c) => {
     const variable = variables.find((v) => v.name === c.variable);
     const info = opInfo(variable, c.op);
-    return variable && info?.needsValue && c.ask !== undefined ? [{ change: c, variable }] : [];
+    const keyOk = c.op !== 'setKey' || keysOf(variable).includes(c.key ?? '');
+    return variable && info?.needsValue && keyOk && c.ask !== undefined ? [{ change: c, variable }] : [];
   });
 
 /**
@@ -80,8 +92,9 @@ export function compileChanges(changes: ValueChange[] | undefined, variables: Va
     if (!variable || !info) continue;
     const name = variable.name;
     let value: string | null = null;
+    if (c.op === 'setKey' && !keysOf(variable).includes(c.key ?? '')) continue;
     if (info.needsValue) {
-      value = literalFor(variable, c.ask !== undefined ? answers?.[c.id] : c.value);
+      value = literalFor(variable, c.ask !== undefined ? answers?.[c.id] : c.value, c.key);
       if (value === null) continue;
     }
     switch (c.op) {
@@ -94,6 +107,7 @@ export function compileChanges(changes: ValueChange[] | undefined, variables: Va
       case 'flip': lines.push(`${name} = !${name}`); break;
       case 'push': lines.push(`${name} = push(${name}, ${value})`); break;
       case 'remove': lines.push(`${name} = remove(${name}, ${value})`); break;
+      case 'setKey': lines.push(`${name} = objectSpread(${name}, { ${JSON.stringify(c.key)}: ${value} })`); break;
       case 'clear': lines.push(variable.type === VariableType.ARRAY ? `${name} = arrayFilter(${name}, (x) => false)` : `${name} = ""`); break;
     }
   }
