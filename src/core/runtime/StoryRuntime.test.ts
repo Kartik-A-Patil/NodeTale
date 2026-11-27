@@ -146,3 +146,44 @@ describe('log, rewind and saves', () => {
     expect(stale.getState().currentNode?.id).toBe('s');
   });
 });
+
+describe('debugger', () => {
+  it('traces script lines, branches and choice effects since the last choice', () => {
+    const cond = { id: 'k', type: 'conditionNode', position: { x: 0, y: 0 },
+      data: { label: 'Rich?', branches: [{ id: 'y', label: 'If', condition: 'gold > 10' }, { id: 'n', label: 'Else', condition: '' }] } } as any;
+    const rt = new StoryRuntime(project(
+      [scene('s', 'Start'), scene('h', 'Hall', '<pre>gold += 5\nif (gold > 100) {\n  gold = 0\n}</pre>'), cond, scene('r', 'Rich'), scene('p', 'Poor')],
+      [
+        { id: 'e1', source: 's', target: 'h', data: { effect: 'gold += 3' } },
+        { id: 'e2', source: 'h', target: 'k' },
+        { id: 'e3', source: 'k', target: 'r', sourceHandle: 'y' }, { id: 'e4', source: 'k', target: 'p', sourceHandle: 'n' },
+      ],
+    ));
+    rt.choose('e1');
+    expect(rt.getState().trace.map((t) => [t.source, t.nodeId, t.line, t.text, t.note])).toEqual([
+      ['choice', 's', 1, 'gold += 3', 'gold: 0 → 3'],
+      ['script', 'h', 1, 'gold += 5', 'gold: 3 → 8'],
+      ['script', 'h', 2, 'if (gold > 100) {', 'false'],
+    ]);
+    rt.choose('e2');
+    expect(rt.getState().trace.map((t) => [t.source, t.text, t.note])).toEqual([
+      ['branch', 'If gold > 10', 'false'],
+      ['branch', 'Else', 'taken'],
+    ]);
+    expect(rt.getState().currentNode?.id).toBe('p');
+  });
+
+  it('edits a value mid-play and restarts with chosen starting values', () => {
+    const rt = new StoryRuntime(project(
+      [scene('s', 'Start'), scene('b', 'Bought')],
+      [{ id: 'buy', source: 's', target: 'b', data: { condition: 'gold >= 50' } }],
+    ));
+    expect(rt.getOptions()[0].locked).toBe(true);
+    rt.setValue('gold', 60);
+    expect(rt.getOptions()[0].locked).toBeFalsy();
+    rt.restart({ gold: 99 });
+    expect(rt.getState().values.gold).toBe(99);
+    rt.restart();
+    expect(rt.getState().values.gold).toBe(99);
+  });
+});

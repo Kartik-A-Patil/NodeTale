@@ -1,6 +1,6 @@
 import { Project, Variable, StoryNode, Asset, isStartNode } from '../../models/story';
 import { createSimulator, resolveVisibleNode, valuesEqual, Simulator, Transition, Values } from '../sim/simulate';
-import { mathRng, Rng } from './scriptInterpreter';
+import { mathRng, Rng, TraceLine } from './scriptInterpreter';
 
 interface HistoryItem {
   nodeId: string;
@@ -54,6 +54,8 @@ export interface RuntimeState {
   changes: VarChange[];
   /** Counts choices taken, so the same change twice in a row is still news. */
   turn: number;
+  /** What the engine did since the last choice (its effect, scripts, branches, jumps). */
+  trace: TraceLine[];
 }
 
 export interface StoryOption {
@@ -86,6 +88,9 @@ export class StoryRuntime {
   private taken = new Set<string>();
   private changes: VarChange[] = [];
   private turn = 0;
+  private trace: TraceLine[] = [];
+  /** Starting values the current playthrough began with (debugger presets). */
+  private overrides: Values = {};
 
   constructor(project: Project, startNodeId?: string | null, rng: Rng = mathRng) {
     this.project = project;
@@ -104,7 +109,8 @@ export class StoryRuntime {
   // Runs nodes, auto-advancing through condition/jump nodes, until landing on
   // a scene or a dead end. The visited set stops a loop of logic nodes from
   // hanging the thread.
-  private enterNode(nodeId: string) {
+  private enterNode(nodeId: string, trace: TraceLine[] = []) {
+    this.trace = trace;
     const visited = new Set<string>();
     let id: string | undefined = nodeId;
 
@@ -122,7 +128,7 @@ export class StoryRuntime {
         this.choices = [];
         return;
       }
-      const result = this.sim.step(id, this.values, this.rng);
+      const result = this.sim.step(id, this.values, this.rng, trace);
       result.errors.forEach((m) => this.reportError(node.id, m));
       this.values = result.after;
 
@@ -138,6 +144,7 @@ export class StoryRuntime {
         return;
       }
       this.history.push({ nodeId: node.id, values: this.values, choices: [] });
+      if (next.kind === 'jump') trace.push({ nodeId: node.id, source: 'jump', text: next.label, note: 'followed' });
       id = next.target;
     }
   }
@@ -163,10 +170,12 @@ export class StoryRuntime {
     if (!choice || choice.locked || !this.currentNodeId) return;
     this.history.push({ nodeId: this.currentNodeId, values: this.values, choices: this.choices, choice: this.labelOf(choice) });
     const before = this.values;
-    const { values, error } = this.sim.follow(choice, this.values, this.rng);
+    const trace: TraceLine[] = [];
+    const { values, error } = this.sim.follow(choice, this.values, this.rng, trace);
+    trace.forEach((t) => { t.nodeId = this.currentNodeId!; });
     if (error) this.reportError(this.currentNodeId, error);
     this.values = values;
-    this.enterNode(choice.target);
+    this.enterNode(choice.target, trace);
     this.taken.add(edgeId);
     this.turn++;
     this.changes = this.sim.variables
@@ -190,6 +199,15 @@ export class StoryRuntime {
     this.values = item.values;
     this.choices = item.choices;
     this.changes = [];
+    this.trace = [];
+  }
+
+  /** Debugger: change a variable mid-play. The scene's choices are re-checked
+   *  against it; nothing re-runs. */
+  setValue(name: string, value: unknown) {
+    if (!this.currentNodeId || !(name in this.values)) return;
+    this.values = { ...this.values, [name]: value };
+    this.choices = this.sim.choices(this.currentNodeId, this.values);
   }
 
   getLog(): LogEntry[] {
@@ -220,10 +238,13 @@ export class StoryRuntime {
     return true;
   }
 
-  restart() {
+  /** Start over; `overrides` sets starting values (a saved scenario), and is
+   *  kept for later restarts until another is given. */
+  restart(overrides?: Values) {
     if (!this.initialStartNodeId) return;
+    if (overrides) this.overrides = overrides;
     this.history = [];
-    this.values = this.sim.initialValues();
+    this.values = this.sim.initialValues(this.overrides);
     this.errors = [];
     this.taken.clear();
     this.changes = [];
@@ -259,6 +280,7 @@ export class StoryRuntime {
       errors: this.errors,
       changes: this.changes,
       turn: this.turn,
+      trace: this.trace,
     };
   }
 }

@@ -28,6 +28,11 @@ export const usePlayModeLogic = (
     forceRender();
   }, [runtime]);
 
+  const setValue = useCallback((name: string, value: unknown) => {
+    runtime.setValue(name, value);
+    forceRender();
+  }, [runtime]);
+
   const rewindTo = useCallback((index: number) => {
     runtime.rewindTo(index);
     forceRender();
@@ -39,8 +44,8 @@ export const usePlayModeLogic = (
     return ok;
   }, [runtime]);
 
-  const restart = useCallback(() => {
-    runtime.restart();
+  const restart = useCallback((overrides?: Record<string, unknown>) => {
+    runtime.restart(overrides);
     forceRender();
   }, [runtime]);
 
@@ -67,5 +72,7 @@ export const usePlayModeLogic = (
     errors: state.errors,
     changes: state.changes,
     turn: state.turn,
+    trace: state.trace,
+    setValue,
   };
 };

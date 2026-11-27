@@ -1,6 +1,6 @@
 import { Project, StoryNode, Board, Variable, Branch, isConditionNode, isStartNode, isArrayValue, isObjectValue } from '../../models/story';
 import { executeNode } from '../nodes/nodeRegistry';
-import { runScript, evaluateCondition, firstOutcomeRng, Rng } from '../runtime/scriptInterpreter';
+import { runScript, evaluateCondition, firstOutcomeRng, Rng, TraceLine } from '../runtime/scriptInterpreter';
 import { extractScriptCode } from '../../utils/html';
 import { DEFAULT_BRANCHES, branchLabel } from '../branch';
 import { manualEdgeLabel, choiceRulesOf } from '../../utils/edgeLabel';
@@ -57,9 +57,11 @@ export interface Simulator {
   initialValues: (overrides?: Values) => Values;
   toVariables: (values: Values) => Variable[];
   /** Enter a node. Without an rng, chance()/random() take their first outcome. */
-  step: (nodeId: string, values: Values, rng?: Rng) => StepResult;
+  step: (nodeId: string, values: Values, rng?: Rng, trace?: TraceLine[]) => StepResult;
+  /** A scene's choices for these values, without running its script. */
+  choices: (nodeId: string, values: Values) => Transition[];
   /** Take a transition: runs a choice's effect. The values to enter `t.target` with. */
-  follow: (t: Transition, values: Values, rng?: Rng) => { values: Values; error?: string };
+  follow: (t: Transition, values: Values, rng?: Rng, trace?: TraceLine[]) => { values: Values; error?: string };
 }
 
 export const valuesEqual = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
@@ -106,18 +108,32 @@ export function createSimulator(project: Project): Simulator {
         };
       });
 
-  const step = (nodeId: string, values: Values, rng: Rng = firstOutcomeRng): StepResult => {
+  // Debugger lines from one node get its id.
+  const tagged = (trace: TraceLine[] | undefined, nodeId: string, run: (into?: TraceLine[]) => void) => {
+    if (!trace) return run();
+    const from = trace.length;
+    run(trace);
+    for (let i = from; i < trace.length; i++) trace[i].nodeId ??= nodeId;
+  };
+
+  const step = (nodeId: string, values: Values, rng: Rng = firstOutcomeRng, trace?: TraceLine[]): StepResult => {
+    let result!: StepResult;
+    tagged(trace, nodeId, (into) => { result = stepNode(nodeId, values, rng, into); });
+    return result;
+  };
+
+  const stepNode = (nodeId: string, values: Values, rng: Rng, trace?: TraceLine[]): StepResult => {
     const ctx = index.get(nodeId);
     if (!ctx) return { after: values, changed: [], errors: ['Scene not found'], error: 'Scene not found', next: [] };
     const { node, board } = ctx;
     const errors: string[] = [];
-    const result = executeNode(node, { board, values, rng, onError: (m) => errors.push(m) });
+    const result = executeNode(node, { board, values, rng, onError: (m) => errors.push(m), trace });
 
     let after = values;
     if (result.scriptContent !== undefined) {
       const code = scriptOf(nodeId, result.scriptContent);
       if (code) {
-        const run = runScript(code, values, rng);
+        const run = runScript(code, values, rng, trace);
         if (run.error) errors.push(run.error);
         if (Object.keys(run.changes).length) after = { ...values, ...run.changes };
       }
@@ -141,9 +157,11 @@ export function createSimulator(project: Project): Simulator {
     return done(next);
   };
 
-  const follow = (t: Transition, values: Values, rng: Rng = firstOutcomeRng) => {
+  const follow = (t: Transition, values: Values, rng: Rng = firstOutcomeRng, trace?: TraceLine[]) => {
     if (!t.effect) return { values };
-    const run = runScript(t.effect, values, rng);
+    const from = trace?.length ?? 0;
+    const run = runScript(t.effect, values, rng, trace);
+    if (trace) for (let i = from; i < trace.length; i++) trace[i].source = 'choice';
     const after = Object.keys(run.changes).length ? { ...values, ...run.changes } : values;
     return run.error ? { values: after, error: `Choice "${t.label}": ${run.error}` } : { values: after };
   };
@@ -156,6 +174,10 @@ export function createSimulator(project: Project): Simulator {
     toVariables,
     step,
     follow,
+    choices: (nodeId, values) => {
+      const ctx = index.get(nodeId);
+      return ctx?.node.type === 'elementNode' ? choicesOf(ctx.node, ctx.board, values, []) : [];
+    },
   };
 }
 

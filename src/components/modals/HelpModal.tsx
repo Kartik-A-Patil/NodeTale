@@ -264,6 +264,7 @@ const PlayMode = () => (
       'Choices already taken in this playthrough are marked “seen”.',
       'The scroll button shows the story so far: return to any earlier scene from it. The save button keeps three save slots per story in this browser, and endings you reach are counted (“2 of 5 endings found”).',
       'A choice can take itself after some seconds: set it in the choice’s rules (the sliders button on its connection).',
+      <>The bug button opens the debugger: every script line and branch that ran since your last choice (and why), every variable (click a value to change it), problems met, <strong className="text-nt-ink">Restart with</strong> a saved scenario, and <strong className="text-nt-ink">Canvas</strong> to jump to the current node. A red number on it means something went wrong.</>,
       'Branches and jumps are followed automatically; only choices wait for the player.',
     ]} />
   </>

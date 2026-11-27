@@ -133,6 +133,21 @@ export const SCRIPT_FUNCTIONS: { name: string; signature: string; description: s
   { name: 'objectSpread', signature: 'objectSpread(object, changes)', description: 'A copy of the object with changes applied' },
 ];
 
+/** One thing the engine did, for the Play Mode debugger. */
+export interface TraceLine {
+  nodeId?: string;
+  source: 'script' | 'branch' | 'jump' | 'choice';
+  /** Script line number (1-based), for script/choice lines. */
+  line?: number;
+  /** What ran: the script line, "If gold > 5", "Jump to Hall". */
+  text: string;
+  /** What came of it: "gold: 10 → 20", "true", "taken". */
+  note: string;
+  error?: boolean;
+}
+
+const show = (v: unknown): string => (typeof v === 'string' ? JSON.stringify(v) : textValue(v));
+
 export interface ScriptRunResult {
   changes: Record<string, unknown>;
   error?: string;
@@ -160,19 +175,30 @@ export const formatScriptError = (err: unknown) =>
 // Restricted interpreter, not JS: no loops or arbitrary calls, only the
 // grammar in src/core/expression/ and the functions above. The sandboxing is
 // that nothing else can ever run, unlike shadowing globals on `new Function`/`eval`.
-export function runScript(code: string, readScope: Record<string, unknown>, rng?: Rng): ScriptRunResult {
+export function runScript(code: string, readScope: Record<string, unknown>, rng?: Rng, trace?: TraceLine[]): ScriptRunResult {
   const live: Record<string, unknown> = { ...readScope };
   const changedNames = new Set<string>();
   const ctx = makeEvalContext(live, rng);
+  const lines = trace ? code.split('\n') : [];
+  let running: Stmt | undefined;
+  const lineOf = (stmt: Stmt) => (stmt.pos === undefined ? 1 : code.slice(0, stmt.pos).split('\n').length);
+  const note = (stmt: Stmt, text: string, error?: boolean) => {
+    const line = lineOf(stmt);
+    trace!.push({ source: 'script', line, text: lines[line - 1]?.trim() ?? '', note: text, ...(error ? { error } : {}) });
+  };
 
   const exec = (statements: Stmt[]) => {
     for (const stmt of statements) {
+      running = stmt;
       if (stmt.kind === 'if') {
-        exec(evaluate(stmt.test, ctx) ? stmt.then : stmt.otherwise ?? []);
+        const pass = !!evaluate(stmt.test, ctx);
+        if (trace) note(stmt, pass ? 'true' : stmt.otherwise ? 'false → else' : 'false');
+        exec(pass ? stmt.then : stmt.otherwise ?? []);
         continue;
       }
       if (stmt.kind === 'expr') {
         evaluate(stmt.expr, ctx);
+        if (trace) note(stmt, 'ran');
         continue;
       }
       // Assignment target must be a project-declared variable: no ad-hoc
@@ -187,6 +213,7 @@ export function runScript(code: string, readScope: Record<string, unknown>, rng?
       else if (stmt.op === '*=') live[stmt.name] = (current as number) * (rhs as number);
       else if (stmt.op === '/=') live[stmt.name] = (current as number) / (rhs as number);
       changedNames.add(stmt.name);
+      if (trace) note(stmt, `${stmt.name}: ${show(current)} → ${show(live[stmt.name])}`);
     }
   };
 
@@ -195,6 +222,10 @@ export function runScript(code: string, readScope: Record<string, unknown>, rng?
     exec(parseScript(code));
   } catch (err) {
     error = formatScriptError(err);
+    if (trace) {
+      if (running) note(running, error, true);
+      else trace.push({ source: 'script', text: lines[0]?.trim() ?? '', note: error, error: true });
+    }
   }
   const changes: Record<string, unknown> = {};
   changedNames.forEach((name) => { changes[name] = live[name]; });

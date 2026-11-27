@@ -585,7 +585,12 @@ function ProjectEditor() {
 
       {isPlaying && (
           <React.Suspense fallback={null}>
-            <PlayMode project={playProject!} startNodeId={playStartNodeId} onClose={() => { setIsPlaying(false); setPlayStartNodeId(null); }} />
+            <PlayMode
+              project={playProject!}
+              startNodeId={playStartNodeId}
+              onClose={() => { setIsPlaying(false); setPlayStartNodeId(null); }}
+              onShowInEditor={(nodeId) => { setIsPlaying(false); setPlayStartNodeId(null); focusNode(nodeId); }}
+            />
           </React.Suspense>
       )}
 

@@ -13,7 +13,7 @@ import {
   DEFAULT_Z_INDEX,
 } from '../../models/story';
 import { CanvasNode } from '../../adapters/reactFlow';
-import { evaluateCondition, Rng } from '../runtime/scriptInterpreter';
+import { evaluateCondition, Rng, TraceLine } from '../runtime/scriptInterpreter';
 import { DEFAULT_BRANCHES } from '../branch';
 import ElementNode from '../../components/nodes/ElementNode';
 import ConditionNode from '../../components/nodes/ConditionNode';
@@ -29,6 +29,8 @@ export interface NodeExecutionContext {
   /** Luck for chance()/random() in branch conditions. */
   rng?: Rng;
   onError?: (message: string) => void;
+  /** Collects what was evaluated and why, for the Play Mode debugger. */
+  trace?: TraceLine[];
 }
 
 export interface NodeExecutionResult {
@@ -74,16 +76,30 @@ export const nodeRegistry: Record<NodeTypeKey, NodeRegistryEntry<any>> = {
       // and stops, instead of silently looking for a branch named "else".
       let targetHandleId: string | null = null;
 
+      let elseId: string | null = null;
       for (const branch of branches) {
         if (branch.label === 'Else') {
+          elseId = branch.id;
           targetHandleId = branch.id;
           continue;
         }
-        if (evaluateCondition(branch.condition, ctx.values, { rng: ctx.rng, onError: ctx.onError })) {
+        let failure: string | undefined;
+        const pass = evaluateCondition(branch.condition, ctx.values, {
+          rng: ctx.rng,
+          onError: (m) => { failure = m; ctx.onError?.(m); },
+        });
+        ctx.trace?.push({
+          source: 'branch',
+          text: `If ${branch.condition?.trim() || '(empty: always true)'}`,
+          note: failure ?? (pass ? 'true → taken' : 'false'),
+          ...(failure ? { error: true } : {}),
+        });
+        if (pass) {
           targetHandleId = branch.id;
           break;
         }
       }
+      if (ctx.trace && targetHandleId !== null && targetHandleId === elseId) ctx.trace.push({ source: 'branch', text: 'Else', note: 'taken' });
 
       const edge = targetHandleId
         ? ctx.board.edges.find((e) => e.source === node.id && e.sourceHandle === targetHandleId)

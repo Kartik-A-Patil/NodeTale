@@ -69,7 +69,10 @@ class Parser {
     this.skipStatementEnds();
     if (this.isWord('else')) {
       this.advance();
-      if (this.isWord('if')) return { kind: 'if', test, then, otherwise: [this.parseIf()] };
+      if (this.isWord('if')) {
+        const pos = this.peek().pos;
+        return { kind: 'if', test, then, otherwise: [{ ...this.parseIf(), pos }] };
+      }
       return { kind: 'if', test, then, otherwise: this.parseBlock('else') };
     }
     this.pos = beforeElse;
@@ -108,6 +111,11 @@ class Parser {
   };
 
   private parseStatement(): Stmt {
+    const pos = this.peek().pos;
+    return { ...this.parseStatementAt(), pos };
+  }
+
+  private parseStatementAt(): Stmt {
     if (this.isWord('if') && this.peek(1).type === 'LPAREN') return this.parseIf();
     if (this.at('IDENT')) {
       const op = Parser.ASSIGN_OPS[this.peek(1).type];

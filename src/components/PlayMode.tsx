@@ -3,7 +3,7 @@ import { Project, ElementNodeData, Asset } from "../models/story";
 import { sanitizeHtml } from "../utils/html";
 import { usePlayModeLogic } from "../hooks/usePlayMode";
 import { PlayControls } from "./playmode/PlayControls";
-import { DebugOverlay } from "./playmode/DebugOverlay";
+import { DebugPanel } from "./playmode/DebugPanel";
 import { MediaDisplay } from "./playmode/MediaDisplay";
 import { StoryNode } from "./playmode/StoryNode";
 import { PlayerStatus } from "./playmode/PlayerStatus";
@@ -19,6 +19,8 @@ interface PlayModeProps {
   project: Project;
   onClose: () => void;
   startNodeId?: string | null;
+  /** Leave Play Mode and select this node on the canvas. */
+  onShowInEditor?: (nodeId: string) => void;
 }
 
 const FADE_MS = 600;
@@ -84,6 +86,7 @@ const PlayMode: React.FC<PlayModeProps> = ({
   project,
   onClose,
   startNodeId,
+  onShowInEditor,
 }) => {
   const {
     currentNode,
@@ -102,7 +105,11 @@ const PlayMode: React.FC<PlayModeProps> = ({
     restore,
     getLog,
     snapshot,
+    trace,
+    setValue,
   } = usePlayModeLogic(project, startNodeId);
+  const [debugging, setDebugging] = useLocalPref<boolean>("nodetale:playDebug", false);
+  const labels = useMemo(() => new Map(project.boards.flatMap((b) => b.nodes.map((n) => [n.id, n.data?.label || "Untitled"] as const))), [project]);
 
   const [muted, setMuted] = useState(false);
   const [panel, setPanel] = useState<"log" | "saves" | null>(null);
@@ -151,7 +158,23 @@ const PlayMode: React.FC<PlayModeProps> = ({
     onClose, onRestart: restart, muted, onToggleMute: () => setMuted(!muted), onBack: goBack, canGoBack,
     onOpenLog: () => setPanel(panel === "log" ? null : "log"),
     onOpenSaves: () => setPanel(panel === "saves" ? null : "saves"),
+    debugging,
+    onToggleDebug: () => setDebugging(!debugging),
+    problemCount: errors.length,
   };
+  const debugPanel = debugging && currentNode && (
+    <DebugPanel
+      variables={runtimeVars}
+      errors={errors}
+      trace={trace}
+      currentLabel={labels.get(currentNode.id) ?? "Untitled"}
+      labelOf={(id) => labels.get(id) ?? "Untitled"}
+      onSetValue={setValue}
+      presets={project.simulationPresets ?? []}
+      onRestartWith={(values) => restart(values)}
+      onShowInEditor={onShowInEditor && (() => onShowInEditor(currentNode.id))}
+    />
+  );
 
   // Esc leaves, Backspace steps back (choices/reveal keys live in StoryNode).
   useEffect(() => {
@@ -185,7 +208,7 @@ const PlayMode: React.FC<PlayModeProps> = ({
     return (
       <div className="fixed inset-0 z-50 bg-black text-zinc-200 font-sans select-none">
         <PlayControls {...controls} hasAudio={false} />
-        <DebugOverlay variables={runtimeVars} errors={errors} />
+        {debugPanel}
         <StoryNode key={`${turn}-${currentNode.id}`} label="The End" content="" options={[]} onOptionClick={handleOptionClick} hasVisual={false} paused={!!panel} />
         {panels}
       </div>
@@ -218,7 +241,7 @@ const PlayMode: React.FC<PlayModeProps> = ({
       <PlayControls {...controls} hasAudio={audioAssets.length > 0} />
       {panels}
       
-      <DebugOverlay variables={runtimeVars} errors={errors} />
+      {debugPanel}
       <PlayerStatus variables={runtimeVars} changes={changes} turn={turn} />
 
       {/* Main Content Layout */}
