@@ -44,7 +44,9 @@ const compactNode = (node: StoryNode): StoryNode => {
     data.audioSettings = Object.fromEntries(Object.entries(data.audioSettings).filter(([assetId]) => assets.has(assetId)));
   }
   const width = whole(node.width);
-  const height = whole(node.height);
+  // A scene's measured height isn't kept (it fits its content); a height set
+  // with the resize grip lives in style.height and is.
+  const height = type === 'elementNode' ? undefined : whole(node.height);
   const zIndex = node.zIndex === DEFAULT_Z_INDEX[type] ? undefined : node.zIndex;
   // The editor mirrors width/height/zIndex into style on load; only differences are worth keeping.
   const style = withoutEmpty(Object.fromEntries(Object.entries(node.style ?? {}).filter(([k, v]) =>

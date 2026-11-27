@@ -15,7 +15,7 @@ import {
 import { CanvasNode } from '../../adapters/reactFlow';
 import { evaluateCondition, Rng, TraceLine } from '../runtime/scriptInterpreter';
 import { DEFAULT_BRANCHES } from '../branch';
-import ElementNode from '../../components/nodes/ElementNode';
+import SceneNode from '../../components/nodes/SceneNode';
 import ConditionNode from '../../components/nodes/ConditionNode';
 import JumpNode from '../../components/nodes/JumpNode';
 import CommentNode from '../../components/nodes/CommentNode';
@@ -56,9 +56,10 @@ export type NodeTypeKey =
   | 'annotationNode';
 
 export const nodeRegistry: Record<NodeTypeKey, NodeRegistryEntry<any>> = {
+  // A scene. Stored as 'elementNode' (its original name) in every saved story.
   elementNode: {
-    component: ElementNode,
-    create: (extraFields = {}): ElementNodeData => ({ label: 'New Element', content: '', ...extraFields }),
+    component: SceneNode,
+    create: (extraFields = {}): ElementNodeData => ({ label: 'New scene', content: '', ...extraFields }),
     execute: (node) => ({ scriptContent: node.data.content }),
   } satisfies NodeRegistryEntry<ElementNodeData>,
 

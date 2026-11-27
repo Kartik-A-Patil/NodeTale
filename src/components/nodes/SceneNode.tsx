@@ -26,7 +26,7 @@ import { useEditor } from "../../editor/EditorContext";
 import { useNodeStatus } from "../../editor/nodeStatusStore";
 import { EditableTitle, NodeFrame, NodeHeader, NodeResizeGrip, StatusBadge, nodeIconButton, useNodeEditRequest } from "./nodeChrome";
 
-const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
+const SceneNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
   const { getNode } = useReactFlow();
   const { variables, assets: projectAssets, updateNodeData, updateNode } = useEditor();
   const status = useNodeStatus(id);
@@ -115,8 +115,8 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
 
   return (
     <>
-      {selected && <NodeResizeGrip minWidth={250} minHeight={150} />}
-      <NodeFrame id={id} selected={selected} color={data.color} className="h-full w-full min-w-[250px] min-h-[150px] flex-col">
+      {selected && <NodeResizeGrip minWidth={220} minHeight={72} />}
+      <NodeFrame id={id} selected={selected} color={data.color} className="group/node h-full w-full min-w-[220px] flex-col">
         <NodeHeader
           icon={Clapperboard}
           title={<EditableTitle nodeId={id} value={data.label} placeholder="Untitled scene" onChange={(label) => handleChange("label", label)} />}
@@ -134,13 +134,16 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
               <Maximize2 size={14} />
             </button>
           )}
-          <DatePicker date={data.date || null} onChange={(date) => handleChange("date", date)} nodeId={id} />
+          {/* Only in the way until it's used: shown when set, or on hover/selection. */}
+          <span className={clsx("flex", !data.date && !selected && "opacity-0 transition-opacity group-hover/node:opacity-100 focus-within:opacity-100")}>
+            <DatePicker date={data.date || null} onChange={(date) => handleChange("date", date)} nodeId={id} />
+          </span>
         </NodeHeader>
 
         {/* Body */}
         <div
           className={clsx(
-            "relative flex min-h-[6rem] flex-1 flex-col rounded-b-[inherit] p-3 transition-shadow",
+            "relative flex min-h-[3rem] flex-1 flex-col rounded-b-[inherit] px-2.5 pb-2.5 pt-2 transition-shadow",
             isAssetOver && "ring-2 ring-inset ring-nt-accent/70"
           )}
           onDrop={handleDrop}
@@ -251,4 +254,4 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
   );
 };
 
-export default memo(ElementNode, nodePropsEqual);
+export default memo(SceneNode, nodePropsEqual);

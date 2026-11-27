@@ -33,7 +33,8 @@ it('stores only what the author set, and loading restores the rest', async () =>
     ] }],
   };
   const [board] = compactProject(project).boards;
-  expect(board.nodes[0]).toEqual({ id: 's', type: 'elementNode', position: { x: 1, y: 3 }, width: 250, height: 150, data: { label: 'Start', content: '' } });
+  // Resized scene: width kept, its chosen height kept as style, measured height dropped.
+  expect(board.nodes[0]).toEqual({ id: 's', type: 'elementNode', position: { x: 1, y: 3 }, width: 250, style: { height: 150 }, data: { label: 'Start', content: '' } });
   expect(board.nodes[1].data).toEqual({ label: 'If', branches: [] });
   expect(board.nodes[2]).toEqual({ id: 'c', type: 'commentNode', position: { x: 0, y: 0 }, data: { label: '', text: 'note' } });
   expect(board.edges[0]).toEqual({ id: 'e1', source: 's', target: 'k' });
