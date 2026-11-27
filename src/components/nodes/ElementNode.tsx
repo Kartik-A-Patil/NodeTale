@@ -140,7 +140,7 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
         {/* Body */}
         <div
           className={clsx(
-            "relative flex min-h-[6rem] flex-1 flex-col rounded-b-[inherit] p-3 transition-shadow",
+            "relative flex min-h-[6rem] flex-1 flex-col rounded-b-[inherit] p-2 transition-shadow",
             isAssetOver && "ring-2 ring-inset ring-nt-accent/70"
           )}
           onDrop={handleDrop}

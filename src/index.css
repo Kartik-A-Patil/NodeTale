@@ -90,7 +90,7 @@
    neutral so text contrast never depends on the chosen colour. */
 .nt-node {
   --node-accent: oklch(var(--nt-accent));
-  border: 1px solid oklch(var(--nt-line));
+  border: 1px solid oklch(var(--nt-line) / 0.6);
   border-radius: 0.625rem;
   background: oklch(var(--nt-surface));
   color: oklch(var(--nt-ink-2));

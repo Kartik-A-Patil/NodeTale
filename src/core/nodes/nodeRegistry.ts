@@ -58,7 +58,7 @@ export type NodeTypeKey =
 export const nodeRegistry: Record<NodeTypeKey, NodeRegistryEntry<any>> = {
   elementNode: {
     component: ElementNode,
-    create: (extraFields = {}): ElementNodeData => ({ label: 'New Element', content: '', ...extraFields }),
+    create: (extraFields = {}): ElementNodeData => ({ label: 'New scene', content: '', ...extraFields }),
     execute: (node) => ({ scriptContent: node.data.content }),
   } satisfies NodeRegistryEntry<ElementNodeData>,
 
