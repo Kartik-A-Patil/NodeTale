@@ -86,3 +86,22 @@ describe('choice rules', () => {
     expect(rt.getOptions()[0].locked).toBeFalsy();
   });
 });
+
+describe('player feedback', () => {
+  it('reports what a choice changed and remembers taken choices', () => {
+    const rt = new StoryRuntime(project(
+      [scene('s', 'Start'), scene('b', 'Bought', '<pre>gold += 5</pre>')],
+      [{ id: 'buy', source: 's', target: 'b', data: { effect: 'gold += 10' } }, { id: 'home', source: 'b', target: 's' }],
+    ));
+    rt.choose('buy');
+    expect(rt.getState().changes).toEqual([{ name: 'gold', before: 0, after: 15 }]);
+    expect(rt.getState().turn).toBe(1);
+    rt.choose('home');
+    expect(rt.getState().changes).toEqual([]);
+    expect(rt.getOptions()[0].visited).toBe(true);
+    rt.back();
+    expect(rt.getState().changes).toEqual([]);
+    rt.restart();
+    expect(rt.getOptions()[0].visited).toBe(false);
+  });
+});

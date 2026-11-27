@@ -259,7 +259,9 @@ const PlayMode = () => (
     <Steps items={[
       <>Press <strong className="text-nt-ink">Play</strong> to start from the scene named Start.</>,
       <>Right-click any scene and choose <strong className="text-nt-ink">Play from here</strong>, or select it and press <ShortcutKbd keys={KEYS.playFromHere} />.</>,
-      'The variables panel in play mode shows every value as it changes.',
+      <>Keys: <Inline>1</Inline>–<Inline>9</Inline> pick a choice, <Inline>Enter</Inline> skips the text fade-in (or takes the only choice), <Inline>Backspace</Inline> goes back, <Inline>Esc</Inline> leaves.</>,
+      <>Click the eye next to a variable in the Variables panel to show it to players in a status bar. A short note appears whenever a choice changes it (every change, if none are shown).</>,
+      'Choices already taken in this playthrough are marked “seen”.',
       'Branches and jumps are followed automatically; only choices wait for the player.',
     ]} />
   </>

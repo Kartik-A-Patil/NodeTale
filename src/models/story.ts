@@ -32,6 +32,8 @@ export interface Variable {
   name: string;
   type: VariableType;
   value: string | number | boolean | ArrayValue | ObjectValue;
+  /** Shown to the player in Play Mode's status bar. */
+  showInPlay?: boolean;
 }
 
 export interface Folder {

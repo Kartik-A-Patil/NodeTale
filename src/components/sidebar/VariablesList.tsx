@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Project, Variable, VariableType, ArrayValue, ObjectValue } from '../../models/story';
-import { Check, ChevronDown, Pencil, Plus, X } from 'lucide-react';
+import { Check, ChevronDown, Eye, EyeOff, Pencil, Plus, X } from 'lucide-react';
 import { VARIABLE_TYPES, variableTypeInfo } from '../variableTypes';
 import { ArrayObjectEditorModal } from '../modals/ArrayObjectEditorModal';
 import { Dialog } from '../ui/NativeDialog';
@@ -186,6 +186,12 @@ export const VariablesList: React.FC<VariablesListProps> = ({ project, setProjec
                 spellCheck={false}
                 onChange={(e) => updateVariable(idx, 'name', e.target.value)}
               />
+              <button type="button" onClick={() => updateVariable(idx, 'showInPlay', !v.showInPlay)}
+                aria-pressed={!!v.showInPlay} aria-label={`Show ${v.name} to players`}
+                title={v.showInPlay ? 'Shown to players in Play Mode' : 'Show to players in Play Mode'}
+                className={`${buttonGhostIcon} h-7 w-7 ${v.showInPlay ? 'text-nt-accent' : 'opacity-0 focus-visible:opacity-100 group-hover:opacity-100'}`}>
+                {v.showInPlay ? <Eye size={14} /> : <EyeOff size={14} />}
+              </button>
               <button type="button" onClick={() => deleteVariable(v.id)} aria-label={`Delete ${v.name}`} title="Delete"
                 className={`${buttonGhostIcon} h-7 w-7 opacity-0 hover:text-nt-danger focus-visible:opacity-100 group-hover:opacity-100`}>
                 <X size={14} />

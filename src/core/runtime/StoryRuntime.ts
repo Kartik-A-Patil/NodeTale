@@ -1,5 +1,5 @@
 import { Project, Variable, StoryNode, Asset, isStartNode } from '../../models/story';
-import { createSimulator, resolveVisibleNode, Simulator, Transition, Values } from '../sim/simulate';
+import { createSimulator, resolveVisibleNode, valuesEqual, Simulator, Transition, Values } from '../sim/simulate';
 import { mathRng, Rng } from './scriptInterpreter';
 
 interface HistoryItem {
@@ -15,6 +15,13 @@ export interface PlayError {
   message: string;
 }
 
+/** A variable that changed because of the player's last choice. */
+export interface VarChange {
+  name: string;
+  before: unknown;
+  after: unknown;
+}
+
 export interface RuntimeState {
   currentNode: StoryNode | undefined;
   runtimeVars: Variable[];
@@ -23,6 +30,10 @@ export interface RuntimeState {
   canGoBack: boolean;
   projectAssets: Asset[];
   errors: PlayError[];
+  /** What the last choice changed (empty after Back/Restart). */
+  changes: VarChange[];
+  /** Counts choices taken, so the same change twice in a row is still news. */
+  turn: number;
 }
 
 export interface StoryOption {
@@ -31,6 +42,8 @@ export interface StoryOption {
   edgeId: string;
   locked?: boolean;
   lockedReason?: string;
+  /** Taken before in this playthrough. */
+  visited?: boolean;
 }
 
 const MAX_ERRORS = 20;
@@ -48,6 +61,9 @@ export class StoryRuntime {
   private values: Values;
   private choices: Transition[] = [];
   private errors: PlayError[] = [];
+  private taken = new Set<string>();
+  private changes: VarChange[] = [];
+  private turn = 0;
 
   constructor(project: Project, startNodeId?: string | null, rng: Rng = mathRng) {
     this.project = project;
@@ -124,10 +140,16 @@ export class StoryRuntime {
     const choice = this.choices.find((c) => c.edgeId === edgeId);
     if (!choice || choice.locked || !this.currentNodeId) return;
     this.history.push({ nodeId: this.currentNodeId, values: this.values, choices: this.choices });
+    const before = this.values;
     const { values, error } = this.sim.follow(choice, this.values, this.rng);
     if (error) this.reportError(this.currentNodeId, error);
     this.values = values;
     this.enterNode(choice.target);
+    this.taken.add(edgeId);
+    this.turn++;
+    this.changes = this.sim.variables
+      .filter((v) => !valuesEqual(before[v.name], this.values[v.name]))
+      .map((v) => ({ name: v.name, before: before[v.name], after: this.values[v.name] }));
   }
 
   back() {
@@ -140,6 +162,7 @@ export class StoryRuntime {
       this.currentNodeId = item.nodeId;
       this.values = item.values;
       this.choices = item.choices;
+      this.changes = [];
       return;
     }
   }
@@ -149,6 +172,8 @@ export class StoryRuntime {
     this.history = [];
     this.values = this.sim.initialValues();
     this.errors = [];
+    this.taken.clear();
+    this.changes = [];
     this.enterNode(this.initialStartNodeId);
   }
 
@@ -158,7 +183,7 @@ export class StoryRuntime {
       .map((c) => {
         // A choice into a condition/jump node names the scene the player really lands on.
         const label = c.customLabel ? c.label : resolveVisibleNode(this.sim, c.target, this.values)?.data?.label || c.label;
-        return { label, targetId: c.target, edgeId: c.edgeId!, locked: c.locked, lockedReason: c.lockedReason };
+        return { label, targetId: c.target, edgeId: c.edgeId!, locked: c.locked, lockedReason: c.lockedReason, visited: this.taken.has(c.edgeId!) };
       });
   }
 
@@ -170,6 +195,8 @@ export class StoryRuntime {
       canGoBack: this.history.length > 0,
       projectAssets: this.project.assets,
       errors: this.errors,
+      changes: this.changes,
+      turn: this.turn,
     };
   }
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Project, ElementNodeData, Asset } from "../models/story";
 import { sanitizeHtml } from "../utils/html";
 import { usePlayModeLogic } from "../hooks/usePlayMode";
@@ -6,6 +6,7 @@ import { PlayControls } from "./playmode/PlayControls";
 import { DebugOverlay } from "./playmode/DebugOverlay";
 import { MediaDisplay } from "./playmode/MediaDisplay";
 import { StoryNode } from "./playmode/StoryNode";
+import { PlayerStatus } from "./playmode/PlayerStatus";
 
 import { useAssetUrl } from "../hooks/useAssetUrl";
 import { stripScriptBlocks } from "../utils/html";
@@ -17,6 +18,25 @@ interface PlayModeProps {
   startNodeId?: string | null;
 }
 
+const FADE_MS = 600;
+
+// Ramps volume instead of cutting: returns a cancel function.
+function fadeVolume(audio: HTMLAudioElement, to: number, done?: () => void) {
+  const from = audio.volume;
+  const start = performance.now();
+  let frame = 0;
+  const tick = (now: number) => {
+    const t = Math.min(1, (now - start) / FADE_MS);
+    audio.volume = from + (to - from) * t;
+    if (t < 1) frame = requestAnimationFrame(tick);
+    else done?.();
+  };
+  frame = requestAnimationFrame(tick);
+  return () => cancelAnimationFrame(frame);
+}
+
+// A scene's sound. Keyed by asset id, so a sound shared by consecutive scenes
+// keeps playing across them; one that ends with its scene fades out.
 const AudioPlayer: React.FC<{
   assetId: string;
   legacyUrl: string;
@@ -25,24 +45,36 @@ const AudioPlayer: React.FC<{
   muted: boolean;
 }> = ({ assetId, legacyUrl, loop, delay, muted }) => {
   const { url: storageUrl } = useAssetUrl(assetId, 'audio');
-  const [shouldPlay, setShouldPlay] = useState(delay === 0);
-  
-  // Prefer storage URL, fallback to legacy URL
   const src = storageUrl || legacyUrl || null;
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const mutedRef = useRef(muted);
+  mutedRef.current = muted;
 
   useEffect(() => {
-    setShouldPlay(delay === 0);
-    if (delay > 0) {
-      const timer = setTimeout(() => {
-        setShouldPlay(true);
-      }, delay);
-      return () => clearTimeout(timer);
-    }
-  }, [delay, src]);
+    if (!src) return;
+    const audio = new Audio(src);
+    audio.loop = loop;
+    audio.volume = 0;
+    audio.muted = mutedRef.current;
+    audioRef.current = audio;
+    let stopFadeIn = () => {};
+    const timer = setTimeout(() => {
+      audio.play().catch(() => {});
+      stopFadeIn = fadeVolume(audio, 1);
+    }, delay);
+    return () => {
+      clearTimeout(timer);
+      stopFadeIn();
+      fadeVolume(audio, 0, () => audio.pause());
+      audioRef.current = null;
+    };
+  }, [src, loop, delay]);
 
-  if (!shouldPlay || !src) return null;
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.muted = muted;
+  }, [muted]);
 
-  return <audio src={src} autoPlay loop={loop} muted={muted} />;
+  return null;
 };
 
 const PlayMode: React.FC<PlayModeProps> = ({
@@ -61,9 +93,27 @@ const PlayMode: React.FC<PlayModeProps> = ({
     goBack,
     canGoBack,
     errors,
+    changes,
+    turn,
   } = usePlayModeLogic(project, startNodeId);
 
   const [muted, setMuted] = useState(false);
+
+  // Esc leaves, Backspace steps back (choices/reveal keys live in StoryNode).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const typing = e.target instanceof HTMLElement && (e.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName));
+      if (typing) return;
+      if (e.key === "Escape") onClose();
+      else if (e.key === "Backspace" && canGoBack) {
+        e.preventDefault();
+        goBack();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, goBack, canGoBack]);
 
   if (!currentNode) {
     return (
@@ -89,7 +139,7 @@ const PlayMode: React.FC<PlayModeProps> = ({
           canGoBack={canGoBack}
         />
         <DebugOverlay variables={runtimeVars} errors={errors} />
-        <StoryNode label="The End" content="" options={[]} onOptionClick={handleOptionClick} hasVisual={false} />
+        <StoryNode key={currentNode.id} label="The End" content="" options={[]} onOptionClick={handleOptionClick} hasVisual={false} />
       </div>
     );
   }
@@ -128,6 +178,7 @@ const PlayMode: React.FC<PlayModeProps> = ({
       />
       
       <DebugOverlay variables={runtimeVars} errors={errors} />
+      <PlayerStatus variables={runtimeVars} changes={changes} turn={turn} />
 
       {/* Main Content Layout */}
       <div className="flex h-full w-full">
@@ -143,13 +194,14 @@ const PlayMode: React.FC<PlayModeProps> = ({
          {/* Visual Asset Area (Right side when present) */}
          {visualAsset && (
             <div className="absolute right-0 top-0 w-1/2 h-full hidden md:block pointer-events-none">
-               <MediaDisplay asset={visualAsset} />
+               <MediaDisplay key={visualAsset.id} asset={visualAsset} />
             </div>
          )}
 
          {/* Story Content Area */}
          <div className={`relative h-full transition-all duration-500 ease-in-out ${visualAsset ? 'w-full md:w-1/2 bg-zinc-950/90' : 'w-full bg-black'}`}>
             <StoryNode
+              key={`${turn}-${currentNode.id}`}
               label={elementData.label}
               content={processedContent}
               options={getOptions()}
