@@ -1,4 +1,4 @@
-import { AppNode } from '../../types';
+import { CanvasNode } from '../../adapters/reactFlow';
 import { Command, CommandContext } from './types';
 
 // Generic "capture before, apply patch, restore before on undo" command. Covers
@@ -7,10 +7,10 @@ import { Command, CommandContext } from './types';
 export function updateNodeCommand(
   ctx: CommandContext,
   nodeId: string,
-  applyPatch: (node: AppNode) => AppNode,
+  applyPatch: (node: CanvasNode) => CanvasNode,
   mergeKey?: string
 ): Command {
-  let before: AppNode | undefined;
+  let before: CanvasNode | undefined;
 
   return {
     mergeKey,

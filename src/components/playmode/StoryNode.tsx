@@ -30,7 +30,7 @@ export const StoryNode: React.FC<StoryNodeProps> = ({
             {label}
           </h1>
           <div
-            className="play-content text-lg md:text-xl text-zinc-300 leading-relaxed font-serif font-light whitespace-pre-wrap"
+            className="play-content nt-prose text-lg md:text-xl text-zinc-300 leading-relaxed font-serif font-light whitespace-pre-wrap"
             dangerouslySetInnerHTML={{ __html: content }}
           />
         </div>

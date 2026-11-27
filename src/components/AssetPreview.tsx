@@ -1,5 +1,5 @@
 import React from 'react';
-import { Asset } from '../types';
+import { Asset } from '../models/story';
 import { useAssetUrl } from '../hooks/useAssetUrl';
 import { FileVideo, Loader2 } from 'lucide-react';
 

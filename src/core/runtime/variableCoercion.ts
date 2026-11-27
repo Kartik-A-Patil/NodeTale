@@ -1,4 +1,4 @@
-import { Variable } from '../../types';
+import { Variable } from '../../models/story';
 
 // ARRAY/OBJECT values stay in their {elementType, elements}/{keys} wrapper shape
 // (not unwrapped to plain JS) since the whitelisted arrayXxx/objectXxx helpers in

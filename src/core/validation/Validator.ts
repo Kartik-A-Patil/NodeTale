@@ -1,4 +1,4 @@
-import { Project, Board, AppNode, isConditionNode, isJumpNode, isElementNode } from '../../types';
+import { Project, Board, StoryNode, isConditionNode, isJumpNode, isElementNode } from '../../models/story';
 import { Diagnostic } from './types';
 import { parseExpression, parseScript, ExpressionSyntaxError } from '../expression/parser';
 import { collectExprIdentifiers, collectScriptIdentifiers } from './identifierCollector';
@@ -103,7 +103,7 @@ function ruleUnknownVariables(project: Project): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   const variableNames = new Set(project.variables.map((v) => v.name));
 
-  const flagMissing = (names: Iterable<string>, board: Board, node: AppNode, sourceLabel: string) => {
+  const flagMissing = (names: Iterable<string>, board: Board, node: StoryNode, sourceLabel: string) => {
     for (const name of names) {
       if (!variableNames.has(name)) {
         diagnostics.push({

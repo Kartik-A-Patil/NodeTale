@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo } from 'react';
-import { Project } from '../../types';
+import { Project } from '../../models/story';
 import { buildStoryGraph } from '../../core/graph/storyGraph';
 import { ViewMode } from './viewModes';
 import { FocusNode } from './shared';

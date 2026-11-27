@@ -1,7 +1,7 @@
 import { ComponentType } from 'react';
 import { NodeProps } from 'reactflow';
 import {
-  AppNode,
+  StoryNode,
   BaseNodeData,
   ElementNodeData,
   ConditionNodeData,
@@ -11,7 +11,8 @@ import {
   AnnotationNodeData,
   Board,
   Variable,
-} from '../../types';
+} from '../../models/story';
+import { CanvasNode } from '../../adapters/reactFlow';
 import { evaluateCondition } from '../../services/logicService';
 import { DEFAULT_BRANCHES } from '../branch';
 import ElementNode from '../../components/nodes/ElementNode';
@@ -37,7 +38,7 @@ export interface NodeRegistryEntry<T extends BaseNodeData = BaseNodeData> {
   component: ComponentType<NodeProps<T>>;
   create: (extraFields?: Record<string, any>) => T;
   defaultZIndex?: number;
-  execute?: (node: AppNode & { data: T }, ctx: NodeExecutionContext) => NodeExecutionResult;
+  execute?: (node: StoryNode & { data: T }, ctx: NodeExecutionContext) => NodeExecutionResult;
 }
 
 export type NodeTypeKey =
@@ -90,22 +91,20 @@ export const nodeRegistry: Record<NodeTypeKey, NodeRegistryEntry<any>> = {
 
   jumpNode: {
     component: JumpNode,
-    // Retains the pre-existing default label of 'Jump' (this branch previously
-    // shared a fallthrough default with commentNode).
     create: (extraFields = {}): JumpNodeData => ({ label: 'Jump', ...extraFields }),
     execute: (node) => ({ nextNodeId: node.data.jumpTargetId || null }),
   } satisfies NodeRegistryEntry<JumpNodeData>,
 
   commentNode: {
     component: CommentNode,
-    create: (extraFields = {}): CommentNodeData => ({ label: 'Jump', text: '', ...extraFields }),
-    defaultZIndex: -10,
+    create: (extraFields = {}): CommentNodeData => ({ label: '', text: '', ...extraFields }),
+    defaultZIndex: -1,
   } satisfies NodeRegistryEntry<CommentNodeData>,
 
   sectionNode: {
     component: SectionNode,
     create: (extraFields = {}): SectionNodeData => ({ label: 'New Section', ...extraFields }),
-    defaultZIndex: -1,
+    defaultZIndex: -10,
   } satisfies NodeRegistryEntry<SectionNodeData>,
 
   annotationNode: {
@@ -118,15 +117,14 @@ export const nodeRegistry: Record<NodeTypeKey, NodeRegistryEntry<any>> = {
   } satisfies NodeRegistryEntry<AnnotationNodeData>,
 };
 
-export const executeNode = (node: AppNode, ctx: NodeExecutionContext): NodeExecutionResult => {
+export const executeNode = (node: StoryNode, ctx: NodeExecutionContext): NodeExecutionResult => {
   const entry = nodeRegistry[node.type as NodeTypeKey];
   return entry?.execute?.(node, ctx) ?? {};
 };
 
-// Comment and section nodes always sit behind other nodes. Applied wherever
-// nodes enter the editor (load, toolbar drop, addNode) — previously each of
-// those nodes forced it with a mount effect that re-set the whole node array.
-export const withDefaultZIndex = (node: AppNode): AppNode => {
+// Sections sit furthest back, then comments (so a comment inside a section
+// stays visible), then everything else, regardless of how they enter the editor.
+export const withDefaultZIndex = (node: CanvasNode): CanvasNode => {
   const zIndex = nodeRegistry[node.type as NodeTypeKey]?.defaultZIndex;
   return zIndex === undefined || node.zIndex === zIndex ? node : { ...node, zIndex };
 };

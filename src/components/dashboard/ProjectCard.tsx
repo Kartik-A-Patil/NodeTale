@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { ProjectSummary } from '../../types';
+import { ProjectSummary } from '../../models/story';
 import { formatRelativeTime } from '../../utils/localPrefs';
 import { focusRing } from '../ui/styles';
 import { GraphThumbnail } from './GraphThumbnail';

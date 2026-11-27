@@ -7,10 +7,25 @@ import {
 
 // The only functions a node script can call — no window/document/process/
 // require/fs/ipcRenderer or any Node/Electron API.
-const WHITELISTED_FUNCTIONS: Record<string, (...args: any[]) => unknown> = {
+const WHITELISTED_FUNCTIONS = {
   arrayMap, arrayFilter, arrayReduce, arrayPush, arrayPop, arrayShift, arrayUnshift,
   objectKeys, objectValues, objectEntries, objectSpread,
-};
+} satisfies Record<string, (...args: any[]) => unknown>;
+
+/** What each callable function looks like, for autocomplete and Help. */
+export const SCRIPT_FUNCTIONS: { name: keyof typeof WHITELISTED_FUNCTIONS; signature: string; description: string }[] = [
+  { name: 'arrayPush', signature: 'arrayPush(list, item)', description: 'The list with item added at the end' },
+  { name: 'arrayUnshift', signature: 'arrayUnshift(list, item)', description: 'The list with item added at the start' },
+  { name: 'arrayPop', signature: 'arrayPop(list)', description: 'Removes the last item: { array, popped }' },
+  { name: 'arrayShift', signature: 'arrayShift(list)', description: 'Removes the first item: { array, shifted }' },
+  { name: 'arrayMap', signature: 'arrayMap(list, (x) => …)', description: 'A new list with every item changed' },
+  { name: 'arrayFilter', signature: 'arrayFilter(list, (x) => …)', description: 'A new list with only matching items' },
+  { name: 'arrayReduce', signature: 'arrayReduce(list, (sum, x) => …, start)', description: 'Combines the items into one value' },
+  { name: 'objectKeys', signature: 'objectKeys(object)', description: 'The object’s property names' },
+  { name: 'objectValues', signature: 'objectValues(object)', description: 'The object’s values' },
+  { name: 'objectEntries', signature: 'objectEntries(object)', description: '[name, value] pairs' },
+  { name: 'objectSpread', signature: 'objectSpread(object, changes)', description: 'A copy of the object with changes applied' },
+];
 
 export interface ScriptRunResult {
   changes: Record<string, unknown>;
@@ -30,7 +45,7 @@ export function runScript(code: string, readScope: Record<string, unknown>): Scr
       throw new Error(`Unknown variable: ${name}`);
     },
     callFunction: (name, args) => {
-      const fn = WHITELISTED_FUNCTIONS[name];
+      const fn = (WHITELISTED_FUNCTIONS as Record<string, (...args: any[]) => unknown>)[name];
       if (!fn) throw new Error(`Unknown function: ${name}`);
       return fn(...args);
     },

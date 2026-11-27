@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Project, AppNode } from '../types';
+import { Project } from '../models/story';
+import { CanvasNode } from '../adapters/reactFlow';
 import { INITIAL_PROJECT } from '../constants';
 import { saveProject, loadProject } from '../services/storageService';
 import { Node, Edge, MarkerType } from 'reactflow';
 import { withDefaultZIndex } from '../core/nodes/nodeRegistry';
 import { computeBoardHash, hashString } from '../utils/contentHash';
+import { toCanvasEdge, toCanvasNode, toStoryEdge, toStoryNode } from '../adapters/reactFlow';
 
 const isDev = import.meta.env.DEV;
 
@@ -26,11 +28,11 @@ const normalizeNodeDimensions = (node: Node): Node => {
 
 // Saves from before EditorContext copied the project's variables/assets into
 // every node's data; drop those copies when such a board is loaded.
-const stripContext = (nodes: Node[]): AppNode[] =>
+const stripContext = (nodes: Node[]): CanvasNode[] =>
   nodes.map(n => {
-    if (!n.data || !('variables' in n.data || 'projectAssets' in n.data)) return n as AppNode;
+    if (!n.data || !('variables' in n.data || 'projectAssets' in n.data)) return n as CanvasNode;
     const { variables: _v, projectAssets: _a, ...data } = n.data;
-    return { ...n, data } as AppNode;
+    return { ...n, data } as CanvasNode;
   });
 
 // Labels used to be opt-in (data.labelEnabled) and always custom text. Every
@@ -47,9 +49,9 @@ export const migrateEdgeLabel = (e: Edge): Edge => {
 
 // Brings a stored board up to what the editor expects, once at load (these used
 // to be enforced by per-node mount effects and a forever-running edge effect).
-const normalizeBoard = (nodes: Node[], edges: Edge[]): { nodes: Node[]; edges: Edge[] } => ({
-  nodes: stripContext(nodes).map(n => normalizeNodeDimensions(withDefaultZIndex(n as AppNode))),
-  edges: edges.map(e => migrateEdgeLabel(
+const normalizeBoard = (nodes: Project['boards'][number]['nodes'], edges: Project['boards'][number]['edges']): { nodes: Node[]; edges: Edge[] } => ({
+  nodes: stripContext(nodes.map(toCanvasNode)).map(n => normalizeNodeDimensions(withDefaultZIndex(n as CanvasNode))),
+  edges: edges.map(toCanvasEdge).map(e => migrateEdgeLabel(
     e.type === 'floating' && (e.animated || !e.markerEnd)
       ? { ...e, animated: false, markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 20 } }
       : e
@@ -143,8 +145,8 @@ export function useProjectState(
             const newBoards = [...prev.boards];
             newBoards[boardIndex] = {
                 ...newBoards[boardIndex],
-                nodes: nodesToSave as AppNode[],
-                edges: edgesToSave
+                nodes: nodesToSave.map(n => toStoryNode(n as CanvasNode)),
+                edges: edgesToSave.map(toStoryEdge)
             };
 
             const newProject = { ...prev, boards: newBoards };
@@ -183,8 +185,8 @@ export function useProjectState(
           const newBoards = [...prev.boards];
           newBoards[boardIndex] = {
               ...newBoards[boardIndex],
-              nodes: nodesToSave as AppNode[],
-              edges: edgesToSave
+              nodes: nodesToSave.map(n => toStoryNode(n as CanvasNode)),
+              edges: edgesToSave.map(toStoryEdge)
           };
 
           const newProject = { ...prev, boards: newBoards };
@@ -219,8 +221,8 @@ export function useProjectState(
         const newBoards = [...prev.boards];
         newBoards[boardIndex] = {
             ...newBoards[boardIndex],
-            nodes: nodesToSave as AppNode[],
-            edges: edgesToSave
+            nodes: nodesToSave.map(n => toStoryNode(n as CanvasNode)),
+            edges: edgesToSave.map(toStoryEdge)
         };
 
         const newProject = { ...prev, boards: newBoards };
@@ -241,7 +243,11 @@ export function useProjectState(
     return {
       ...current,
       boards: current.boards.map(b =>
-        b.id === current.activeBoardId ? { ...b, nodes: nodesRef.current as AppNode[], edges: edgesRef.current } : b
+        b.id === current.activeBoardId ? {
+          ...b,
+          nodes: nodesRef.current.map(n => toStoryNode(n as CanvasNode)),
+          edges: edgesRef.current.map(toStoryEdge),
+        } : b
       ),
     };
   }, []);

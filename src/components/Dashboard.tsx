@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { getProjectSummaries, saveProject, loadProject, deleteProject, checkProjectNameExists } from '../services/storageService';
 import { createExampleProject, importProjectFile } from '../services/projectImport';
-import { Project, ProjectSummary } from '../types';
+import { Project, ProjectSummary } from '../models/story';
 import { INITIAL_PROJECT } from '../constants';
 import { exportProject } from '../utils/projectUtils';
 import { shrinkCoverImage } from '../utils/coverImage';

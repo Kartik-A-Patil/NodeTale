@@ -4,7 +4,7 @@ import { Pencil, Sparkles } from 'lucide-react';
 import { getEdgeParams, HandlePoint, NodeGeometry } from '../../utils/EdgeUtils';
 import { autoEdgeLabel } from '../../utils/edgeLabel';
 import { DEFAULT_BRANCHES } from '../../core/branch';
-import { Branch } from '../../types';
+import { Branch } from '../../models/story';
 import { useEditor } from '../../editor/EditorContext';
 
 type EndpointGeometry = NodeGeometry & { type?: string; branches?: Branch[]; label?: string };

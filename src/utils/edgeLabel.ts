@@ -1,8 +1,8 @@
-import { Branch } from '../types';
+import { Branch } from '../models/story';
 import { DEFAULT_BRANCHES, branchLabel } from '../core/branch';
 
 // The minimal shape needed from an edge's endpoints — not full ReactFlow
-// Node/AppNode — so this works equally from the canvas (FloatingEdge, which
+// StoryNode — so this works equally from the canvas (FloatingEdge, which
 // only has trimmed geometry) and from the edge context menu (which has the
 // full node). One source of truth for what an edge's label defaults to.
 export interface AutoLabelSource {

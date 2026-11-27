@@ -1,4 +1,4 @@
-import { Branch } from '../../types';
+import { Branch } from '../../models/story';
 import { Simulator, Transition, Values } from './simulate';
 
 // The story as a tree of *states*: every node is a scene together with the

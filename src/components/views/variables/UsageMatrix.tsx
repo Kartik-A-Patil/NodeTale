@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { StoryGraph, VariableUse } from '../../../core/graph/storyGraph';
-import { Variable } from '../../../types';
+import { Variable } from '../../../models/story';
 import { EmptyView, FocusNode, LegendItem, truncate } from '../shared';
 import { StateAnalysis, summarizeValues } from '../../../core/sim/simulate';
 

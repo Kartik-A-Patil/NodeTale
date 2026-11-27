@@ -1,6 +1,6 @@
 import React, { useCallback, useRef } from 'react';
 import { ReactFlowInstance, Node } from 'reactflow';
-import { AppNode } from '../types';
+import { CanvasNode } from '../adapters/reactFlow';
 import { CommandContext, Command } from '../editor/commands/types';
 import { addElementsCommand } from '../editor/commands/addElementsCommand';
 import { withDefaultZIndex } from '../core/nodes/nodeRegistry';
@@ -119,7 +119,7 @@ export function useDragAndDrop(
 
       const payload = payloadStr ? JSON.parse(payloadStr) : {};
 
-      const newNode: AppNode = {
+      const newNode: CanvasNode = {
         id: `node-${Date.now()}`,
         type,
         position,
@@ -127,7 +127,7 @@ export function useDragAndDrop(
             label: payload.label || 'New Node',
             ...payload
         },
-      } as AppNode;
+      } as CanvasNode;
 
       executeCommand(addElementsCommand(ctx, [withDefaultZIndex(newNode)]));
     },

@@ -1,4 +1,4 @@
-import { Project, isConditionNode, isElementNode, isJumpNode } from '../../types';
+import { Project, isConditionNode, isElementNode, isJumpNode } from '../../models/story';
 import { parseExpression, parseScript } from '../expression/parser';
 import { collectExprIdentifiers } from '../validation/identifierCollector';
 import { extractScriptCode } from '../runtime/htmlScript';
@@ -124,7 +124,7 @@ export function buildStoryGraph(project: Project): StoryGraph {
   for (const board of project.boards) {
     for (const node of board.nodes) {
       if (node.type !== 'elementNode' && node.type !== 'conditionNode' && node.type !== 'jumpNode') continue;
-      // ponytail: ids are assumed unique across boards (generated with timestamps); first one wins
+      // Node IDs are generated globally; keep the first node if imported data has duplicates.
       if (nodes.has(node.id)) continue;
       nodes.set(node.id, {
         id: node.id,

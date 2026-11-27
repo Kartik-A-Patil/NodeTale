@@ -1,5 +1,5 @@
 import { Edge } from 'reactflow';
-import { AppNode } from '../../types';
+import { CanvasNode } from '../../adapters/reactFlow';
 import { Command, CommandContext } from './types';
 
 interface UngroupedChildInfo {
@@ -20,7 +20,7 @@ interface UngroupedChildInfo {
 // same execute() call, since React never runs that updater synchronously.
 export function deleteNodeCommand(ctx: CommandContext, nodeId: string, deleteChildren: boolean): Command {
   let mode: 'delete' | 'ungroup' | 'noop' = 'noop';
-  let removedNodes: AppNode[] = [];
+  let removedNodes: CanvasNode[] = [];
   let removedEdges: Edge[] = [];
   let ungroupedChildren: UngroupedChildInfo[] = [];
 

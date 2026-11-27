@@ -1,11 +1,11 @@
-import { AppNode } from '../../types';
+import { CanvasNode } from '../../adapters/reactFlow';
 import { Edge } from 'reactflow';
 import { Command, CommandContext } from './types';
 
 // Batch delete for the keyboard Delete-key handler: removes the given node ids and
 // any edges connected to them, as a single history entry.
 export function deleteElementsCommand(ctx: CommandContext, nodeIds: string[]): Command {
-  let removedNodes: AppNode[] = [];
+  let removedNodes: CanvasNode[] = [];
   let removedEdges: Edge[] = [];
 
   return {

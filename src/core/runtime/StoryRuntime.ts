@@ -1,4 +1,4 @@
-import { Project, Variable, AppNode, Board, Asset } from '../../types';
+import { Project, Variable, StoryNode, Board, Asset } from '../../models/story';
 import { executeNode } from '../nodes/nodeRegistry';
 import { runScript } from './scriptInterpreter';
 import { toJSValue, applyScopeToVariables } from './variableCoercion';
@@ -10,7 +10,7 @@ interface HistoryItem {
 }
 
 export interface RuntimeState {
-  currentNode: AppNode | undefined;
+  currentNode: StoryNode | undefined;
   runtimeVars: Variable[];
   canGoBack: boolean;
   projectAssets: Asset[];
@@ -37,7 +37,7 @@ export class StoryRuntime {
     this.start(startNodeId);
   }
 
-  private findNode(id: string): { node: AppNode; board: Board } | null {
+  private findNode(id: string): { node: StoryNode; board: Board } | null {
     for (const board of this.project.boards) {
       const found = board.nodes.find((n) => n.id === id);
       if (found) return { node: found, board };
@@ -98,7 +98,7 @@ export class StoryRuntime {
 
     const startNode = startNodeId
       ? board.nodes.find((n) => n.id === startNodeId)
-      : board.nodes.find((n) => n.data.label.toLowerCase() === 'start');
+      : board.nodes.find((n) => typeof n.data?.label === 'string' && n.data.label.toLowerCase() === 'start');
     if (!startNode) return;
 
     this.initialStartNodeId = startNode.id;
@@ -145,7 +145,7 @@ export class StoryRuntime {
   // A choice into a condition/jump node must show what the player actually
   // lands on, not that logic node's own name — same reasoning as enterNode,
   // but read-only (no script side effects; condition/jump nodes have none).
-  private resolveDisplayNode(nodeId: string): AppNode | null {
+  private resolveDisplayNode(nodeId: string): StoryNode | null {
     let current = this.findNode(nodeId)?.node ?? null;
     const visited = new Set<string>();
     while (current && current.type !== 'elementNode') {

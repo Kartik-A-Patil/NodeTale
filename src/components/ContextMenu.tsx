@@ -1,20 +1,44 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Palette, ChevronRight } from 'lucide-react';
+import React, { useRef } from 'react';
+import { Ban, Palette } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
+import { dropdownDanger, dropdownItem, dropdownLabel, dropdownPanel } from './editor/editorStyles';
+import { ShortcutKbd } from './ui/kbd';
+import type { ShortcutKeys } from '../editor/shortcuts/types';
+import { formatShortcut } from '../editor/shortcuts/format';
 
-export interface ContextMenuOption {
-  label?: string;
+export type ContextMenuAction = {
+  type?: 'action';
+  label: string;
   onClick?: () => void;
   danger?: boolean;
-  type?: 'action' | 'color-picker' | 'divider' | 'color-grid' | 'icon-row' | 'submenu';
   icon?: React.ReactNode;
-  color?: string; // For preset indicators or initial value
-  onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  colors?: string[];
-  onColorSelect?: (color: string) => void;
-  items?: { icon: React.ReactNode; onClick: () => void; label: string; active?: boolean; preventClose?: boolean }[];
-  submenu?: ContextMenuOption[];
+  color?: string;
   preventClose?: boolean;
-}
+  /** Keyboard shortcut shown on the right as Kbd keys. */
+  shortcut?: ShortcutKeys;
+  disabled?: boolean;
+};
+
+export type ContextMenuOption =
+  | ContextMenuAction
+  | { type: 'divider' }
+  /** Small heading for the group below it. */
+  | { type: 'label'; label: string }
+  /** Swatches in a row; `onClear` adds a "no colour" swatch. */
+  | { type: 'color-grid'; color?: string; colors: string[]; onColorSelect: (color: string) => void; onClear?: () => void; preventClose?: boolean }
+  /** Icon-only quick actions in a row (labels become tooltips). */
+  | { type: 'icon-row'; items: { icon: React.ReactNode; onClick: () => void; label: string; active?: boolean; preventClose?: boolean; shortcut?: ShortcutKeys }[] }
+  | { type: 'submenu'; label: string; icon?: React.ReactNode; submenu: ContextMenuAction[] };
 
 interface ContextMenuProps {
   x: number;
@@ -23,227 +47,130 @@ interface ContextMenuProps {
   onClose: () => void;
 }
 
-const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => {
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [hoveredSubmenuIndex, setHoveredSubmenuIndex] = useState<number | null>(null);
-  const [submenuPosition, setSubmenuPosition] = useState<{ top: number; left: number } | null>(null);
-  // Keep the menu inside the window: open upward / leftward near the edges.
-  const [position, setPosition] = useState({ top: y, left: x });
-  useLayoutEffect(() => {
-    const el = menuRef.current;
-    if (!el) return;
-    const margin = 8;
-    const { width, height } = el.getBoundingClientRect();
-    setPosition({
-      left: x + width > window.innerWidth - margin ? Math.max(margin, x - width) : x,
-      top: y + height > window.innerHeight - margin ? Math.max(margin, window.innerHeight - height - margin) : y,
-    });
-  }, [x, y, options.length]);
+const itemClass = `gap-2 rounded-md ${dropdownItem}`;
+const swatchClass = 'h-5 w-5 shrink-0 cursor-pointer rounded-full border border-white/10 p-0 outline-none transition-transform hover:scale-110 focus:scale-110 focus-visible:ring-2 focus-visible:ring-nt-focus data-[current=true]:ring-2 data-[current=true]:ring-nt-ink data-[current=true]:ring-offset-2 data-[current=true]:ring-offset-nt-surface';
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        onClose();
-      }
-    };
+const keepOpen = (preventClose: boolean | undefined) => (event: Event) => {
+  if (preventClose) event.preventDefault();
+};
 
-    const handleScroll = () => {
-      onClose();
-    };
-
-    const handleWheel = () => {
-      onClose();
-    };
-
-    // Use capture phase for click to ensure we catch all clicks
-    document.addEventListener('mousedown', handleClickOutside, true);
-    // Listen to scroll on document and window
-    document.addEventListener('scroll', handleScroll, true);
-    window.addEventListener('scroll', handleScroll, true);
-    // Also listen to wheel events for scroll
-    document.addEventListener('wheel', handleWheel, true);
-    
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside, true);
-      document.removeEventListener('scroll', handleScroll, true);
-      window.removeEventListener('scroll', handleScroll, true);
-      document.removeEventListener('wheel', handleWheel, true);
-    };
-  }, [onClose]);
-
+function ColorRow({ option }: { option: Extract<ContextMenuOption, { type: 'color-grid' }> }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const current = option.color?.toLowerCase();
   return (
-    <div
-      ref={menuRef}
-      className="fixed z-50 bg-[#1e1e20] border border-[#27272a] rounded-lg shadow-2xl py-1.5 min-w-[200px] max-h-[calc(100vh-16px)] flex flex-col overflow-y-auto animate-in fade-in zoom-in-95 duration-200 ease-out"
-      style={{ top: position.top, left: position.left }}
-      onContextMenu={(e) => e.preventDefault()}
-    >
-      {options.map((opt, i) => {
-        if (opt.type === 'divider') {
-            return <div key={i} className="h-[1px] bg-[#27272a] my-1 mx-2" />;
-        }
-
-        if (opt.type === 'color-grid') {
-            return (
-                <div key={i} className="grid grid-cols-6 gap-1 px-2 py-2">
-                    {opt.colors?.map((c, idx) => (
-                        <button
-                            key={idx}
-                            className="w-5 h-5 rounded-sm hover:scale-110 transition-transform border border-white/10"
-                            style={{ backgroundColor: c }}
-                            onClick={() => {
-                                opt.onColorSelect?.(c);
-                                if (!opt.preventClose) onClose();
-                            }}
-                            title={c}
-                        />
-                    ))}
-                    <label
-                        className="relative w-5 h-5 rounded-sm border border-white/10 bg-[#27272a] hover:scale-110 transition-transform cursor-pointer flex items-center justify-center"
-                        title="Custom color"
-                    >
-                        <Palette size={12} className="text-zinc-300" />
-                        <input
-                            type="color"
-                            className="absolute inset-0 opacity-0 cursor-pointer"
-                            defaultValue={opt.color || '#ffffff'}
-                            onBlur={(e) => {
-                                opt.onColorSelect?.(e.target.value);
-                            }}
-                            style={{ colorScheme: 'dark' }}
-                        />
-                    </label>
-                </div>
-            );
-        }
-
-        if (opt.type === 'icon-row') {
-            return (
-                <div key={i} className="flex items-center justify-around px-2 py-2">
-                    {opt.items?.map((item, idx) => (
-                        <button
-                            key={idx}
-                            className={`p-1.5 rounded hover:bg-[#27272a] text-zinc-400 hover:text-zinc-100 transition-colors ${item.active ? 'bg-[#27272a] text-zinc-100' : ''}`}
-                            onClick={() => {
-                                item.onClick();
-                                if (!item.preventClose) onClose();
-                            }}
-                            title={item.label}
-                        >
-                            {item.icon}
-                        </button>
-                    ))}
-                </div>
-            );
-        }
-
-        if (opt.type === 'color-picker') {
-             return (
-                <label key={i} className="flex items-center justify-between px-3 py-2 text-xs font-medium text-zinc-300 hover:bg-[#27272a] hover:text-white cursor-pointer transition-colors group">
-                    <div className="flex items-center gap-2">
-                        <Palette size={14} className="text-zinc-500 group-hover:text-zinc-300"/>
-                        <span>{opt.label}</span>
-                    </div>
-                    <div className="relative w-5 h-5 rounded-full overflow-hidden border border-zinc-600 group-hover:border-zinc-400">
-                        <input 
-                            type="color" 
-                            className="absolute -top-1/2 -left-1/2 w-[200%] h-[200%] cursor-pointer p-0 border-0"
-                            value={opt.color || '#ffffff'}
-                            onBlur={(e) => {
-                                opt.onChange?.(e);
-                                if (!opt.preventClose) onClose();
-                            }}
-                        />
-                    </div>
-                </label>
-             );
-        }
-
-        if (opt.type === 'submenu') {
-            return (
-                <div
-                    key={i}
-                    className="relative"
-                    onMouseEnter={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setHoveredSubmenuIndex(i);
-                        // Estimated size (rows are ~34px): flip left / shift up near the window edges.
-                        const subHeight = (opt.submenu?.length ?? 0) * 34 + 12;
-                        const subWidth = 188;
-                        setSubmenuPosition({
-                            top: Math.max(8, Math.min(rect.top, window.innerHeight - subHeight - 8)),
-                            left: rect.right + subWidth > window.innerWidth - 8 ? rect.left - subWidth - 8 : rect.right
-                        });
-                    }}
-                    onMouseLeave={() => {
-                        setHoveredSubmenuIndex(null);
-                        setSubmenuPosition(null);
-                    }}
-                >
-                    <button
-                        className="w-full text-left px-3 py-2 text-xs font-medium hover:bg-[#27272a] transition-colors flex items-center justify-between group text-zinc-300 hover:text-white"
-                    >
-                        <div className="flex items-center gap-2">
-                            {opt.icon && <span className="text-zinc-500 group-hover:text-zinc-300">{opt.icon}</span>}
-                            <span>{opt.label}</span>
-                        </div>
-                        <ChevronRight size={14} className="text-zinc-500" />
-                    </button>
-                    {hoveredSubmenuIndex === i && submenuPosition && opt.submenu && (
-                        <div
-                            className="fixed z-[60] bg-[#1e1e20] border border-[#27272a] rounded-lg shadow-2xl py-1.5 min-w-[180px] animate-in fade-in slide-in-from-left-1 duration-100"
-                            style={{
-                                top: submenuPosition.top,
-                                left: submenuPosition.left + 4
-                            }}
-                        >
-                            {opt.submenu.map((subOpt, subIdx) => (
-                                <button
-                                    key={subIdx}
-                                    className={`w-full text-left px-3 py-2 text-xs font-medium hover:bg-[#27272a] transition-colors flex items-center gap-2 ${
-                                        subOpt.danger ? 'text-red-400 hover:text-red-300 hover:bg-red-900/10' : 'text-zinc-300 hover:text-white'
-                                    }`}
-                                    onClick={() => {
-                                        if (subOpt.onClick) subOpt.onClick();
-                                        if (!subOpt.preventClose) onClose();
-                                    }}
-                                >
-                                    {subOpt.icon && <span className={subOpt.danger ? 'text-red-400' : 'text-zinc-500'}>{subOpt.icon}</span>}
-                                    <span>{subOpt.label}</span>
-                                </button>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            );
-        }
-
-        return (
-          <button
-            key={i}
-            className={`w-full text-left px-3 py-2 text-xs font-medium hover:bg-[#27272a] transition-colors flex items-center justify-between group ${
-              opt.danger ? 'text-red-400 hover:text-red-300 hover:bg-red-900/10' : 'text-zinc-300 hover:text-white'
-            }`}
-            onClick={() => {
-              if (opt.onClick) opt.onClick();
-              if (!opt.preventClose) onClose();
-            }}
-          >
-            <div className="flex items-center gap-2">
-                {opt.icon && <span className={opt.danger ? 'text-red-400' : 'text-zinc-500 group-hover:text-zinc-300'}>{opt.icon}</span>}
-                {opt.color && (
-                    <span 
-                        className="w-3 h-3 rounded-full border border-white/10 shadow-sm" 
-                        style={{ backgroundColor: opt.color }}
-                    />
-                )}
-                <span>{opt.label}</span>
-            </div>
-          </button>
-        );
-      })}
+    <div className="grid grid-cols-6 justify-items-center gap-y-1.5 px-2 py-1.5" role="group" aria-label="Colour">
+      {option.onClear && (
+        <DropdownMenuItem
+          aria-label="No colour"
+          title="No colour"
+          data-current={!current}
+          className={`${swatchClass} flex items-center justify-center bg-nt-raised text-nt-ink-3`}
+          onSelect={(event) => { keepOpen(option.preventClose)(event); option.onClear!(); }}
+        >
+          <Ban size={11} />
+        </DropdownMenuItem>
+      )}
+      {option.colors.map((color) => (
+        <DropdownMenuItem
+          key={color}
+          aria-label={`Colour ${color}`}
+          title={color}
+          data-current={current === color.toLowerCase()}
+          className={swatchClass}
+          style={{ backgroundColor: color }}
+          onSelect={(event) => { keepOpen(option.preventClose)(event); option.onColorSelect(color); }}
+        />
+      ))}
+      <DropdownMenuItem
+        aria-label="Custom colour"
+        title="Custom colour"
+        className={`${swatchClass} flex items-center justify-center bg-nt-raised text-nt-ink-3`}
+        onSelect={(event) => { event.preventDefault(); inputRef.current?.click(); }}
+      >
+        <Palette size={11} />
+      </DropdownMenuItem>
+      <input
+        ref={inputRef}
+        type="color"
+        aria-label="Custom colour"
+        defaultValue={option.color || '#ffffff'}
+        className="sr-only"
+        tabIndex={-1}
+        onChange={(event) => option.onColorSelect(event.target.value)}
+      />
     </div>
   );
-};
+}
+
+const ActionItem = ({ action }: { action: ContextMenuAction }) => (
+  <DropdownMenuItem
+    disabled={action.disabled}
+    className={`${itemClass} ${action.danger ? dropdownDanger : ''}`}
+    onSelect={(event) => { keepOpen(action.preventClose)(event); action.onClick?.(); }}
+  >
+    {action.icon}
+    {action.color && <span className="h-3 w-3 rounded-full border border-white/10" style={{ backgroundColor: action.color }} />}
+    <span className="min-w-0 flex-1 truncate">{action.label}</span>
+    {action.shortcut && <ShortcutKbd keys={action.shortcut} className="ml-auto" />}
+  </DropdownMenuItem>
+);
+
+// Right-click menu for the canvas: the same dropdown look as the dock's menus.
+const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => (
+  <DropdownMenu open onOpenChange={(open) => { if (!open) onClose(); }}>
+    <DropdownMenuTrigger asChild>
+      <button aria-hidden tabIndex={-1} className="pointer-events-none fixed h-px w-px opacity-0" style={{ left: x, top: y }} />
+    </DropdownMenuTrigger>
+    <DropdownMenuContent
+      align="start"
+      side="bottom"
+      sideOffset={0}
+      collisionPadding={8}
+      className={`z-50 w-60 rounded-lg ${dropdownPanel}`}
+      onContextMenu={(event) => event.preventDefault()}
+    >
+      {options.map((option, index) => {
+        switch (option.type) {
+          case 'divider':
+            return <DropdownMenuSeparator key={index} className="bg-nt-line" />;
+          case 'label':
+            return <DropdownMenuLabel key={index} className={`truncate ${dropdownLabel}`}>{option.label}</DropdownMenuLabel>;
+          case 'color-grid':
+            return <ColorRow key={index} option={option} />;
+          case 'icon-row':
+            return (
+              <div key={index} className="flex items-center gap-0.5 px-1 py-0.5">
+                {option.items.map((item) => (
+                  <DropdownMenuItem
+                    key={item.label}
+                    aria-label={item.label}
+                    title={item.shortcut ? `${item.label} (${formatShortcut(item.shortcut)})` : item.label}
+                    className={`h-8 flex-1 justify-center rounded-md p-0 ${dropdownItem} ${item.active ? 'bg-nt-raised text-nt-ink' : ''}`}
+                    onSelect={(event) => { keepOpen(item.preventClose)(event); item.onClick(); }}
+                  >
+                    {item.icon}
+                  </DropdownMenuItem>
+                ))}
+              </div>
+            );
+          case 'submenu':
+            return (
+              <DropdownMenuSub key={index}>
+                <DropdownMenuSubTrigger className={`${itemClass} data-[state=open]:bg-nt-raised data-[state=open]:text-nt-ink`}>
+                  {option.icon}
+                  <span className="flex-1">{option.label}</span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className={`w-64 rounded-lg ${dropdownPanel}`}>
+                  {option.submenu.map((action, actionIndex) => <ActionItem key={actionIndex} action={action} />)}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            );
+          default:
+            return <ActionItem key={index} action={option} />;
+        }
+      })}
+    </DropdownMenuContent>
+  </DropdownMenu>
+);
 
 export default ContextMenu;

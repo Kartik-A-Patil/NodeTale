@@ -1,4 +1,4 @@
-import { Project, ProjectSummary } from '../../types';
+import { Project, ProjectSummary } from '../../models/story';
 
 /**
  * Union type for file data handling.
