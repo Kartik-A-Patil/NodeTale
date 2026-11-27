@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 // unavailable (private mode, blocked site data), so every access is guarded and
 // callers always get a usable default.
 
-const read = <T,>(key: string, fallback: T): T => {
+export const readPref = <T,>(key: string, fallback: T): T => {
   try {
     const raw = localStorage.getItem(key);
     return raw === null ? fallback : (JSON.parse(raw) as T);
@@ -13,7 +13,7 @@ const read = <T,>(key: string, fallback: T): T => {
   }
 };
 
-const write = (key: string, value: unknown) => {
+export const writePref = (key: string, value: unknown) => {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {
@@ -22,19 +22,19 @@ const write = (key: string, value: unknown) => {
 };
 
 export function useLocalPref<T>(key: string, fallback: T): [T, (value: T) => void] {
-  const [value, setValue] = useState<T>(() => read(key, fallback));
+  const [value, setValue] = useState<T>(() => readPref(key, fallback));
   const update = useCallback((next: T) => {
     setValue(next);
-    write(key, next);
+    writePref(key, next);
   }, [key]);
   return [value, update];
 }
 
 const OPENED_KEY = 'nodetale:lastOpened';
 
-export const getLastOpened = (): Record<string, number> => read(OPENED_KEY, {});
+export const getLastOpened = (): Record<string, number> => readPref(OPENED_KEY, {});
 
-export const markProjectOpened = (id: string) => write(OPENED_KEY, { ...getLastOpened(), [id]: Date.now() });
+export const markProjectOpened = (id: string) => writePref(OPENED_KEY, { ...getLastOpened(), [id]: Date.now() });
 
 const relative = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
 const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [

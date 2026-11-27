@@ -1,5 +1,6 @@
 import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { resolveProjectId } from '../services/storageService';
 import ReactFlow, {
   Background,
   MiniMap,
@@ -19,6 +20,7 @@ import { SidePanel } from './editor/SidePanel';
 import { BoardDock } from './editor/BoardDock';
 import { useFlowLogic } from '../hooks/useFlowLogic';
 import { useResolvedEdgeLabels } from '../hooks/useResolvedEdgeLabels';
+import { useNodeContent } from '../hooks/useNodeContent';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useDragAndDrop } from '../hooks/useDragAndDrop';
 import { useMenuOptions } from '../hooks/useMenuOptions';
@@ -44,10 +46,13 @@ import { CanvasNode, toStoryEdge, toStoryNode } from '../adapters/reactFlow';
 // Loaded on demand: play mode isn't needed until the author presses Play, and
 // the story views (with d3) until one is opened.
 const PlayMode = React.lazy(() => import('./PlayMode'));
+const CULL_ABOVE = 150;
 const StoryViews = React.lazy(() => import('./views/StoryViews'));
 
 function ProjectEditor() {
-  const { projectId } = useParams();
+  const { projectId: requestedId } = useParams();
+  // A link from before the project got its short id still opens it.
+  const projectId = requestedId && resolveProjectId(requestedId);
   const [viewMode, setViewModeState] = useState<ViewMode>('flow');
   const [isPlaying, setIsPlaying] = useState(false);
   const [playStartNodeId, setPlayStartNodeId] = useState<string | null>(null);
@@ -57,6 +62,9 @@ function ProjectEditor() {
   const [selectedNodeForAsset, setSelectedNodeForAsset] = useState<string | null>(null);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const navigate = useNavigate();
+  React.useEffect(() => {
+    if (projectId && projectId !== requestedId) navigate(`/${projectId}`, { replace: true });
+  }, [projectId, requestedId, navigate]);
   const [panel, setPanel] = useState<PanelId | null>(null);
   const [exporting, setExporting] = useState<Project | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -230,9 +238,11 @@ function ProjectEditor() {
   const alignSelection = (mode: AlignMode) => applyPositions(align(selectionBoxes(), mode));
   const distributeSelection = (axis: 'horizontal' | 'vertical') => applyPositions(distribute(selectionBoxes(), axis));
 
+  // From content only, so a drag doesn't hand BoardDock a new list each frame.
+  const nodeContent = useNodeContent(nodes);
   const findable = useMemo(
-    () => nodes.filter((n) => n.type !== 'sectionNode').map((n) => ({ id: n.id, label: String(n.data?.label || n.data?.text || 'Untitled'), content: n.data?.content ?? n.data?.text })),
-    [nodes]
+    () => nodeContent.filter((n) => n.type !== 'sectionNode').map((n) => ({ id: n.id, label: String(n.data?.label || n.data?.text || 'Untitled'), content: n.data?.content ?? n.data?.text })),
+    [nodeContent]
   );
 
   // Every editor action — keyboard shortcut and/or command palette entry.
@@ -497,7 +507,9 @@ function ProjectEditor() {
             panOnScrollMode={PanOnScrollMode.Free}
             connectionRadius={40}
             elevateNodesOnSelect={false}
-            onlyRenderVisibleElements
+            // Culling unmounts nodes as they leave the view, so panning keeps
+            // remounting them; only worth it once a board is big enough.
+            onlyRenderVisibleElements={nodes.length > CULL_ABOVE}
             snapToGrid={snap}
             snapGrid={[20, 20]}
             nodesDraggable={!locked}

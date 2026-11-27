@@ -54,3 +54,9 @@ export const toStoryEdge = (edge: Edge): StoryEdge => ({
   ...(edge.style ? { style: edge.style as StoryEdge['style'] } : {}),
   ...(edge.data ? { data: edge.data } : {}),
 });
+
+/** Same nodes saying the same things, wherever they sit. A drag or pan hands
+ *  over new node objects every frame but keeps each node's `data`, so work that
+ *  depends only on content can skip those frames. */
+export const sameNodeContent = (a: Node[], b: Node[]) =>
+  a === b || (a.length === b.length && a.every((n, i) => n.id === b[i].id && n.type === b[i].type && n.data === b[i].data));

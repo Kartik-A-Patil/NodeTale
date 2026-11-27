@@ -1,5 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+// Before the app's own CSS, so its .react-flow overrides still win.
+import 'reactflow/dist/style.css';
 import './index.css';
 import 'prismjs/themes/prism-dark.css';
 import App from './App';

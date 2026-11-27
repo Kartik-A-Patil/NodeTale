@@ -44,6 +44,13 @@ export interface StorageAdapter {
   releaseAssetUrl(url: string): void;
 
   /**
+   * The URL for an asset if it is already loaded, without waiting or taking a
+   * reference (call loadAsset for that). Lets a remounting component show the
+   * asset on its first frame instead of a loading state.
+   */
+  peekAssetUrl(id: string, typeHint?: string): string | null;
+
+  /**
    * Deletes an asset from storage.
    * @param id string - The Asset ID.
    */

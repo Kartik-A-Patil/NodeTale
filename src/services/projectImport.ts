@@ -1,4 +1,5 @@
 import type JSZip from 'jszip';
+import { shortId } from '../utils/id';
 import { Project } from '../models/story';
 import { getStorageAdapter } from './storage';
 import { saveProject, checkProjectNameExists } from './storageService';
@@ -16,9 +17,9 @@ const uniqueName = async (base: string, suffix: (n: number) => string): Promise<
 };
 
 export async function createExampleProject(): Promise<Project> {
-  // Use document.baseURI for reliable resolution in all environments
-  // (file:// in Electron prod, http:// in dev/web)
-  const baseUrl = new URL('./', document.baseURI).href;
+  // The app's base ("/" on the web, "./" in Electron's file://), not the
+  // page's own path, which is now /<project id> on the web.
+  const baseUrl = new URL(import.meta.env.BASE_URL, document.baseURI).href;
 
   const res = await fetch(`${baseUrl}assets/Example_Project/Project.json`);
   if (!res.ok) throw new Error('Could not load Example Project');
@@ -88,7 +89,7 @@ export async function createExampleProject(): Promise<Project> {
 
   const newProject: Project = {
     ...project,
-    id: crypto.randomUUID(),
+    id: shortId(),
     name: await uniqueName(project.name || 'Example Project', (n) => `Example Project (${n})`),
   };
   await saveProject(newProject);
@@ -218,7 +219,7 @@ const finalizeAndSaveImportedProject = async (importedProject: Project): Promise
 
   const newProject: Project = {
     ...importedProject,
-    id: crypto.randomUUID(),
+    id: shortId(),
     name: newName,
   };
 

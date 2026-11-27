@@ -1,6 +1,8 @@
 import { Project, ProjectSummary, StoryNode, StoryEdge, DEFAULT_Z_INDEX, DEFAULT_EDGE_STROKE } from '../models/story';
 import { getStorageAdapter } from './storage';
 import { COVER_SIZE_LIMIT, shrinkCoverImage } from '../utils/coverImage';
+import { shortId } from '../utils/id';
+import { readPref, writePref } from '../utils/localPrefs';
 
 // The same oversized cover can be autosaved repeatedly before the project reloads.
 // Cache its resized form to avoid decoding and resizing it for each save.
@@ -126,3 +128,46 @@ export const checkProjectNameExists = async (name: string): Promise<boolean> => 
   const summaries = await getStorageAdapter().getProjectSummaries();
   return summaries.some(p => p.name === name);
 };
+
+// ---------- short project ids ----------
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ALIASES_KEY = 'nodetale:idAliases';
+// Per-device settings keyed by project id, carried over to the new id.
+const PER_PROJECT_PREFS = ['nodetale:saves:', 'nodetale:endings:'];
+
+/** The id a project lives under now, for links made before it got a short one. */
+export const resolveProjectId = (id: string): string => readPref<Record<string, string>>(ALIASES_KEY, {})[id] ?? id;
+
+/**
+ * Projects from before short ids get one (once; later runs find nothing to do).
+ * The copy is saved before the old record is deleted, so an interruption can
+ * at worst leave both, never neither. Assets are stored by their own ids and
+ * aren't touched.
+ */
+// Once per page load: StrictMode runs App's effect twice, and two concurrent
+// runs would each copy the same project.
+let shortening: Promise<void> | null = null;
+export const shortenProjectIds = (): Promise<void> => (shortening ??= shortenOnce());
+
+async function shortenOnce(): Promise<void> {
+  const adapter = getStorageAdapter();
+  const aliases = readPref<Record<string, string>>(ALIASES_KEY, {});
+  const opened = readPref<Record<string, number>>('nodetale:lastOpened', {});
+  for (const summary of await adapter.getProjectSummaries()) {
+    if (!UUID.test(summary.id)) continue;
+    const project = await adapter.loadProject(summary.id);
+    if (!project) continue;
+    const id = shortId();
+    await saveProject({ ...project, id });
+    await adapter.deleteProject(summary.id);
+    aliases[summary.id] = id;
+    for (const prefix of PER_PROJECT_PREFS) {
+      const value = readPref<unknown>(prefix + summary.id, null);
+      if (value !== null) writePref(prefix + id, value);
+    }
+    if (opened[summary.id]) opened[id] = opened[summary.id];
+    writePref(ALIASES_KEY, aliases);
+  }
+  writePref('nodetale:lastOpened', opened);
+}

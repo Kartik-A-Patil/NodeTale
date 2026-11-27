@@ -10,12 +10,13 @@ interface AssetPreviewProps {
 }
 
 export const AssetPreview: React.FC<AssetPreviewProps> = ({ asset, className, imgClassName }) => {
-  const { url: cachedUrl, isLoading } = useAssetUrl(asset.id, asset.type);
+  const { url: cachedUrl, error } = useAssetUrl(asset.id, asset.type);
   
   // Prefer cached URL (Storage), fallback to asset.url (Legacy/Remote)
   const displayUrl = cachedUrl || asset.url;
 
-  if (isLoading && !displayUrl) {
+  // Not loaded yet (and not failed): a quiet placeholder of the same size.
+  if (!displayUrl && !error) {
     return (
         <div className={`flex items-center justify-center bg-zinc-800 ${className}`}>
             <Loader2 className="animate-spin text-zinc-500" size={20} />

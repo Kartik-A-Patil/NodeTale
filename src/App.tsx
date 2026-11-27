@@ -1,6 +1,16 @@
 import React, { useState } from 'react';
-import { HashRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Routes, Route } from 'react-router-dom';
 import { runStorageMigration } from './services/storage';
+import { shortenProjectIds } from './services/storageService';
+
+// Plain paths on the web (/k3x9q2ab7d). The desktop app loads from file://,
+// where only the hash works; nobody sees its address bar anyway.
+const Router = import.meta.env.VITE_PLATFORM === 'electron' ? HashRouter : BrowserRouter;
+
+// Links from before plain paths: /#/abc -> /abc.
+if (Router === BrowserRouter && window.location.hash.startsWith('#/')) {
+  window.history.replaceState(null, '', window.location.hash.slice(1));
+}
 
 // Route-level code splitting: the dashboard doesn't pay for the editor (ReactFlow,
 // Prism, commands) and the editor doesn't pay for the dashboard.
@@ -11,7 +21,9 @@ export default function App() {
   const [isMigrating, setIsMigrating] = useState(true);
 
   React.useEffect(() => {
-    runStorageMigration().then(() => setIsMigrating(false));
+    runStorageMigration()
+      .then(() => shortenProjectIds().catch((err) => console.error('[Storage] Short ids failed', err)))
+      .then(() => setIsMigrating(false));
   }, []);
 
   if (isMigrating) {
@@ -24,13 +36,13 @@ export default function App() {
   }
 
   return (
-    <HashRouter>
+    <Router>
       <React.Suspense fallback={<div className="h-screen w-screen bg-nt-bg" />}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/:projectId" element={<ProjectEditor />} />
         </Routes>
       </React.Suspense>
-    </HashRouter>
+    </Router>
   );
 }

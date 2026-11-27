@@ -8,9 +8,11 @@ import { getStorageAdapter } from '../services/storage';
  *   for platforms that need it (e.g., Electron's custom protocol for proper Content-Type).
  */
 export const useAssetUrl = (assetId: string | null | undefined, typeHint?: string) => {
-  const [url, setUrl] = useState<string | null>(null);
+  // An asset already loaded elsewhere (or by this node before it scrolled out
+  // of view) shows on the first frame; the effect below still takes its reference.
+  const [url, setUrl] = useState<string | null>(() => (assetId ? getStorageAdapter().peekAssetUrl(assetId, typeHint) : null));
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(() => !!assetId && url === null);
   const currentUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -25,7 +27,7 @@ export const useAssetUrl = (assetId: string | null | undefined, typeHint?: strin
     const adapter = getStorageAdapter();
 
     const load = async () => {
-      setIsLoading(true);
+      if (!adapter.peekAssetUrl(assetId, typeHint)) setIsLoading(true);
       setError(null);
       try {
         const result = await adapter.loadAsset(assetId, typeHint);

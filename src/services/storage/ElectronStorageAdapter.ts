@@ -42,6 +42,11 @@ export class ElectronStorageAdapter implements StorageAdapter {
     return typeHint ? `${base}?type=${encodeURIComponent(typeHint)}` : base;
   }
 
+  peekAssetUrl(id: string, typeHint?: string): string | null {
+    const base = `asset://${encodeURIComponent(id)}`;
+    return typeHint ? `${base}?type=${encodeURIComponent(typeHint)}` : base;
+  }
+
   releaseAssetUrl(_url: string): void {
     // No-op for file:// URLs
   }

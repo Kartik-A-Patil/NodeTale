@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { shortId, createId } from '../utils/id';
 import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { getProjectSummaries, saveProject, loadProject, deleteProject, checkProjectNameExists } from '../services/storageService';
@@ -79,10 +80,10 @@ export default function Dashboard() {
 
   const createBlank = async (name: string, coverImage: string | null): Promise<string | null> => {
     if (await checkProjectNameExists(name)) return 'You already have a story with that name.';
-    const boardId = crypto.randomUUID();
+    const boardId = createId('board');
     const project: Project = {
       ...INITIAL_PROJECT,
-      id: crypto.randomUUID(),
+      id: shortId(),
       name,
       boards: [{ ...INITIAL_PROJECT.boards[0], id: boardId }],
       activeBoardId: boardId,
@@ -142,7 +143,7 @@ export default function Dashboard() {
     if (!project) return;
     let name = `${project.name} (Copy)`;
     for (let n = 2; await checkProjectNameExists(name); n++) name = `${project.name} (Copy ${n})`;
-    await saveProject({ ...project, id: crypto.randomUUID(), name });
+    await saveProject({ ...project, id: shortId(), name });
     await reload();
     setStatus({ tone: 'success', text: `Duplicated as “${name}”.` });
   };

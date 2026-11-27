@@ -1,4 +1,5 @@
 import { useDeferredValue, useMemo, useRef, useState } from 'react';
+import { createId } from '../../../utils/id';
 import { ExternalLink } from 'lucide-react';
 import { Project, SimulationPreset } from '../../../models/story';
 import { StoryGraph } from '../../../core/graph/storyGraph';
@@ -48,7 +49,7 @@ export default function VariablesView({ graph, project, onFocusNode, onUpdatePro
     setOverrides(id ? { ...(presets.find((p) => p.id === id)?.values ?? {}) } : {});
   };
   const savePreset = (name: string) => {
-    const preset: SimulationPreset = { id: crypto.randomUUID(), name, values: overrides };
+    const preset: SimulationPreset = { id: createId('preset'), name, values: overrides };
     onUpdateProject((p) => ({ ...p, simulationPresets: [...(p.simulationPresets ?? []), preset] }));
     setActivePresetId(preset.id);
   };

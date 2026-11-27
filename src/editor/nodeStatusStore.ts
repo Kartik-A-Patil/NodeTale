@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { Edge } from 'reactflow';
 import type { CanvasNode } from '../adapters/reactFlow';
+import { useNodeContent } from '../hooks/useNodeContent';
 import type { Project } from '../models/story';
 import { buildStoryGraph } from '../core/graph/storyGraph';
 import { NodeStatus, nodeStatuses } from '../core/graph/nodeStatus';
@@ -36,7 +37,9 @@ const graphShape = (nodes: CanvasNode[], edges: Edge[]) =>
 /** Owns the store and keeps it in step with the live canvas. */
 export function useNodeStatusStore(nodes: CanvasNode[], edges: Edge[], getLiveProject: () => Project, boards: Project['boards']) {
   const [store] = useState(createNodeStatusStore);
-  const shape = useMemo(() => graphShape(nodes, edges), [nodes, edges]);
+  // Not rebuilt per drag frame: the shape string walks every node.
+  const content = useNodeContent(nodes);
+  const shape = useMemo(() => graphShape(content, edges), [content, edges]);
   useEffect(() => {
     store.set(nodeStatuses(buildStoryGraph(getLiveProject())));
   }, [store, shape, boards, getLiveProject]);

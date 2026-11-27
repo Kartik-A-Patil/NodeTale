@@ -17,6 +17,24 @@ export class WebStorageAdapter implements StorageAdapter {
   // Reference-counted blob URL cache: prevents premature revocation in React Strict Mode
   private urlCache: Map<string, string> = new Map();
   private urlRefCount: Map<string, number> = new Map();
+  // Unused URLs live a little longer: the canvas unmounts nodes that scroll
+  // out of view, and panning back would otherwise re-create and re-decode
+  // every image (a visible flash).
+  private revokeTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  private static readonly REVOKE_GRACE_MS = 30_000;
+
+  private retain(id: string) {
+    this.urlRefCount.set(id, (this.urlRefCount.get(id) || 0) + 1);
+    const timer = this.revokeTimers.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      this.revokeTimers.delete(id);
+    }
+  }
+
+  peekAssetUrl(id: string): string | null {
+    return this.urlCache.get(id) ?? null;
+  }
 
   constructor() {
     // Singleton initialization could happen here or lazily
@@ -106,7 +124,7 @@ export class WebStorageAdapter implements StorageAdapter {
   async loadAsset(id: string, _typeHint?: string): Promise<string> {
     // Return cached URL and increment ref count
     if (this.urlCache.has(id)) {
-      this.urlRefCount.set(id, (this.urlRefCount.get(id) || 0) + 1);
+      this.retain(id);
       return this.urlCache.get(id)!;
     }
 
@@ -125,7 +143,7 @@ export class WebStorageAdapter implements StorageAdapter {
         
         // Check cache again (another call may have populated it while we awaited IDB)
         if (this.urlCache.has(id)) {
-          this.urlRefCount.set(id, (this.urlRefCount.get(id) || 0) + 1);
+          this.retain(id);
           resolve(this.urlCache.get(id)!);
           return;
         }
@@ -147,10 +165,17 @@ export class WebStorageAdapter implements StorageAdapter {
       if (cachedUrl === url) {
         const count = (this.urlRefCount.get(id) || 1) - 1;
         if (count <= 0) {
-          // Last reference — actually revoke
-          URL.revokeObjectURL(url);
-          this.urlCache.delete(id);
-          this.urlRefCount.delete(id);
+          // Last reference: revoke after a grace period, unless taken again.
+          this.urlRefCount.set(id, 0);
+          if (!this.revokeTimers.has(id)) {
+            this.revokeTimers.set(id, setTimeout(() => {
+              this.revokeTimers.delete(id);
+              if ((this.urlRefCount.get(id) || 0) > 0) return;
+              URL.revokeObjectURL(url);
+              this.urlCache.delete(id);
+              this.urlRefCount.delete(id);
+            }, WebStorageAdapter.REVOKE_GRACE_MS));
+          }
         } else {
           this.urlRefCount.set(id, count);
         }
