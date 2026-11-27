@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Variable, VariableType, ArrayValue, ObjectValue } from "../../models/story";
+import { Variable, VariableType, isArrayValue, isObjectValue } from "../../models/story";
 import { ChevronRight, AlertTriangle } from "lucide-react";
 import type { PlayError } from "../../core/runtime/StoryRuntime";
 
@@ -7,14 +7,6 @@ interface DebugOverlayProps {
   variables: Variable[];
   errors?: PlayError[];
 }
-
-const isArrayValue = (value: any): value is ArrayValue => {
-  return value !== null && typeof value === "object" && "elementType" in value && Array.isArray(value.elements);
-};
-
-const isObjectValue = (value: any): value is ObjectValue => {
-  return value !== null && typeof value === "object" && "keys" in value && typeof value.keys === "object";
-};
 
 export const DebugOverlay: React.FC<DebugOverlayProps> = ({ variables, errors = [] }) => {
   const [isHovered, setIsHovered] = useState(false);

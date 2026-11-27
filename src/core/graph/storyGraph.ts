@@ -1,11 +1,11 @@
-import { Project, isConditionNode, isElementNode, isJumpNode } from '../../models/story';
+import { Project, isStartNode, isConditionNode, isElementNode, isJumpNode } from '../../models/story';
 import { parseExpression, parseScript } from '../expression/parser';
 import { collectExprIdentifiers } from '../validation/identifierCollector';
-import { extractScriptCode } from '../runtime/htmlScript';
+import { extractScriptCode } from '../../utils/html';
 import { Stmt } from '../expression/ast';
 import { DEFAULT_BRANCHES, branchLabel } from '../branch';
 import { choiceRulesOf } from '../../utils/edgeLabel';
-import { decodeEntities } from '../../services/logicService';
+import { decodeEntities, VARIABLE_PATTERN } from '../../utils/html';
 
 // One analysis of a project's story structure, shared by the story views
 // (branch map, timeline, path flow, variable tracker) and dashboard stats.
@@ -70,7 +70,6 @@ export interface StoryGraph {
   variableUse: Map<string, VariableUse>;
 }
 
-const VARIABLE_MENTION = /\{\{([^}]+)\}\}/g;
 
 const tryParse = <T>(parse: () => T): T | null => {
   try {
@@ -93,7 +92,7 @@ function collectVariableUse(project: Project, nodes: Map<string, GraphNode>): Ma
       if (!nodes.has(node.id)) continue;
       if (isElementNode(node)) {
         const content = node.data.content || '';
-        for (const m of content.matchAll(VARIABLE_MENTION)) {
+        for (const m of content.matchAll(VARIABLE_PATTERN)) {
           const expr = tryParse(() => parseExpression(decodeEntities(m[1])));
           if (expr) collectExprIdentifiers(expr, new Set(), usageOf(node.id).shown);
         }
@@ -186,7 +185,7 @@ export function buildStoryGraph(project: Project): StoryGraph {
   }
 
   const activeBoard = project.boards.find((b) => b.id === project.activeBoardId) || project.boards[0];
-  const startNode = activeBoard?.nodes.find((n) => nodes.has(n.id) && n.data?.label?.toLowerCase() === 'start');
+  const startNode = activeBoard?.nodes.find((n) => nodes.has(n.id) && isStartNode(n));
   const startId = startNode?.id ?? null;
 
   // Iterative DFS: preorder (story order), back-edges (loops).

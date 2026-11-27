@@ -1,3 +1,4 @@
+import { isArrayValue, isObjectValue } from '../../models/story';
 import { Expr } from './ast';
 
 export interface EvalContext {
@@ -7,19 +8,14 @@ export interface EvalContext {
 
 // Variables keep lists/objects in their editor shapes ({elementType, elements}
 // and {keys: {name: {type, value}}}); reading into them unwraps to the item.
-const isList = (v: unknown): v is { elements: unknown[] } =>
-  !!v && typeof v === 'object' && Array.isArray((v as { elements?: unknown }).elements);
-const isRecord = (v: unknown): v is { keys: Record<string, { value: unknown }> } =>
-  !!v && typeof v === 'object' && typeof (v as { keys?: unknown }).keys === 'object' && !isList(v);
-
 function readKey(target: unknown, key: string | number): unknown {
-  if (isList(target)) {
+  if (isArrayValue(target)) {
     if (key === 'length') return target.elements.length;
     const i = Number(key);
     if (Number.isInteger(i) && i >= 0 && i < target.elements.length) return target.elements[i];
     throw new Error(`List has no item ${key}`);
   }
-  if (isRecord(target)) {
+  if (isObjectValue(target)) {
     if (String(key) in target.keys) return target.keys[String(key)].value;
     throw new Error(`Object has no key "${key}"`);
   }

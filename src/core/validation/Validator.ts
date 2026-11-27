@@ -1,8 +1,8 @@
-import { Project, Board, StoryNode, isConditionNode, isJumpNode, isElementNode } from '../../models/story';
+import { Project, Board, StoryNode, isStartNode, isConditionNode, isJumpNode, isElementNode } from '../../models/story';
 import { Diagnostic } from './types';
 import { parseExpression, parseScript, ExpressionSyntaxError } from '../expression/parser';
 import { collectExprIdentifiers, collectScriptIdentifiers } from './identifierCollector';
-import { extractScriptCode } from '../runtime/htmlScript';
+import { extractScriptCode } from '../../utils/html';
 import { validateVariableReferences } from '../../services/logicService';
 import { choiceRulesOf } from '../../utils/edgeLabel';
 
@@ -59,7 +59,7 @@ function ruleUnreachableNodes(project: Project): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
 
   for (const board of project.boards) {
-    const startNode = board.nodes.find((n) => n.data.label?.toLowerCase() === 'start');
+    const startNode = board.nodes.find(isStartNode);
     if (!startNode) continue;
 
     const adjacency = new Map<string, string[]>();

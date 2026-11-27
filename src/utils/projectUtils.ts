@@ -1,107 +1,15 @@
 import { Project } from '../models/story';
+import { compactProject } from '../services/storageService';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { getStorageAdapter } from '../services/storage';
 
-// Keep a narrow set of node data keys to avoid bloated JSON exports
-const pickNodeData = (data: any) => {
-    const {
-        label,
-        content,
-        assets,
-        branches,
-        jumpTargetId,
-        jumpTargetLabel,
-        text,
-        color,
-        date,
-        arrowDirection
-    } = data || {};
-
-    // Always include required NodeData fields with safe fallbacks
-    return {
-        label: typeof label === 'string' ? label : '',
-        content: typeof content === 'string' ? content : '',
-        ...(Array.isArray(assets) ? { assets } : {}),
-        ...(Array.isArray(branches) ? { branches } : {}),
-        ...(jumpTargetId ? { jumpTargetId } : {}),
-        ...(jumpTargetLabel ? { jumpTargetLabel } : {}),
-        ...(text ? { text } : {}),
-        ...(color ? { color } : {}),
-        ...(date ? { date } : {}),
-        ...(arrowDirection ? { arrowDirection } : {}),
-    };
-};
-
-const sanitizeProjectForExport = (project: Project, includeAssets: boolean) => {
-    // Shallow clone first
-    const cloned: Project = JSON.parse(JSON.stringify(project));
-
-    // Sanitize boards -> nodes
-    cloned.boards = cloned.boards.map((board) => ({
-        ...board,
-        // Only keep minimal node fields required to restore the flow
-        nodes: board.nodes.map((node) => {
-            const width =
-                typeof node.width === 'number'
-                    ? node.width
-                    : typeof (node as any)?.style?.width === 'number'
-                        ? (node as any).style.width
-                        : undefined;
-            const height =
-                typeof node.height === 'number'
-                    ? node.height
-                    : typeof (node as any)?.style?.height === 'number'
-                        ? (node as any).style.height
-                        : undefined;
-            const zIndex =
-                typeof (node as any).zIndex === 'number'
-                    ? (node as any).zIndex
-                    : typeof (node as any)?.style?.zIndex === 'number'
-                        ? (node as any).style.zIndex
-                        : undefined;
-
-            const style: Record<string, number> = {};
-            if (typeof width === 'number') style.width = width;
-            if (typeof height === 'number') style.height = height;
-            if (typeof zIndex === 'number') style.zIndex = zIndex;
-
-            return {
-                id: node.id,
-                type: node.type,
-                position: node.position,
-                data: pickNodeData(node.data),
-                // Preserve user sizing/z-order so layout stays intact after import
-                ...(typeof width === 'number' ? { width } : {}),
-                ...(typeof height === 'number' ? { height } : {}),
-                ...(typeof zIndex === 'number' ? { zIndex } : {}),
-                ...(Object.keys(style).length ? { style } : {}),
-                // Keep parentNode to restore nesting; drop layout-calculated props
-                ...(node.parentNode ? { parentNode: node.parentNode } : {}),
-            };
-        }),
-        // Keep edges lean
-        edges: board.edges.map((edge) => ({
-            id: edge.id,
-            source: edge.source,
-            target: edge.target,
-            sourceHandle: edge.sourceHandle,
-            targetHandle: edge.targetHandle,
-            type: edge.type,
-        })),
-    }));
-
-    // Assets: if not including assets, clear urls; otherwise they will be rewritten later
-    cloned.assets = cloned.assets.map((asset) => ({
-        ...asset,
-        url: includeAssets ? asset.url : '',
-    }));
-
-    // Drop cover image in JSON (exporter handles file separately)
-    if (!includeAssets && cloned.coverImage && cloned.coverImage.startsWith('data:')) {
-        cloned.coverImage = '';
-    }
-
+const sanitizeProjectForExport = (project: Project, includeAssets: boolean): Project => {
+    // Deep copy: the zip export rewrites asset urls and node content in place.
+    const cloned: Project = structuredClone(compactProject(project));
+    cloned.assets = cloned.assets.map((asset) => ({ ...asset, url: includeAssets ? asset.url : '' }));
+    // The exporter writes the cover as its own file.
+    if (!includeAssets && cloned.coverImage?.startsWith('data:')) cloned.coverImage = '';
     return cloned;
 };
 

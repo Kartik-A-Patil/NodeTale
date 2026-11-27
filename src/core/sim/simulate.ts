@@ -1,7 +1,7 @@
-import { Project, StoryNode, Board, Variable, Branch, isConditionNode } from '../../models/story';
+import { Project, StoryNode, Board, Variable, Branch, isConditionNode, isStartNode, isArrayValue, isObjectValue } from '../../models/story';
 import { executeNode } from '../nodes/nodeRegistry';
 import { runScript, evaluateCondition, firstOutcomeRng, Rng } from '../runtime/scriptInterpreter';
-import { extractScriptCode } from '../runtime/htmlScript';
+import { extractScriptCode } from '../../utils/html';
 import { DEFAULT_BRANCHES, branchLabel } from '../branch';
 import { manualEdgeLabel, choiceRulesOf } from '../../utils/edgeLabel';
 
@@ -66,7 +66,7 @@ export function createSimulator(project: Project): Simulator {
   const index = new Map<string, { node: StoryNode; board: Board }>();
   for (const board of project.boards) for (const node of board.nodes) if (!index.has(node.id)) index.set(node.id, { node, board });
   const active = project.boards.find((b) => b.id === project.activeBoardId) || project.boards[0];
-  const start = active?.nodes.find((n) => n.type !== 'commentNode' && n.data?.label?.toLowerCase() === 'start');
+  const start = active?.nodes.find(isStartNode);
   const variables = project.variables;
 
   // Extracting a scene's script parses its HTML; do it once per scene, not per visit.
@@ -328,16 +328,9 @@ export interface ValueSummary {
 export function formatValue(v: unknown, max = 24): string {
   const clip = (t: string) => (t.length > max ? `${t.slice(0, max - 1)}…` : t);
   if (typeof v === 'string') return `“${clip(v)}”`;
-  if (v && typeof v === 'object') {
-    if ('elements' in v && Array.isArray((v as { elements: unknown[] }).elements)) {
-      return clip(`[${(v as { elements: unknown[] }).elements.map((e) => (typeof e === 'string' ? `“${e}”` : String(e))).join(', ')}]`);
-    }
-    if ('keys' in v) {
-      const keys = (v as { keys: Record<string, { value: unknown }> }).keys;
-      return clip(`{${Object.entries(keys).map(([k, e]) => `${k}: ${typeof e.value === 'string' ? `“${e.value}”` : String(e.value)}`).join(', ')}}`);
-    }
-    return clip(JSON.stringify(v));
-  }
+  if (isArrayValue(v)) return clip(`[${v.elements.map((e) => (typeof e === 'string' ? `“${e}”` : String(e))).join(', ')}]`);
+  if (isObjectValue(v)) return clip(`{${Object.entries(v.keys).map(([k, e]) => `${k}: ${typeof e.value === 'string' ? `“${e.value}”` : String(e.value)}`).join(', ')}}`);
+  if (v && typeof v === 'object') return clip(JSON.stringify(v));
   return String(v);
 }
 

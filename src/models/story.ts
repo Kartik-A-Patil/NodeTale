@@ -18,6 +18,15 @@ export interface ObjectValue {
   }>;
 }
 
+export const isArrayValue = (v: unknown): v is ArrayValue =>
+  !!v && typeof v === 'object' && Array.isArray((v as ArrayValue).elements);
+export const isObjectValue = (v: unknown): v is ObjectValue =>
+  !!v && typeof v === 'object' && !isArrayValue(v) && !!(v as ObjectValue).keys && typeof (v as ObjectValue).keys === 'object';
+
+/** The scene a story starts from: the one titled "Start". */
+export const isStartNode = (node: { type?: string; data?: { label?: unknown } }): boolean =>
+  node.type !== 'commentNode' && typeof node.data?.label === 'string' && node.data.label.trim().toLowerCase() === 'start';
+
 export interface Variable {
   id: string;
   name: string;

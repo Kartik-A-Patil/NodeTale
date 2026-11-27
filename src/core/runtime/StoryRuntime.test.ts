@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { StoryRuntime } from './StoryRuntime';
-import { stripScriptBlocks } from './htmlScript';
+import { stripScriptBlocks } from '../../utils/html';
 import { Project, VariableType } from '../../models/story';
 
 const scene = (id: string, label: string, content = '') =>

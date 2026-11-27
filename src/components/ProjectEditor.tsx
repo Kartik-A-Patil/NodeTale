@@ -28,7 +28,7 @@ import { nodeTypes as initialNodeTypes, edgeTypes as initialEdgeTypes } from './
 import { EditorAction, ShortcutKeys } from '../editor/shortcuts/types';
 import { KEYS } from '../editor/shortcuts/keymap';
 import { requestNodeEdit } from './nodes/nodeChrome';
-import { Board, Project } from '../models/story';
+import { Board, Project, isStartNode } from '../models/story';
 import { useShortcuts } from '../editor/shortcuts/useShortcuts';
 import { CommandPalette } from './CommandPalette';
 import { EditorContext } from '../editor/EditorContext';
@@ -169,8 +169,8 @@ function ProjectEditor() {
   const playProject = useMemo(() => (isPlaying ? getLiveProject() : null), [isPlaying, getLiveProject]);
 
   // From the live canvas, not project.boards (which lags until autosave).
-  const canPlay = nodes.some(n => typeof n.data?.label === 'string' && n.data.label.toLowerCase() === 'start');
-  const startId = nodes.find(n => typeof n.data?.label === 'string' && n.data.label.toLowerCase() === 'start')?.id ?? null;
+  const startId = nodes.find(isStartNode)?.id ?? null;
+  const canPlay = startId !== null;
 
   // Problems for the active board (the Problems panel and its badge).
   const diagnostics = useMemo(() => validateProject(project, { boardIds: [project.activeBoardId] }), [project]);

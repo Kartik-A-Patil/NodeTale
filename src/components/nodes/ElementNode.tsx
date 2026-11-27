@@ -20,6 +20,7 @@ import {
   validateCodeSyntax,
   validateTypeAssignments
 } from "../../services/logicService";
+import { extractScriptCode } from "../../utils/html";
 import { nodePropsEqual } from "./nodePropsEqual";
 import { useEditor } from "../../editor/EditorContext";
 import { useNodeStatus } from "../../editor/nodeStatusStore";
@@ -108,20 +109,8 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
   const hasError = useMemo(() => {
     // Only check for code syntax errors and type mismatches in <pre> blocks
     // Don't validate variable references in normal text (they're fine as {{var}})
-    if (!deferredContent || !deferredContent.includes("<pre")) return false;
-    try {
-      const doc = new DOMParser().parseFromString(deferredContent, "text/html");
-      for (const block of doc.querySelectorAll("pre")) {
-        const codeText = block.textContent || "";
-        if (!validateCodeSyntax(codeText).valid) return true;
-        if (!validateTypeAssignments(codeText, variables).valid) return true;
-      }
-    } catch (err) {
-      // Parser error - not critical for display
-      console.error("Parser error:", err);
-    }
-
-    return false;
+    const code = extractScriptCode(deferredContent);
+    return !!code && (!validateCodeSyntax(code).valid || !validateTypeAssignments(code, variables).valid);
   }, [deferredContent, variables]);
 
   return (

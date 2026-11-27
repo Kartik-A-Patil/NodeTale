@@ -81,7 +81,7 @@ function buildThumbnail(board: SummaryBoard | undefined): ProjectThumbnail | und
     n: kept.map((n) => [
       round((n.position!.x - minX) / w),
       round((n.position!.y - minY) / h),
-      n.data?.label?.toLowerCase() === 'start' ? 3 : n.type === 'conditionNode' ? 1 : n.type === 'jumpNode' ? 2 : 0,
+      n.data?.label?.trim().toLowerCase() === 'start' ? 3 : n.type === 'conditionNode' ? 1 : n.type === 'jumpNode' ? 2 : 0,
     ]),
     e: (board?.edges || [])
       .filter((e) => index.has(e.source) && index.has(e.target))

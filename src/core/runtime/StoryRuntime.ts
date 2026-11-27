@@ -1,4 +1,4 @@
-import { Project, Variable, StoryNode, Asset } from '../../models/story';
+import { Project, Variable, StoryNode, Asset, isStartNode } from '../../models/story';
 import { createSimulator, resolveVisibleNode, Simulator, Transition, Values } from '../sim/simulate';
 import { mathRng, Rng } from './scriptInterpreter';
 
@@ -111,7 +111,7 @@ export class StoryRuntime {
 
     const startNode = startNodeId
       ? board.nodes.find((n) => n.id === startNodeId)
-      : board.nodes.find((n) => typeof n.data?.label === 'string' && n.data.label.toLowerCase() === 'start');
+      : board.nodes.find(isStartNode);
     if (!startNode) return;
 
     this.initialStartNodeId = startNode.id;

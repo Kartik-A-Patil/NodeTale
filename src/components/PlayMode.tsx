@@ -8,7 +8,7 @@ import { MediaDisplay } from "./playmode/MediaDisplay";
 import { StoryNode } from "./playmode/StoryNode";
 
 import { useAssetUrl } from "../hooks/useAssetUrl";
-import { stripScriptBlocks } from "../core/runtime/htmlScript";
+import { stripScriptBlocks } from "../utils/html";
 import { interpolateText } from "../core/runtime/scriptInterpreter";
 
 interface PlayModeProps {

@@ -25,8 +25,24 @@ export const sanitizeHtml = (html: string): string => sanitizeDocument(parse(htm
 /** Plain text of an HTML fragment, without ever attaching it to the live DOM. */
 export const htmlToText = (html: string): string => parse(html).body.textContent || '';
 
-/** `{{ name }}` references in story text. Global regex: reset lastIndex or use matchAll. */
-export const VARIABLE_PATTERN = /\{\{\s*[^{}]+?\s*\}\}/g;
+/** `{{ expression }}` in story text; group 1 is the expression. Global regex: use matchAll/replace. */
+export const VARIABLE_PATTERN = /\{\{\s*([^{}]+?)\s*\}\}/g;
+
+// Story text is HTML: `{{hp > 0}}` arrives as `{{hp &gt; 0}}`.
+const ENTITIES: Record<string, string> = { gt: '>', lt: '<', amp: '&', quot: '"', '#39': "'", apos: "'", nbsp: ' ' };
+export const decodeEntities = (s: string) => s.replace(/&(gt|lt|amp|quot|#39|apos|nbsp);/g, (_, e: string) => ENTITIES[e]);
+
+/** A scene's logic: the text of all its <pre> blocks, one after another. */
+export const extractScriptCode = (html: string): string =>
+  html?.includes('<pre') ? Array.from(parse(html).querySelectorAll('pre'), (pre) => pre.textContent || '').join('\n') : '';
+
+/** The player sees the story text, never the logic that drives it. */
+export const stripScriptBlocks = (html: string): string => {
+  if (!html?.includes('<pre')) return html || '';
+  const doc = parse(html);
+  doc.querySelectorAll('pre').forEach((pre) => pre.remove());
+  return doc.body.innerHTML;
+};
 export const VARIABLE_TOKEN_CLASS = 'nt-variable-token';
 
 /** Elements holding blocks, not text: whitespace between their children is formatting. */

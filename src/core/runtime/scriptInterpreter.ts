@@ -1,11 +1,8 @@
 import { parseScript, parseExpression, ExpressionSyntaxError } from '../expression/parser';
 import { evaluate, EvalContext, looseEqual } from '../expression/evaluator';
 import { Stmt } from '../expression/ast';
-import { ArrayValue } from '../../models/story';
-import {
-  arrayMap, arrayFilter, arrayReduce, arrayPush, arrayPop, arrayShift, arrayUnshift,
-  objectKeys, objectValues, objectEntries, objectSpread, decodeEntities,
-} from '../../services/logicService';
+import { ArrayValue, ObjectValue, VariableType, isArrayValue, isObjectValue } from '../../models/story';
+import { VARIABLE_PATTERN, decodeEntities } from '../../utils/html';
 
 /** Where random() and chance() get their luck. Play Mode rolls real dice; the
  *  simulator plugs in one that explores every outcome (see enumerateOutcomes). */
@@ -28,9 +25,16 @@ const num = (v: unknown, fn: string): number => {
   return n;
 };
 const asList = (v: unknown, fn: string): ArrayValue => {
-  if (v && typeof v === 'object' && Array.isArray((v as ArrayValue).elements)) return v as ArrayValue;
+  if (isArrayValue(v)) return v;
   throw new Error(`${fn}() needs a list, got ${JSON.stringify(v)}`);
 };
+const asObject = (v: unknown, fn: string): ObjectValue => {
+  if (isObjectValue(v)) return v;
+  throw new Error(`${fn}() needs an object, got ${JSON.stringify(v)}`);
+};
+const withElements = (list: ArrayValue, elements: unknown[]): ArrayValue => ({ ...list, elements: elements as ArrayValue['elements'] });
+const typeOf = (value: unknown) =>
+  typeof value === 'number' ? VariableType.NUMBER : typeof value === 'boolean' ? VariableType.BOOLEAN : VariableType.STRING;
 
 // The only functions a script or condition can call: no window/document/
 // process/require/fs/ipcRenderer or any Node/Electron API. Without an rng
@@ -68,29 +72,40 @@ export function makeFunctions(rng?: Rng): Record<string, (...args: any[]) => unk
     // lists and objects
     len: (v: unknown) => {
       if (typeof v === 'string') return v.length;
-      if (v && typeof v === 'object' && Array.isArray((v as ArrayValue).elements)) return (v as ArrayValue).elements.length;
-      if (v && typeof v === 'object' && 'keys' in v) return Object.keys((v as { keys: object }).keys).length;
+      if (isArrayValue(v)) return v.elements.length;
+      if (isObjectValue(v)) return Object.keys(v.keys).length;
       throw new Error(`len() needs a list, object or text, got ${JSON.stringify(v)}`);
     },
     has: (v: unknown, item: unknown) => {
       if (typeof v === 'string') return v.includes(String(item));
-      if (v && typeof v === 'object' && Array.isArray((v as ArrayValue).elements)) return (v as ArrayValue).elements.some((e) => looseEqual(e, item));
-      if (v && typeof v === 'object' && 'keys' in v) return String(item) in (v as { keys: object }).keys;
+      if (isArrayValue(v)) return v.elements.some((e) => looseEqual(e, item));
+      if (isObjectValue(v)) return String(item) in v.keys;
       throw new Error(`has() needs a list, object or text, got ${JSON.stringify(v)}`);
     },
-    push: (list: unknown, ...items: unknown[]) => arrayPush(asList(list, 'push'), ...items),
-    pop: (list: unknown) => {
-      const l = asList(list, 'pop');
-      return { ...l, elements: l.elements.slice(0, -1) };
-    },
+    push: (list: unknown, ...items: unknown[]) => { const l = asList(list, 'push'); return withElements(l, [...l.elements, ...items]); },
+    pop: (list: unknown) => { const l = asList(list, 'pop'); return withElements(l, l.elements.slice(0, -1)); },
     remove: (list: unknown, item: unknown) => {
       const l = asList(list, 'remove');
       const i = l.elements.findIndex((e) => looseEqual(e, item));
-      return i < 0 ? l : { ...l, elements: [...l.elements.slice(0, i), ...l.elements.slice(i + 1)] };
+      return i < 0 ? l : withElements(l, l.elements.filter((_, j) => j !== i));
     },
-    // original helpers, kept so existing stories keep working
-    arrayMap, arrayFilter, arrayReduce, arrayPush, arrayPop, arrayShift, arrayUnshift,
-    objectKeys, objectValues, objectEntries, objectSpread,
+    // Original helpers, kept so existing stories keep working.
+    arrayMap: (list: unknown, f: (x: unknown, i: number) => unknown) => { const l = asList(list, 'arrayMap'); return withElements(l, l.elements.map(f)); },
+    arrayFilter: (list: unknown, f: (x: unknown, i: number) => unknown) => { const l = asList(list, 'arrayFilter'); return withElements(l, l.elements.filter(f)); },
+    arrayReduce: (list: unknown, f: (acc: unknown, x: unknown, i: number) => unknown, start: unknown) => asList(list, 'arrayReduce').elements.reduce<unknown>(f, start),
+    arrayPush: (list: unknown, ...items: unknown[]) => { const l = asList(list, 'arrayPush'); return withElements(l, [...l.elements, ...items]); },
+    arrayUnshift: (list: unknown, ...items: unknown[]) => { const l = asList(list, 'arrayUnshift'); return withElements(l, [...items, ...l.elements]); },
+    arrayPop: (list: unknown) => { const l = asList(list, 'arrayPop'); return { array: withElements(l, l.elements.slice(0, -1)), popped: l.elements.at(-1) }; },
+    arrayShift: (list: unknown) => { const l = asList(list, 'arrayShift'); return { array: withElements(l, l.elements.slice(1)), shifted: l.elements[0] }; },
+    objectKeys: (o: unknown) => Object.keys(asObject(o, 'objectKeys').keys),
+    objectValues: (o: unknown) => Object.values(asObject(o, 'objectValues').keys).map((e) => e.value),
+    objectEntries: (o: unknown) => Object.entries(asObject(o, 'objectEntries').keys).map(([k, e]) => [k, e.value]),
+    objectSpread: (o: unknown, changes: Record<string, unknown>) => {
+      const obj = asObject(o, 'objectSpread');
+      const keys = { ...obj.keys };
+      for (const [k, value] of Object.entries(changes ?? {})) keys[k] = { type: typeOf(value), value: value as string | number | boolean };
+      return { keys };
+    },
   };
 }
 
@@ -203,21 +218,16 @@ export function evaluateCondition(
 }
 
 const textValue = (v: unknown): string => {
-  if (v && typeof v === 'object') {
-    if (Array.isArray((v as ArrayValue).elements)) return (v as ArrayValue).elements.join(', ');
-    if ('keys' in v) {
-      return Object.entries((v as { keys: Record<string, { value: unknown }> }).keys).map(([k, e]) => `${k}: ${e.value}`).join(', ');
-    }
-    return JSON.stringify(v);
-  }
-  return String(v);
+  if (isArrayValue(v)) return v.elements.join(', ');
+  if (isObjectValue(v)) return Object.entries(v.keys).map(([k, e]) => `${k}: ${e.value}`).join(', ');
+  return v && typeof v === 'object' ? JSON.stringify(v) : String(v);
 };
 
 /** Fills `{{expression}}` in story text: {{gold}}, {{gold * 2}}, {{stats.hp}},
  *  {{items[0]}}, {{hp > 0 ? 'alive' : 'dead'}}. A broken one stays as typed. */
 export function interpolateText(html: string, scope: Record<string, unknown>): string {
   if (!html) return '';
-  return html.replace(/\{\{([^}]+)\}\}/g, (match, source: string) => {
+  return html.replace(VARIABLE_PATTERN, (match, source: string) => {
     try {
       return textValue(evaluate(parseExpression(decodeEntities(source)), makeEvalContext(scope)));
     } catch {
