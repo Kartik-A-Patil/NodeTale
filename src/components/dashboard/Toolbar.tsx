@@ -18,11 +18,12 @@ interface ToolbarProps {
   onImport: (file: File) => void;
   onNewBlank: () => void;
   onNewExample: () => void;
+  onOpenLink: () => void;
   exampleBusy: boolean;
 }
 
 export const Toolbar = forwardRef<HTMLInputElement, ToolbarProps>(function Toolbar(
-  { query, onQuery, sort, onSort, view, onView, showCollectionControls, onImport, onNewBlank, onNewExample, exampleBusy },
+  { query, onQuery, sort, onSort, view, onView, showCollectionControls, onImport, onNewBlank, onNewExample, exampleBusy, onOpenLink },
   searchRef
 ) {
   const importRef = useRef<HTMLInputElement>(null);
@@ -110,6 +111,10 @@ export const Toolbar = forwardRef<HTMLInputElement, ToolbarProps>(function Toolb
               <DropdownMenuItem className="flex-col items-start whitespace-normal px-3 py-2 focus:bg-nt-raised" disabled={exampleBusy} onSelect={onNewExample}>
                 <span className="block text-sm text-nt-ink">{exampleBusy ? 'Adding example…' : 'Example story'}</span>
                 <span className="block text-xs text-nt-ink-3">A short mystery with branches and media</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="flex-col items-start whitespace-normal px-3 py-2 focus:bg-nt-raised" onSelect={onOpenLink}>
+                <span className="block text-sm text-nt-ink">Open a share link…</span>
+                <span className="block text-xs text-nt-ink-3">Play or copy a story someone sent you</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

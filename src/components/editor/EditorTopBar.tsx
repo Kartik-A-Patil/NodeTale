@@ -2,6 +2,7 @@ import { memo } from 'react';
 import {
   ArrowLeft, ChevronDown, Plus, Settings2, Variable, Image as ImageIcon, TriangleAlert, MoreHorizontal,
   Download, Command, HelpCircle, Play, Copy, X, LayoutList,
+  Link2,
 } from 'lucide-react';
 import { Board } from '../../models/story';
 import { VIEW_MODES, ViewMode } from '../views/viewModes';
@@ -34,6 +35,7 @@ interface EditorTopBarProps {
   onViewMode: (mode: ViewMode) => void;
   onPanel: (panel: PanelId | null) => void;
   onExport: () => void;
+  onShare: () => void;
   onPalette: () => void;
   onHelp: () => void;
   onSave: () => void;
@@ -141,6 +143,9 @@ export const EditorTopBar = memo((props: EditorTopBarProps) => {
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className={`w-56 ${dropdownPanel}`}>
+              <DropdownMenuItem className={dropdownItem} onSelect={props.onShare}>
+                <Link2 size={14} /> Share a link…
+              </DropdownMenuItem>
               <DropdownMenuItem className={dropdownItem} onSelect={props.onExport}>
                 <Download size={14} /> Export…
               </DropdownMenuItem>

@@ -13,6 +13,7 @@ import ReactFlow, {
 import ContextMenu from './ContextMenu';
 import { AssetSelectorModal } from './modals/AssetSelectorModal';
 import { ExportProjectModal } from './modals/ExportProjectModal';
+import { ShareStoryModal } from './modals/ShareStoryModal';
 import { HelpModal } from './modals/HelpModal';
 import { ViewMode, VIEW_MODES } from './views/viewModes';
 import { EditorTopBar, PanelId } from './editor/EditorTopBar';
@@ -67,6 +68,7 @@ function ProjectEditor() {
   }, [projectId, requestedId, navigate]);
   const [panel, setPanel] = useState<PanelId | null>(null);
   const [exporting, setExporting] = useState<Project | null>(null);
+  const [sharing, setSharing] = useState<Project | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   const [minimap, setMinimap] = useLocalPref('nodetale:board:minimap', false);
@@ -166,6 +168,7 @@ function ProjectEditor() {
   const onToolbarPlay = useCallback(() => { setPlayStartNodeId(null); setIsPlaying(true); }, []);
   // The single export: a dialog with the formats, fed the live canvas.
   const onToolbarExport = useCallback(() => setExporting(getLiveProject()), [getLiveProject]);
+  const onToolbarShare = useCallback(() => setSharing(getLiveProject()), [getLiveProject]);
 
   const startPlayFromNode = React.useCallback((nodeId: string) => {
       setPlayStartNodeId(nodeId);
@@ -363,6 +366,7 @@ function ProjectEditor() {
       { id: 'save', label: 'Save', category: 'File', keys: KEYS.save, run: saveNow },
       { id: 'validate', label: 'Show problems', category: 'File', run: () => window.dispatchEvent(new CustomEvent('nodetale:show-problems')) },
       { id: 'export', label: 'Export the story', category: 'File', run: onToolbarExport },
+      { id: 'share', label: 'Share a link to the story', category: 'File', run: onToolbarShare },
       { id: 'play', label: 'Play the story', category: 'Story', run: () => { setPlayStartNodeId(null); setIsPlaying(true); }, enabled: canPlay },
       { id: 'play-here', label: 'Play from the selected scene', category: 'Story', keys: KEYS.playFromHere, run: () => single && startPlayFromNode(single.id), enabled: flow && single?.type === 'elementNode' },
       ...VIEW_MODES.map((v, i) => ({ id: `view-${v.id}`, label: `View: ${v.label}`, category: 'View' as const, keys: { key: String(i + 1), alt: true }, run: () => setViewMode(v.id) })),
@@ -381,7 +385,7 @@ function ProjectEditor() {
       panelAction('assets', 'Assets', KEYS.panelAssets),
       panelAction('problems', 'Problems', KEYS.panelProblems),
     ];
-  }, [undo, redo, canUndo, canRedo, selectedNodes, ctx, executeCommand, saveNow, copySelected, cutSelected, pasteClipboard, selectAll, deselectAll, canPlay, onToolbarExport, setViewMode, viewMode, locked, minimap, snap, setMinimap, setSnap, tidyBoard, addAtCenter, duplicateNodes, startPlayFromNode, reactFlowInstance]);
+  }, [undo, redo, canUndo, canRedo, selectedNodes, ctx, executeCommand, saveNow, copySelected, cutSelected, pasteClipboard, selectAll, deselectAll, canPlay, onToolbarExport, onToolbarShare, setViewMode, viewMode, locked, minimap, snap, setMinimap, setSnap, tidyBoard, addAtCenter, duplicateNodes, startPlayFromNode, reactFlowInstance]);
 
   useShortcuts(editorActions);
 
@@ -560,6 +564,7 @@ function ProjectEditor() {
           onViewMode={setViewMode}
           onPanel={setPanel}
           onExport={onToolbarExport}
+          onShare={onToolbarShare}
           onPalette={() => setShowCommandPalette(true)}
           onHelp={() => setHelpOpen(true)}
           onSave={saveNow}
@@ -608,6 +613,7 @@ function ProjectEditor() {
       )}
 
       <ExportProjectModal project={exporting} onClose={() => setExporting(null)} />
+      <ShareStoryModal project={sharing} onClose={() => setSharing(null)} />
       <HelpModal isOpen={helpOpen} onClose={() => setHelpOpen(false)} />
 
       <CommandPalette

@@ -211,7 +211,8 @@ const importZipProject = async (file: File): Promise<Project> => {
   return finalizeAndSaveImportedProject(importedProject);
 };
 
-const finalizeAndSaveImportedProject = async (importedProject: Project): Promise<Project> => {
+/** Saves an imported story (file or share link) as a new project with a unique name. */
+export const finalizeAndSaveImportedProject = async (importedProject: Project): Promise<Project> => {
   // Unique name without losing board/node references
   const newName = await uniqueName(importedProject.name, (n) =>
     n === 1 ? `${importedProject.name} (Imported)` : `${importedProject.name} (Imported ${n})`

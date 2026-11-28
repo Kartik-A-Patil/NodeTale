@@ -16,6 +16,7 @@ if (Router === BrowserRouter && window.location.hash.startsWith('#/')) {
 // Prism, commands) and the editor doesn't pay for the dashboard.
 const Dashboard = React.lazy(() => import('./components/Dashboard'));
 const ProjectEditor = React.lazy(() => import('./components/ProjectEditor'));
+const SharePreview = React.lazy(() => import('./components/SharePreview'));
 
 export default function App() {
   const [isMigrating, setIsMigrating] = useState(true);
@@ -40,6 +41,7 @@ export default function App() {
       <React.Suspense fallback={<div className="h-screen w-screen bg-nt-bg" />}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/share" element={<SharePreview />} />
           <Route path="/:projectId" element={<ProjectEditor />} />
         </Routes>
       </React.Suspense>

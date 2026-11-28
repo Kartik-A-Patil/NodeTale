@@ -11,6 +11,7 @@ import { shrinkCoverImage } from '../utils/coverImage';
 import { getLastOpened, useLocalPref } from '../utils/localPrefs';
 import { CreateProjectModal } from './modals/CreateProjectModal';
 import { DeleteProjectModal } from './modals/DeleteProjectModal';
+import { OpenShareLinkModal } from './modals/OpenShareLinkModal';
 import { Toolbar, SortKey, ViewKey } from './dashboard/Toolbar';
 import { FirstRun } from './dashboard/FirstRun';
 import { ProjectCard, ProjectRow, ProjectItemProps } from './dashboard/ProjectCard';
@@ -32,6 +33,7 @@ export default function Dashboard() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>(null);
   const [exampleBusy, setExampleBusy] = useState(false);
+  const [openingLink, setOpeningLink] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -224,6 +226,7 @@ export default function Dashboard() {
         onNewBlank={() => setCreating(true)}
         onNewExample={addExample}
         exampleBusy={exampleBusy}
+        onOpenLink={() => setOpeningLink(true)}
       />
 
       <div role="status" aria-live="polite" className="mx-auto max-w-7xl px-4 sm:px-6">
@@ -298,6 +301,7 @@ export default function Dashboard() {
       )}
 
       <CreateProjectModal open={creating} onClose={() => setCreating(false)} onCreate={createBlank} />
+      <OpenShareLinkModal open={openingLink} onClose={() => setOpeningLink(false)} onOpen={(code) => navigate('/share', { state: { code } })} />
       <DeleteProjectModal projectName={deleteTarget?.name ?? null} onClose={() => setDeleteTarget(null)} onConfirm={confirmDelete} />
     </div>
   );
