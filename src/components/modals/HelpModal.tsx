@@ -268,6 +268,7 @@ const PlayMode = () => (
       'A choice can take itself after some seconds: set it in the choice’s rules (the sliders button on its connection).',
       <>The bug button opens the debugger: every script line and branch that ran since your last choice (and why), every variable (click a value to change it), problems met, <strong className="text-nt-ink">Restart with</strong> a saved scenario, and <strong className="text-nt-ink">Canvas</strong> to jump to the current node. A red number on it means something went wrong.</>,
       'Branches and jumps are followed automatically; only choices wait for the player.',
+      <>Share (⋯ menu): <strong className="text-nt-ink">Send a copy</strong> gives someone the story with all its media; <strong className="text-nt-ink">Edit together</strong> keeps you connected so everyone’s changes (and media) sync live, on any board. Each person sends back a reply code from the link; it goes browser to browser, nothing is uploaded.</>,
     ]} />
   </>
 );

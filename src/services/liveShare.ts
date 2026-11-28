@@ -1,7 +1,7 @@
 import { Project } from '../models/story';
 import { getStorageAdapter } from './storage';
 import { compactProject } from './storageService';
-import { encodeConnectCode, decodeConnectCode } from './connectCode';
+import { encodeConnectCode, decodeConnectCode, isLiveInvite } from './connectCode';
 
 // Sharing a story straight from one browser to another, media included, with
 // nothing in between: no server, no relay. WebRTC carries the data; the two
@@ -76,7 +76,18 @@ const drained = (ch: Channel) =>
         ch.addEventListener('bufferedamountlow', go);
       });
 
-const fileOf = async (asset: Project['assets'][number]): Promise<Blob | null> => {
+/** A file's bytes in channel-sized pieces, pausing whenever the channel backs up. */
+export async function sendBytes(ch: Channel, blob: Blob, onChunk: (bytes: number) => void = () => {}) {
+  ch.bufferedAmountLowThreshold = 1024 * 1024;
+  const bytes = await blob.arrayBuffer();
+  for (let at = 0; at < bytes.byteLength; at += CHUNK) {
+    await drained(ch);
+    ch.send(bytes.slice(at, at + CHUNK));
+    onChunk(Math.min(CHUNK, bytes.byteLength - at));
+  }
+}
+
+export const fileOf = async (asset: Project['assets'][number]): Promise<Blob | null> => {
   try {
     // Older projects keep media inline as data: URLs.
     if (asset.url?.startsWith('data:')) return await (await fetch(asset.url)).blob();
@@ -88,7 +99,6 @@ const fileOf = async (asset: Project['assets'][number]): Promise<Blob | null> =>
 
 /** Send a story and all its media; resolves once the other side has everything. */
 export async function sendStory(ch: Channel, project: Project, onProgress: (p: Progress) => void): Promise<void> {
-  ch.bufferedAmountLowThreshold = 1024 * 1024;
   const files = (await Promise.all(project.assets.map(async (a) => ({ asset: a, blob: await fileOf(a) }))))
     .filter((f): f is { asset: typeof f.asset; blob: Blob } => f.blob !== null);
   const media = files.map(({ asset, blob }) => ({ id: asset.id, size: blob.size, type: blob.type }));
@@ -106,13 +116,10 @@ export async function sendStory(ch: Channel, project: Project, onProgress: (p: P
   onProgress({ name, done, total, files: 0, fileCount: files.length });
   for (const [i, { asset, blob }] of files.entries()) {
     send({ t: 'file', id: asset.id, size: blob.size, type: blob.type });
-    const bytes = await blob.arrayBuffer();
-    for (let at = 0; at < bytes.byteLength; at += CHUNK) {
-      await drained(ch);
-      ch.send(bytes.slice(at, at + CHUNK));
-      done += Math.min(CHUNK, bytes.byteLength - at);
+    await sendBytes(ch, blob, (n) => {
+      done += n;
       onProgress({ name, done, total, files: i, fileCount: files.length });
-    }
+    });
     onProgress({ name, done, total, files: i + 1, fileCount: files.length });
   }
   send({ t: 'done' });
@@ -176,22 +183,28 @@ export function receiveStory(ch: Channel, onProgress: (p: Progress) => void): Pr
 
 // ---------- connecting by hand ----------
 
+// A live session keeps only the channel; tie the connection to it so nothing
+// ever collects the connection while the channel is in use.
+const keepAlive = (ch: RTCDataChannel, pc: RTCPeerConnection) => Object.assign(ch, { connection: pc });
+
 export interface Invite {
   /** Goes after the # in the share link. */
   code: string;
-  /** Paste the other person's reply: connects, sends everything, resolves when they have it. */
-  accept: (reply: string, onProgress: (p: Progress) => void) => Promise<void>;
+  /** Paste the other person's reply: connects, sends everything, resolves when
+   *  they have it. For a live invite, with the still-open channel to edit over. */
+  accept: (reply: string, onProgress: (p: Progress) => void) => Promise<RTCDataChannel>;
   close: () => void;
 }
 
-/** Your side: an invite for one person to receive this story. */
-export async function createInvite(project: Project): Promise<Invite> {
+/** Your side: an invite for one person to receive this story, or with `live`, to edit it together. */
+export async function createInvite(project: Project | (() => Project), opts: { live?: boolean } = {}): Promise<Invite> {
+  const current = () => (typeof project === 'function' ? project() : project);
   const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
   const channel = pc.createDataChannel('nodetale', { ordered: true });
   channel.binaryType = 'arraybuffer';
   await pc.setLocalDescription(await pc.createOffer());
   await gathered(pc);
-  const code = encodeConnectCode(pc.localDescription!.sdp, 'invite');
+  const code = encodeConnectCode(pc.localDescription!.sdp, 'invite', !!opts.live);
 
   return {
     code,
@@ -203,16 +216,20 @@ export async function createInvite(project: Project): Promise<Invite> {
         channel.addEventListener('open', () => resolve());
         failedHere(pc, () => reject(new Error(CONNECT_FAILED)));
       });
-      await sendStory(channel, project, onProgress);
+      // The story as it is now, not as it was when the link was made.
+      await sendStory(channel, current(), onProgress);
+      return keepAlive(channel, pc);
     },
   };
 }
 
 export interface Answer {
+  /** An invite to edit together (the connection stays open after the copy arrives). */
+  live: boolean;
   /** Send this back to the person sharing. */
   reply: string;
-  /** Resolves with the story once it and every file have arrived (files are saved as they come). */
-  receive: (onProgress: (p: Progress) => void) => Promise<Project>;
+  /** Resolves once the story and every file have arrived (files are saved as they come). */
+  receive: (onProgress: (p: Progress) => void) => Promise<{ project: Project; channel: RTCDataChannel }>;
   close: () => void;
 }
 
@@ -225,15 +242,17 @@ export async function answerInvite(code: string): Promise<Answer> {
   await pc.setRemoteDescription({ type: 'offer', sdp: offer });
   await pc.setLocalDescription(await pc.createAnswer());
   await gathered(pc);
-  const reply = encodeConnectCode(pc.localDescription!.sdp, 'reply');
+  const live = isLiveInvite(code);
+  const reply = encodeConnectCode(pc.localDescription!.sdp, 'reply', live);
 
   return {
+    live,
     reply,
     close: () => pc.close(),
     receive: (onProgress) =>
-      new Promise<Project>((resolve, reject) => {
+      new Promise((resolve, reject) => {
         failedHere(pc, () => reject(new Error(CONNECT_FAILED)));
-        channel.then((ch) => receiveStory(ch, onProgress)).then(resolve, reject);
+        channel.then(async (ch) => ({ project: await receiveStory(ch, onProgress), channel: keepAlive(ch, pc) })).then(resolve, reject);
       }),
   };
 }

@@ -4,6 +4,9 @@ import { Check, Copy, PenLine, Play } from 'lucide-react';
 import { Project } from '../models/story';
 import { answerInvite, Answer, Progress } from '../services/liveShare';
 import { finalizeAndSaveImportedProject } from '../services/projectImport';
+import { saveProject } from '../services/storageService';
+import { liveSession, LiveSession, myPeerName } from '../services/liveSession';
+import { shortId } from '../utils/id';
 import { buttonPrimary, buttonSecondary, input } from './ui/styles';
 import { TransferProgress } from './share/TransferProgress';
 
@@ -26,6 +29,10 @@ export default function SharePreview() {
   const [story, setStory] = useState<Project | null>(null);
   const [error, setError] = useState('');
   const [playing, setPlaying] = useState(false);
+  const [live, setLive] = useState(false);
+  const [name, setName] = useState(() => myPeerName.get());
+  const nameRef = useRef(name);
+  nameRef.current = name;
   const answer = useRef<Answer | null>(null);
 
   useEffect(() => {
@@ -40,13 +47,27 @@ export default function SharePreview() {
       const a = await answerInvite(code);
       if (cancelled) return a.close();
       answer.current = a;
+      setLive(a.live);
       setReply(a.reply);
       setStep('waiting');
-      const received = await a.receive((p) => {
+      const { project: received, channel } = await a.receive((p) => {
         if (cancelled) return;
         setStep('receiving');
         setProgress(p);
       });
+      if (cancelled) return;
+      if (a.live) {
+        // Editing together: join, keep the story under the host's id (a later
+        // session updates this same copy) and go straight into the editor.
+        const me = nameRef.current.trim() || 'Guest';
+        myPeerName.set(me);
+        const session = liveSession.start(new LiveSession('guest', received.id, { id: shortId(), name: me, color: '' }));
+        const now = await session.join(channel, me);
+        await saveProject({ ...now, modifiedAt: Date.now() });
+        answer.current = null; // the connection now belongs to the session
+        if (!cancelled) navigate(`/${now.id}`, { replace: true });
+        return;
+      }
       const saved = await finalizeAndSaveImportedProject({ ...received, modifiedAt: Date.now() });
       if (cancelled) return;
       setStory(saved);
@@ -57,7 +78,7 @@ export default function SharePreview() {
       cancelled = true;
       answer.current?.close();
     };
-  }, [code]);
+  }, [code, navigate]);
 
   const copy = async () => {
     try {
@@ -85,7 +106,14 @@ export default function SharePreview() {
 
             {(step === 'opening' || step === 'waiting') && (
               <>
-                <p className="mt-3 text-sm leading-relaxed text-nt-ink-2">Send them this reply code. The story arrives here, with all its media, once they paste it.</p>
+                <p className="mt-3 text-sm leading-relaxed text-nt-ink-2">
+                  {live
+                    ? 'You’re invited to edit this story together. Send them this reply code; once they paste it, the story opens here and you edit it live.'
+                    : 'Send them this reply code. The story arrives here, with all its media, once they paste it.'}
+                </p>
+                {live && (
+                  <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name (shown to others)" aria-label="Your name" maxLength={24} className={`${input} mt-4`} />
+                )}
                 <div className="mt-4 flex gap-2">
                   <input readOnly value={reply || 'Preparing…'} onFocus={(e) => e.currentTarget.select()} aria-label="Reply code" className={`${input} min-w-0 flex-1 font-mono text-xs`} />
                   <button type="button" className={buttonPrimary} onClick={copy} disabled={!reply}>

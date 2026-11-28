@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { resolveProjectId } from '../services/storageService';
 import ReactFlow, {
@@ -22,6 +22,9 @@ import { BoardDock } from './editor/BoardDock';
 import { useFlowLogic } from '../hooks/useFlowLogic';
 import { useResolvedEdgeLabels } from '../hooks/useResolvedEdgeLabels';
 import { useNodeContent } from '../hooks/useNodeContent';
+import { useLiveSessionFor, useLiveSync } from '../hooks/useLiveSync';
+import { LivePill } from './live/LivePill';
+import { liveSession } from '../services/liveSession';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useDragAndDrop } from '../hooks/useDragAndDrop';
 import { useMenuOptions } from '../hooks/useMenuOptions';
@@ -127,6 +130,21 @@ function ProjectEditor() {
   // on, not that logic node's own name — see resolvedEdgeLabels. Only these
   // wrapped edges (not the real `edges`) go to the canvas and the edge menu.
   const edgesForCanvas = useResolvedEdgeLabels(nodes, edges, project);
+
+  // Editing together: keep this board in step with everyone in the session.
+  const session = useLiveSessionFor(projectId);
+  useLiveSync({ session, ready: !isInitializing, nodes, edges, setNodes, setEdges, project, setProject, getLiveProject });
+  // Why a session ended, shown until dismissed.
+  const [sessionEnded, setSessionEnded] = useState<string | null>(null);
+  const lastSession = useRef(session);
+  useEffect(() => {
+    const prev = lastSession.current;
+    if (prev && !session && prev.ended) setSessionEnded(prev.ended);
+    if (session) setSessionEnded(null);
+    lastSession.current = session;
+  }, [session]);
+  // Leaving the story leaves (or, for the host, ends) its session.
+  useEffect(() => liveSession.endWhenLeft(projectId), [projectId]);
 
   // Keyed on the selected ids, not `nodes`: a drag changes `nodes` every frame,
   // and a fresh array here would rebuild editorActions (re-binding the global
@@ -613,7 +631,19 @@ function ProjectEditor() {
       )}
 
       <ExportProjectModal project={exporting} onClose={() => setExporting(null)} />
-      <ShareStoryModal project={sharing} onClose={() => setSharing(null)} />
+      <ShareStoryModal project={sharing} getProject={getLiveProject} onClose={() => setSharing(null)} />
+      {(session || sessionEnded) && (
+        <div className="absolute left-1/2 top-[4.25rem] z-30 -translate-x-1/2">
+          {session ? (
+            <LivePill session={session} onInvite={onToolbarShare} />
+          ) : (
+            <div className="flex items-center gap-3 rounded-full border border-nt-line bg-nt-surface/95 py-1.5 pl-4 pr-1.5 text-xs text-nt-ink-2 shadow-lg" role="status">
+              {sessionEnded}
+              <button type="button" onClick={() => setSessionEnded(null)} className="rounded-full px-2 py-1 text-nt-ink-3 hover:bg-nt-raised hover:text-nt-ink">Dismiss</button>
+            </div>
+          )}
+        </div>
+      )}
       <HelpModal isOpen={helpOpen} onClose={() => setHelpOpen(false)} />
 
       <CommandPalette

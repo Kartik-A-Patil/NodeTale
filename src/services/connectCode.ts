@@ -11,7 +11,7 @@ export type CodeKind = 'invite' | 'reply';
 type Setup = 'actpass' | 'active' | 'passive';
 type CandType = 'host' | 'srflx' | 'relay';
 interface Candidate { type: CandType; addr: string; port: number }
-interface Essentials { kind: CodeKind; setup: Setup; ufrag: string; pwd: string; fingerprint: Uint8Array; candidates: Candidate[] }
+interface Essentials { kind: CodeKind; live: boolean; setup: Setup; ufrag: string; pwd: string; fingerprint: Uint8Array; candidates: Candidate[] }
 
 const VERSION = 1;
 const SETUPS: Setup[] = ['actpass', 'active', 'passive'];
@@ -38,7 +38,7 @@ function expandIpv6(addr: string): Uint8Array | null {
 }
 const ipv6Text = (b: Uint8Array) => Array.from({ length: 8 }, (_, i) => ((b[i * 2] << 8) | b[i * 2 + 1]).toString(16)).join(':');
 
-function parse(sdp: string, kind: CodeKind): Essentials {
+function parse(sdp: string, kind: CodeKind, live: boolean): Essentials {
   const line = (key: string) => sdp.match(new RegExp(`^a=${key}:(.+)$`, 'm'))?.[1]?.trim();
   const ufrag = line('ice-ufrag'), pwd = line('ice-pwd'), setup = line('setup') as Setup | undefined;
   const fp = line('fingerprint');
@@ -49,11 +49,12 @@ function parse(sdp: string, kind: CodeKind): Essentials {
     if (!(IPV4.test(addr) || MDNS.test(addr) || expandIpv6(addr))) continue;
     if (!candidates.some((c) => c.addr === addr && c.port === +port)) candidates.push({ type: type as CandType, addr, port: +port });
   }
-  return { kind, setup, ufrag, pwd, fingerprint: hexBytes(fp.slice(8).replace(/:/g, '')), candidates: candidates.slice(0, MAX_CANDIDATES) };
+  return { kind, live, setup, ufrag, pwd, fingerprint: hexBytes(fp.slice(8).replace(/:/g, '')), candidates: candidates.slice(0, MAX_CANDIDATES) };
 }
 
 function toBytes(e: Essentials): Uint8Array {
-  const out: number[] = [(VERSION << 4) | (SETUPS.indexOf(e.setup) << 1) | (e.kind === 'reply' ? 1 : 0)];
+  // Header: version (4 bits) · live session (1) · DTLS setup (2) · reply (1).
+  const out: number[] = [(VERSION << 4) | (e.live ? 8 : 0) | (SETUPS.indexOf(e.setup) << 1) | (e.kind === 'reply' ? 1 : 0)];
   const text = (s: string) => out.push(s.length, ...Array.from(s, (c) => c.charCodeAt(0)));
   text(e.ufrag);
   text(e.pwd);
@@ -80,6 +81,7 @@ function fromBytes(b: Uint8Array): Essentials {
   const text = () => String.fromCharCode(...take(take(1)[0]));
   const e: Essentials = {
     kind: head & 1 ? 'reply' : 'invite',
+    live: !!(head & 8),
     setup: SETUPS[(head >> 1) & 3] ?? 'actpass',
     ufrag: text(),
     pwd: text(),
@@ -105,10 +107,15 @@ function fromBytes(b: Uint8Array): Essentials {
 const toBase64Url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const fromBase64Url = (text: string) => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
 
-/** A connection description as a short code. */
-export function encodeConnectCode(sdp: string, kind: CodeKind): string {
-  return toBase64Url(toBytes(parse(sdp, kind)));
+/** A connection description as a short code. `live`: an invite to edit together, not just receive a copy. */
+export function encodeConnectCode(sdp: string, kind: CodeKind, live = false): string {
+  return toBase64Url(toBytes(parse(sdp, kind, live)));
 }
+
+/** Whether an invite code asks to edit together. */
+export const isLiveInvite = (code: string): boolean => {
+  try { return !!(fromBase64Url(code)[0] & 8); } catch { return false; }
+};
 
 /** The full connection description in a code, ready for setRemoteDescription. */
 export function decodeConnectCode(code: string, expected: CodeKind): string {

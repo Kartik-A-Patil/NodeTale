@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
 import { Project } from '../../models/story';
 import { createInvite, Invite, Progress } from '../../services/liveShare';
+import { liveSession, LiveSession, myPeerName, PEER_COLORS } from '../../services/liveSession';
+import { shortId } from '../../utils/id';
 import { codeFromPasted, shareUrl } from '../../services/shareLink';
 import { Dialog } from '../ui/NativeDialog';
 import { buttonPrimary, buttonSecondary, input } from '../ui/styles';
@@ -10,15 +12,22 @@ import { TransferProgress } from '../share/TransferProgress';
 interface ShareStoryModalProps {
   /** The story to share (the live canvas when opened); null when closed. */
   project: Project | null;
+  /** The story as it is right now (sent when they connect, not when the link was made). */
+  getProject: () => Project;
   onClose: () => void;
 }
 
 type Step = 'preparing' | 'waiting' | 'sending' | 'sent';
+type Mode = 'copy' | 'live';
 
 // Send the story, with all its media, straight from this browser to someone
 // else's: they open the link, send back the reply code their page shows, and
 // pasting it here starts the transfer. Nothing is uploaded anywhere.
-export function ShareStoryModal({ project, onClose }: ShareStoryModalProps) {
+export function ShareStoryModal({ project, getProject, onClose }: ShareStoryModalProps) {
+  const running = liveSession.get();
+  const hosting = running && project && running.projectId === project.id && running.role === 'host' ? running : null;
+  const [mode, setMode] = useState<Mode>('copy');
+  const [name, setName] = useState(() => myPeerName.get());
   const [step, setStep] = useState<Step>('preparing');
   const [link, setLink] = useState('');
   const [reply, setReply] = useState('');
@@ -27,6 +36,9 @@ export function ShareStoryModal({ project, onClose }: ShareStoryModalProps) {
   const [copied, setCopied] = useState(false);
   const [round, setRound] = useState(0); // a fresh invite for the next person
   const invite = useRef<Invite | null>(null);
+
+  // Opening it from the Live pill's Invite: straight to editing together.
+  useEffect(() => { if (project) setMode(hosting ? 'live' : 'copy'); }, [project, hosting]);
 
   useEffect(() => {
     if (!project) return;
@@ -37,7 +49,7 @@ export function ShareStoryModal({ project, onClose }: ShareStoryModalProps) {
     setProgress(null);
     setError('');
     setCopied(false);
-    createInvite(project).then(
+    createInvite(getProject, { live: mode === 'live' }).then(
       (inv) => {
         if (cancelled) return inv.close();
         invite.current = inv;
@@ -51,7 +63,8 @@ export function ShareStoryModal({ project, onClose }: ShareStoryModalProps) {
       invite.current?.close();
       invite.current = null;
     };
-  }, [project, round]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project, round, mode]);
 
   const copy = async () => {
     try {
@@ -67,7 +80,14 @@ export function ShareStoryModal({ project, onClose }: ShareStoryModalProps) {
     setError('');
     setStep('sending');
     try {
-      await invite.current.accept(codeFromPasted(text), setProgress);
+      const channel = await invite.current.accept(codeFromPasted(text), setProgress);
+      if (mode === 'live' && project) {
+        const me = name.trim() || 'Host';
+        myPeerName.set(me);
+        const session = hosting ?? liveSession.start(new LiveSession('host', project.id, { id: shortId(), name: me, color: PEER_COLORS[0] }));
+        session.addGuest(channel);
+        invite.current = null; // the connection now belongs to the session
+      }
       setStep('sent');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -83,12 +103,14 @@ export function ShareStoryModal({ project, onClose }: ShareStoryModalProps) {
       onClose={onClose}
       title="Share"
       description={step === 'sent'
-        ? 'Done. They have their own copy now, with all its media.'
-        : 'They open the link and send you back a reply code. Paste it here and the story goes straight to them, media included.'}
+        ? mode === 'live' ? 'Connected. You’re editing together: changes appear for everyone as they’re made.' : 'Done. They have their own copy now, with all its media.'
+        : mode === 'live'
+          ? 'They open the link and send you back a reply code. Paste it here: they get the story with its media, then you edit it together, live.'
+          : 'They open the link and send you back a reply code. Paste it here and the story goes straight to them, media included.'}
       onSubmit={(e) => { e.preventDefault(); if (step === 'waiting') connect(reply); }}
       actions={step === 'sent' ? (
         <>
-          <button type="button" className={buttonSecondary} onClick={() => setRound((r) => r + 1)}>Share with someone else</button>
+          <button type="button" className={buttonSecondary} onClick={() => setRound((r) => r + 1)}>{mode === 'live' ? 'Invite someone else' : 'Share with someone else'}</button>
           <button type="button" className={buttonPrimary} onClick={onClose}>Done</button>
         </>
       ) : (
@@ -97,6 +119,17 @@ export function ShareStoryModal({ project, onClose }: ShareStoryModalProps) {
     >
       {!busy && (
         <div className="space-y-4">
+          <div role="radiogroup" aria-label="How to share" className="grid grid-cols-2 rounded-md border border-nt-line bg-nt-bg p-0.5 text-sm">
+            {([['copy', 'Send a copy'], ['live', 'Edit together']] as const).map(([m, label]) => (
+              <button key={m} type="button" role="radio" aria-checked={mode === m} onClick={() => setMode(m)} disabled={!!hosting && m === 'copy'}
+                className={`h-8 rounded transition-colors disabled:opacity-40 ${mode === m ? 'bg-nt-raised text-nt-ink' : 'text-nt-ink-3 hover:text-nt-ink-2'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {mode === 'live' && !hosting && (
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name (shown to others)" aria-label="Your name" maxLength={24} className={input} />
+          )}
           <div className="flex gap-2">
             <input readOnly value={link || 'Preparing the link…'} onFocus={(e) => e.currentTarget.select()} aria-label="Share link" className={`${input} min-w-0 flex-1 font-mono text-xs`} />
             <button type="button" className={buttonPrimary} onClick={copy} disabled={!link}>
