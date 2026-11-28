@@ -98,6 +98,7 @@ export function ShareDialog({ project, getProject, onClose }: ShareDialogProps) 
 
   return (
     <Dialog
+      status={current?.status}
       open={project !== null}
       onClose={onClose}
       title="Share"
@@ -110,17 +111,17 @@ export function ShareDialog({ project, getProject, onClose }: ShareDialogProps) 
       actions={status === 'sent' ? (
         <>
           <button type="button" className={buttonSecondary} onClick={() => setRound((r) => r + 1)}>{mode === 'live' ? 'Invite someone else' : 'Share with someone else'}</button>
-          <button type="button" className={buttonPrimary} onClick={onClose}>Done</button>
+          <button type="button" data-action="done" className={buttonPrimary} onClick={onClose}>Done</button>
         </>
       ) : (
-        <button type="button" className={buttonSecondary} onClick={onClose}>Close</button>
+        <button type="button" data-action="close" className={buttonSecondary} onClick={onClose}>Close</button>
       )}
     >
       {!busy && (
         <div className="space-y-4">
           <div role="radiogroup" aria-label="How to share" className="grid grid-cols-2 rounded-md border border-nt-line bg-nt-bg p-0.5 text-sm">
             {([['copy', 'Send a copy'], ['live', 'Edit together']] as const).map(([m, label]) => (
-              <button key={m} type="button" role="radio" aria-checked={mode === m} onClick={() => switchMode(m)} disabled={hosting && m === 'copy'}
+              <button key={m} type="button" role="radio" data-mode={m} aria-checked={mode === m} onClick={() => switchMode(m)} disabled={hosting && m === 'copy'}
                 className={`h-8 rounded transition-colors disabled:opacity-40 ${mode === m ? 'bg-nt-raised text-nt-ink' : 'text-nt-ink-3 hover:text-nt-ink-2'}`}>
                 {label}
               </button>

@@ -63,7 +63,7 @@ export function SharePanel({ projectId, session, onInvite, onFocusNode }: { proj
 
   if (collapsed) {
     return (
-      <button type="button" onClick={() => setCollapsed(false)} aria-expanded={false} aria-label="Show sharing"
+      <button type="button" data-action="expand" onClick={() => setCollapsed(false)} aria-expanded={false} aria-label="Show sharing"
         className="flex h-8 items-center gap-2 rounded-full border border-nt-line bg-nt-surface/95 pl-3 pr-2 text-xs font-medium text-nt-ink shadow-lg backdrop-blur">
         <span className={`h-2 w-2 rounded-full ${session ? 'animate-pulse bg-emerald-400' : 'bg-amber-400'}`} aria-hidden />
         {title}
@@ -73,12 +73,12 @@ export function SharePanel({ projectId, session, onInvite, onFocusNode }: { proj
   }
 
   return (
-    <aside className="w-64 overflow-hidden rounded-xl border border-nt-line bg-nt-surface/95 text-nt-ink-2 shadow-lg backdrop-blur" aria-label="Sharing">
+    <aside className="w-64 overflow-hidden rounded-xl border border-nt-line bg-nt-surface/95 text-nt-ink-2 shadow-lg backdrop-blur" aria-label="Sharing" data-live={session ? session.role : undefined} data-view-only={viewOnly || undefined}>
       <header className="flex items-center gap-2 py-2 pl-3 pr-1.5">
         <span className={`h-2 w-2 rounded-full ${session ? 'animate-pulse bg-emerald-400' : 'bg-amber-400'}`} aria-hidden />
         <span className="flex-1 text-xs font-semibold text-nt-ink">{session ? (viewOnly ? 'Watching live' : 'Editing together') : 'Sharing'}</span>
         {viewOnly && <span className="rounded bg-nt-raised px-1.5 py-0.5 text-[10px] font-medium text-nt-ink-2">View only</span>}
-        <button type="button" onClick={() => setCollapsed(true)} className={iconButton} aria-expanded aria-label="Collapse sharing" title="Collapse">
+        <button type="button" data-action="collapse" onClick={() => setCollapsed(true)} className={iconButton} aria-expanded aria-label="Collapse sharing" title="Collapse">
           <ChevronUp size={14} />
         </button>
       </header>
@@ -86,7 +86,7 @@ export function SharePanel({ projectId, session, onInvite, onFocusNode }: { proj
       {session && (
         <ul className="border-t border-nt-line/60 py-1" aria-label="People in this session">
           {session.peers.map((p) => (
-            <li key={p.id} className={row}>
+            <li key={p.id} className={row} data-peer={p.name} data-access={p.access ?? 'edit'} data-me={p.id === session.me.id || undefined}>
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-[#0f0f11]" style={{ background: p.color }} aria-hidden>
                 {p.name.slice(0, 1).toUpperCase()}
               </span>
@@ -101,7 +101,7 @@ export function SharePanel({ projectId, session, onInvite, onFocusNode }: { proj
       {mine.length > 0 && (
         <ul className="border-t border-nt-line/60 py-1" aria-label="Links waiting for a reply">
           {mine.map((i) => (
-            <li key={i.id} className="px-3 py-1.5 text-xs">
+            <li key={i.id} className="px-3 py-1.5 text-xs" data-invite-status={i.status}>
               <div className="flex items-center gap-2">
                 <span className="min-w-0 flex-1 truncate">
                   {i.status === 'waiting' && <>{i.mode === 'live' ? 'Invite' : 'Copy'} link · <span className="text-nt-ink-3">waiting for reply</span></>}
@@ -124,7 +124,7 @@ export function SharePanel({ projectId, session, onInvite, onFocusNode }: { proj
 
       {(notices.length > 0 || receiving) && (
         <div className="border-t border-nt-line/60 py-1.5" role="status" aria-live="polite">
-          {notices.map((n) => <p key={n.id} className="px-3 py-0.5 text-xs text-nt-ink-3">{n.text}</p>)}
+          {notices.map((n) => <p key={n.id} className="px-3 py-0.5 text-xs text-nt-ink-3" data-notice={n.kind}>{n.text}</p>)}
           {receiving && (
             <p className="px-3 py-0.5 text-xs text-nt-ink-2">
               Receiving {receiving.files} media {receiving.files === 1 ? 'file' : 'files'} · {Math.round((receiving.done / Math.max(1, receiving.total)) * 100)}%
@@ -134,7 +134,7 @@ export function SharePanel({ projectId, session, onInvite, onFocusNode }: { proj
       )}
 
       {activity.length > 0 && (
-        <details className="group border-t border-nt-line/60">
+        <details className="group border-t border-nt-line/60" data-activity={activity.length}>
           <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-1.5 text-xs text-nt-ink-2 hover:text-nt-ink">
             <ChevronDown size={12} className="-rotate-90 transition-transform group-open:rotate-0" aria-hidden /> Recent changes
           </summary>
@@ -160,17 +160,17 @@ export function SharePanel({ projectId, session, onInvite, onFocusNode }: { proj
 
       <footer className="flex items-center gap-1 border-t border-nt-line/60 p-1.5">
         {waiting.length > 0 && (
-          <button type="button" onClick={paste} className="flex h-7 items-center gap-1 rounded-md px-2 text-xs text-nt-ink hover:bg-nt-raised" title="Connect using the reply in your clipboard">
+          <button type="button" data-action="paste-reply" onClick={paste} className="flex h-7 items-center gap-1 rounded-md px-2 text-xs text-nt-ink hover:bg-nt-raised" title="Connect using the reply in your clipboard">
             <ClipboardPaste size={13} aria-hidden /> Paste reply
           </button>
         )}
         {(!session || host) && (
-          <button type="button" onClick={onInvite} className="flex h-7 items-center gap-1 rounded-md px-2 text-xs text-nt-ink-2 hover:bg-nt-raised hover:text-nt-ink" title="Share with someone">
+          <button type="button" data-action="invite" onClick={onInvite} className="flex h-7 items-center gap-1 rounded-md px-2 text-xs text-nt-ink-2 hover:bg-nt-raised hover:text-nt-ink" title="Share with someone">
             <UserPlus size={13} aria-hidden /> {session ? 'Invite' : 'Share'}
           </button>
         )}
         {session && (
-          <button type="button" onClick={() => session.end(host ? 'You ended the session.' : 'You left the session.', true)}
+          <button type="button" data-action={host ? 'end' : 'leave'} onClick={() => session.end(host ? 'You ended the session.' : 'You left the session.', true)}
             className="ml-auto flex h-7 items-center gap-1 rounded-md px-2 text-xs text-nt-ink-3 hover:bg-nt-raised hover:text-nt-danger" title={host ? 'End the session for everyone' : 'Leave the session'}>
             <LogOut size={13} aria-hidden /> {host ? 'End' : 'Leave'}
           </button>

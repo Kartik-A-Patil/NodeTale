@@ -2,7 +2,7 @@ import { it, expect, vi } from 'vitest';
 import { createElement } from 'react';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { StoryNode } from './StoryNode';
+import { StoryNode } from '../../src/components/playmode/StoryNode';
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 const key = (k: string) => act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: k })); });

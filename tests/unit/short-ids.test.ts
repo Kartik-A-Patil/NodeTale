@@ -2,7 +2,7 @@ import { it, expect, vi, beforeEach } from 'vitest';
 
 const store = new Map<string, any>();
 const log: string[] = [];
-vi.mock('./storage', () => ({
+vi.mock('../../src/services/storage', () => ({
   getStorageAdapter: () => ({
     getProjectSummaries: async () => [...store.values()].map((p) => ({ id: p.id, name: p.name })),
     loadProject: async (id: string) => store.get(id) ?? null,
@@ -11,7 +11,7 @@ vi.mock('./storage', () => ({
   }),
 }));
 
-const { shortenProjectIds, resolveProjectId } = await import('./storageService');
+const { shortenProjectIds, resolveProjectId } = await import('../../src/services/storageService');
 const OLD = '18f30b43-fb28-434e-b40c-3bd853d6a5ce';
 
 beforeEach(() => localStorage.clear());

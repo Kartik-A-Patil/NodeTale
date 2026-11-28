@@ -170,7 +170,7 @@ export const EditorTopBar = memo((props: EditorTopBarProps) => {
             <button type="button" onClick={props.onClearJump} className={`${toolButton} h-6 min-w-6`} aria-label="Clear jump target"><X size={13} /></button>
           </div>
         )}
-        {props.canShare !== false && <button type="button" onClick={props.onShare} title="Share this story, or edit it together"
+        {props.canShare !== false && <button type="button" data-action="share" onClick={props.onShare} title="Share this story, or edit it together"
           className="inline-flex h-10 items-center gap-2 rounded-xl border border-nt-line bg-nt-surface/95 px-3.5 text-sm font-medium text-nt-ink shadow-lg shadow-black/40 backdrop-blur transition-colors hover:bg-nt-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-nt-focus">
           <Share2 size={15} aria-hidden /> Share
         </button>}

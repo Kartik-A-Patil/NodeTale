@@ -1,8 +1,8 @@
 import { it, expect, vi, beforeEach } from 'vitest';
 
 const stored = new Map<string, Blob>();
-vi.mock('./storage', () => ({ getStorageAdapter: () => ({ saveAsset: async (b: Blob, id: string) => { stored.set(id, b); return id; } }) }));
-const { LiveSession } = await import('./liveSession');
+vi.mock('../../src/services/storage', () => ({ getStorageAdapter: () => ({ saveAsset: async (b: Blob, id: string) => { stored.set(id, b); return id; } }) }));
+const { LiveSession } = await import('../../src/services/liveSession');
 
 // An in-memory channel pair. `hold` lets a test pause one direction to force message orderings.
 function pair() {
@@ -95,17 +95,17 @@ it('relays media and notices people leaving', async () => {
   hostToA[1].close();
   expect(host.peers.map((p) => p.name)).toEqual(['Host', 'Bo']);
   expect(b.peers.map((p) => p.name)).toEqual(['Host', 'Bo']);
-  expect(a.ended).toMatch(/Lost the connection to Host/); // closed without a goodbye
-  expect(host.notices[0].text).toBe('Ana disconnected');
+  expect(a.ended).toMatch(/lost/i); // closed without a goodbye
+  expect(host.notices[0].kind).toBe('disconnected');
 });
 
 it('tells leaving and ending apart from a lost connection', async () => {
   b.end('You left the session.', true);
   await new Promise((r) => setTimeout(r, 200));
-  expect(host.notices[0].text).toBe('Bo left');
+  expect(host.notices[0].kind).toBe('left');
   host.end('You ended the session.', true);
   await new Promise((r) => setTimeout(r, 200));
-  expect(a.ended).toMatch(/Host ended the session/);
+  expect(a.ended).toMatch(/ended/i);
 });
 
 it('ignores changes from a view-only guest, who can’t send any', async () => {

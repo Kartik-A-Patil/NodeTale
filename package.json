@@ -8,9 +8,11 @@
   "main": "out/main/index.js",
   "scripts": {
     "dev": "vite --config configs/vite.web.config.ts",
+    "prebuild": "npm run typecheck && npm test",
     "build": "vite build --config configs/vite.web.config.ts",
     "preview": "vite preview --config configs/vite.web.config.ts",
     "dev:electron": "electron-vite dev --config configs/electron.vite.config.ts -- --no-sandbox",
+    "prebuild:electron": "npm run typecheck && npm test",
     "build:electron": "electron-vite build --config configs/electron.vite.config.ts",
     "preview:electron": "electron-vite preview --config configs/electron.vite.config.ts -- --no-sandbox",
     "clean": "node scripts/clean.js",
@@ -18,8 +20,10 @@
     "dist:linux": "npm run build:electron && electron-builder --linux",
     "dist:win": "npm run build:electron && electron-builder --win",
     "dist:mac": "npm run build:electron && electron-builder --mac",
-    "test": "vitest run --passWithNoTests",
-    "test:e2e": "node e2e/run.mjs",
+    "test": "vitest run",
+    "test:e2e": "node tests/e2e/run.mjs",
+    "typecheck": "tsc --noEmit -p .",
+    "check": "npm run typecheck && npm run lint && npm test && npm run test:e2e",
     "lint": "eslint ."
   },
   "devDependencies": {

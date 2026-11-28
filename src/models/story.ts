@@ -27,6 +27,22 @@ export const isObjectValue = (v: unknown): v is ObjectValue =>
 export const isStartNode = (node: { type?: string; data?: { label?: unknown } }): boolean =>
   node.type !== 'commentNode' && typeof node.data?.label === 'string' && node.data.label.trim().toLowerCase() === 'start';
 
+/** Does `value` fit what this variable was declared as (lists: every item of
+ *  the list's type; objects: every key of its own type)? Scripts can break
+ *  this at play time; the debugger shows it and refuses to add to it. */
+export function matchesType(variable: Pick<Variable, 'type' | 'value'>, value: unknown): boolean {
+  const prim = (t: VariableType, v: unknown) =>
+    t === VariableType.NUMBER ? typeof v === 'number' && Number.isFinite(v) : t === VariableType.BOOLEAN ? typeof v === 'boolean' : typeof v === 'string';
+  switch (variable.type) {
+    case VariableType.ARRAY:
+      return isArrayValue(value) && value.elements.every((e) => prim(value.elementType, e));
+    case VariableType.OBJECT:
+      return isObjectValue(value) && Object.values(value.keys).every((k) => prim(k.type, k.value));
+    default:
+      return prim(variable.type, value);
+  }
+}
+
 export interface Variable {
   id: string;
   name: string;

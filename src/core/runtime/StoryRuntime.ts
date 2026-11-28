@@ -1,4 +1,4 @@
-import { Project, Variable, StoryNode, Asset, ValueChange, isStartNode, isSetNode } from '../../models/story';
+import { Project, Variable, StoryNode, Asset, ValueChange, isStartNode, isSetNode, matchesType } from '../../models/story';
 import { questionsOf, valueTypeOf } from '../valueChanges';
 import { createSimulator, resolveVisibleNode, valuesEqual, Simulator, Transition, Values } from '../sim/simulate';
 import { mathRng, Rng, TraceLine } from './scriptInterpreter';
@@ -257,10 +257,13 @@ export class StoryRuntime {
 
   /** Debugger: change a variable mid-play. The scene's choices are re-checked
    *  against it; nothing re-runs. */
-  setValue(name: string, value: unknown) {
-    if (!this.currentNodeId || !(name in this.values)) return;
+  setValue(name: string, value: unknown): boolean {
+    const variable = this.sim.variables.find((v) => v.name === name);
+    // Only values of the variable's own type.
+    if (!this.currentNodeId || !variable || !matchesType(variable, value)) return false;
     this.values = { ...this.values, [name]: value };
     this.choices = this.sim.choices(this.currentNodeId, this.values);
+    return true;
   }
 
   getLog(): LogEntry[] {

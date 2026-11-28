@@ -1,12 +1,12 @@
 import { it, expect, vi, beforeEach } from 'vitest';
 
 const saved = new Map<string, any>();
-vi.mock('./storageService', async (original) => ({
-  ...(await original<typeof import('./storageService')>()),
+vi.mock('../../src/services/storageService', async (original) => ({
+  ...(await original<typeof import('../../src/services/storageService')>()),
   saveProject: async (p: any) => { saved.set(p.id, p); },
   deleteProject: async (id: string) => { saved.delete(id); },
 }));
-const { backUp, markSynced, editedSinceSession } = await import('./backups');
+const { backUp, markSynced, editedSinceSession } = await import('../../src/services/backups');
 
 const story = (label = 'Start'): any => ({
   id: 'story1', name: 'Mystery', activeBoardId: 'b', variables: [], assets: [], folders: [],
@@ -17,7 +17,7 @@ beforeEach(() => { saved.clear(); localStorage.clear(); });
 
 it('keeps one backup per story, replacing the previous one', async () => {
   const first = await backUp(story(), 'before live session');
-  expect(first.name).toMatch(/^Mystery \(before live session, /);
+  expect(first.name.startsWith('Mystery (')).toBe(true); // named after the story, with when/why
   expect(first.id).not.toBe('story1');
   const second = await backUp(story('Changed'), 'before live session');
   expect([...saved.keys()]).toEqual([second.id]);

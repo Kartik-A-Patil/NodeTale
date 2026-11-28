@@ -1,6 +1,6 @@
 import { it, expect } from 'vitest';
-import { validateTypeAssignments } from './logicService';
-import { VariableType } from '../models/story';
+import { validateTypeAssignments } from '../../src/services/logicService';
+import { VariableType } from '../../src/models/story';
 
 const vars: any = [
   { name: 'roll', type: VariableType.NUMBER, value: 0 },

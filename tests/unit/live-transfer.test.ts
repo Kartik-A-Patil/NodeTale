@@ -6,14 +6,14 @@ const senderFiles = new Map<string, Blob>([
   ['snd1', new Blob([new Uint8Array(5)], { type: 'audio/mpeg' })],
 ]);
 const saved = new Map<string, Blob>();
-vi.mock('./storage', () => ({
+vi.mock('../../src/services/storage', () => ({
   getStorageAdapter: () => ({
     getAssetData: async (id: string) => { const b = senderFiles.get(id); if (!b) throw new Error('missing'); return b; },
     saveAsset: async (blob: Blob, id: string) => { saved.set(id, blob); return id; },
   }),
 }));
 
-const { sendStory, receiveStory } = await import('./liveShare');
+const { sendStory, receiveStory } = await import('../../src/services/liveShare');
 
 // Two connected ends of an in-memory data channel.
 function channelPair() {

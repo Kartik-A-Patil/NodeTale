@@ -20,7 +20,7 @@ export interface Peer { id: string; name: string; color: string; access?: Access
 /** A recent change by someone else, for the activity list. */
 export interface Activity { peerId: string; name: string; color: string; key: string; label: string; nodeId?: string; deleted?: boolean; at: number }
 /** Something worth a line in the panel: someone left, disconnected, joined. */
-export interface Notice { id: number; text: string; at: number }
+export interface Notice { id: number; kind: 'joined' | 'left' | 'disconnected'; text: string; at: number }
 
 /** One entity's new value (null: deleted). Keys: "node:<board>:<id>", "edge:<board>:<id>", "meta". */
 export interface Op { key: string; value: unknown }
@@ -141,8 +141,8 @@ export class LiveSession {
   private onWelcome: ((p: Project) => void) | null = null;
 
   /** A line in the panel for a while: "Ana left", "Bo disconnected". */
-  private notice(text: string) {
-    this.notices = [{ id: ++this.noticeId, text, at: Date.now() }, ...this.notices].slice(0, 5);
+  private notice(kind: Notice['kind'], text: string) {
+    this.notices = [{ id: ++this.noticeId, kind, text, at: Date.now() }, ...this.notices].slice(0, 5);
   }
 
   /** Note someone's change for the activity list; repeated edits to one thing (typing, dragging) make one entry. */
@@ -158,7 +158,7 @@ export class LiveSession {
     this.links = this.links.filter((l) => l !== link);
     if (link.peerId) {
       const name = this.peers.find((p) => p.id === link.peerId)?.name ?? 'Someone';
-      if (!this.ended) this.notice(link.saidBye ? `${name} left` : `${name} disconnected`);
+      if (!this.ended) this.notice(link.saidBye ? 'left' : 'disconnected', link.saidBye ? `${name} left` : `${name} disconnected`);
       this.peers = this.peers.filter((p) => p.id !== link.peerId);
       this.broadcast({ t: 'peers', peers: this.peers });
       this.changed();
@@ -215,7 +215,7 @@ export class LiveSession {
         if (this.role !== 'host' || link.peerId === m.peer.id) return; // a repeat
         const peer: Peer = { id: m.peer.id, name: m.peer.name || 'Guest', color: PEER_COLORS[this.peers.length % PEER_COLORS.length], access: link.access };
         link.peerId = peer.id;
-        this.notice(`${peer.name} joined${peer.access === 'view' ? ' (view only)' : ''}`);
+        this.notice('joined', `${peer.name} joined${peer.access === 'view' ? ' (view only)' : ''}`);
         this.peers = [...this.peers.filter((p) => p.id !== peer.id), peer];
         const project = this.getProject();
         if (project) this.post(link, { t: 'welcome', you: peer, peers: this.peers, project });

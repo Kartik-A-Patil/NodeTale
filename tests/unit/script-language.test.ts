@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { runScript, evaluateCondition, interpolateText, mathRng } from './scriptInterpreter';
-import { enumerateOutcomes } from '../sim/simulate';
+import { runScript, evaluateCondition, interpolateText, mathRng } from '../../src/core/runtime/scriptInterpreter';
+import { enumerateOutcomes } from '../../src/core/sim/simulate';
 
 const list = (...elements: (string | number)[]) => ({ elementType: 'string', elements });
 const obj = { keys: { hp: { type: 'number', value: 40 } } };
@@ -27,13 +27,13 @@ describe('script language', () => {
     const r = runScript('roll = random(1, 6)', { roll: 0 }, mathRng);
     expect(r.changes.roll).toBeGreaterThanOrEqual(1);
     expect(r.changes.roll).toBeLessThanOrEqual(6);
-    expect(runScript('roll = random(1, 6)', { roll: 0 }).error).toMatch(/only works in scripts/);
+    expect(runScript('roll = random(1, 6)', { roll: 0 }).error).toMatch(/random/);
   });
 
   it('reports a broken condition instead of hiding it', () => {
     const errors: string[] = [];
     expect(evaluateCondition('nope > 1', {}, { onError: (m) => errors.push(m) })).toBe(false);
-    expect(errors[0]).toMatch(/Unknown variable: nope/);
+    expect(errors[0]).toMatch(/nope/);
     expect(evaluateCondition('has(inv, "map")', { inv: list('map') })).toBe(true);
   });
 

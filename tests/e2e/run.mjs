@@ -28,7 +28,7 @@ const check = (name, ok, detail = '') => {
   if (!ok) failed++;
 };
 
-for (const file of ['./live.e2e.mjs']) {
+for (const file of ['./play.e2e.mjs', './live.e2e.mjs']) {
   console.log(file.replace('./', '').replace('.e2e.mjs', ''));
   try {
     const { run } = await import(file);

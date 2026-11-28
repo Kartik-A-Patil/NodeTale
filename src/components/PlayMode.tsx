@@ -170,6 +170,7 @@ const PlayMode: React.FC<PlayModeProps> = ({
   const debugPanel = debugging && currentNode && (
     <DebugPanel
       variables={runtimeVars}
+      startValues={Object.fromEntries(project.variables.map((v) => [v.name, v.value]))}
       errors={errors}
       trace={trace}
       currentLabel={labels.get(currentNode.id) ?? "Untitled"}

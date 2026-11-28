@@ -1,6 +1,6 @@
 import { it, expect } from 'vitest';
-import { compileChanges, questionsOf, opsFor } from './valueChanges';
-import { VariableType } from '../models/story';
+import { compileChanges, questionsOf, opsFor } from '../../src/core/valueChanges';
+import { VariableType } from '../../src/models/story';
 
 const vars: any[] = [
   { id: '1', name: 'gold', type: VariableType.NUMBER, value: 0 },

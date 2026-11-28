@@ -1,5 +1,5 @@
 import { it, expect } from 'vitest';
-import { changedKeys, rememberBoard } from './useLiveSync';
+import { changedKeys, rememberBoard } from '../../src/hooks/useLiveSync';
 
 const make = (n: number) => Array.from({ length: n }, (_, i) => ({
   id: `n${i}`, type: 'elementNode', position: { x: i * 10, y: 0 }, width: 250, height: 120,
@@ -40,6 +40,5 @@ it('costs well under a frame on a 2,000-node board while dragging', () => {
     expect(changed).toEqual(['node:b:n5']);
   }
   const perFrame = total / 120;
-  console.log(`2,000 nodes + 1,999 edges, per drag frame: ${perFrame.toFixed(2)} ms`);
   expect(perFrame).toBeLessThan(4); // a 60 fps frame is 16.7 ms
 });

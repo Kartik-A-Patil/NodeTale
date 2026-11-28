@@ -1,5 +1,5 @@
 import { it, expect } from 'vitest';
-import { encodeConnectCode, decodeConnectCode, replyInviteKey, inviteKeyOf } from './connectCode';
+import { encodeConnectCode, decodeConnectCode, replyInviteKey, inviteKeyOf, ConnectCodeError } from '../../src/services/connectCode';
 
 const offer = `v=0\r\no=- 6124796250772422270 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0\r\nm=application 53289 UDP/DTLS/SCTP webrtc-datachannel\r\nc=IN IP4 103.143.181.167\r
 a=candidate:480570404 1 udp 2113937151 a05046c7-318b-4be3-8c40-46d76051e0be.local 53289 typ host generation 0 network-cost 999\r
@@ -29,6 +29,6 @@ it('tells invites and replies apart, and rejects damaged codes', () => {
   expect(replyInviteKey(reply)).toBe('Ab3x');
   expect(replyInviteKey(encodeConnectCode(offer, 'invite'))).toBeNull();
   expect(inviteKeyOf(offer)).toBe('w86J');
-  expect(() => decodeConnectCode(reply, 'invite')).toThrow(/reply code/);
-  expect(() => decodeConnectCode(reply.slice(0, 20), 'reply')).toThrow(/incomplete or damaged/);
+  expect(() => decodeConnectCode(reply, 'invite')).toThrow(ConnectCodeError);
+  expect(() => decodeConnectCode(reply.slice(0, 20), 'reply')).toThrow(ConnectCodeError);
 });

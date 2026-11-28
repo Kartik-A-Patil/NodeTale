@@ -1,6 +1,6 @@
 import { it, expect } from 'vitest';
-import { extractScriptCode, stripScriptBlocks, decodeEntities } from './html';
-import { parseExpression } from '../core/expression/parser';
+import { extractScriptCode, stripScriptBlocks, decodeEntities } from '../../src/utils/html';
+import { parseExpression } from '../../src/core/expression/parser';
 
 const viaDom = (html: string) =>
   Array.from(new DOMParser().parseFromString(html, 'text/html').querySelectorAll('pre'), (p) => p.textContent || '').join('\n');

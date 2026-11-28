@@ -9,6 +9,7 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
-    include: ['src/**/*.test.ts'],
+    // All tests live in tests/: unit tests here, browser tests in tests/e2e (npm run test:e2e).
+    include: ['tests/unit/**/*.test.ts'],
   },
 });

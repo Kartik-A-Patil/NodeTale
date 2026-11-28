@@ -10,12 +10,14 @@ interface DialogProps {
   actions: React.ReactNode;
   /** Wraps content + actions in a form so Enter submits. */
   onSubmit?: (e: React.FormEvent) => void;
+  /** Exposed as data-status, for tests to read a dialog's state without matching its wording. */
+  status?: string;
 }
 
 // Native <dialog> with showModal(): focus is trapped, Escape closes, the rest
 // of the page is inert, and the backdrop comes from ::backdrop. No portal or
 // focus-trap library needed.
-export function Dialog({ open, onClose, title, description, children, actions, onSubmit }: DialogProps) {
+export function Dialog({ open, onClose, title, description, children, actions, onSubmit, status }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -37,6 +39,7 @@ export function Dialog({ open, onClose, title, description, children, actions, o
   return (
     <dialog
       ref={ref}
+      data-status={status}
       onClose={onClose}
       onCancel={(e) => {
         e.preventDefault();
