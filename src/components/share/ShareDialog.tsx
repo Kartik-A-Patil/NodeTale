@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Check, ClipboardPaste, Copy, QrCode as QrIcon, Send } from 'lucide-react';
 import { Project } from '../../models/story';
 import { invites, InviteMode } from '../../services/invites';
-import { liveSession, myPeerName } from '../../services/liveSession';
+import { liveSession, myPeerName, Access } from '../../services/liveSession';
 import { Dialog } from '../ui/NativeDialog';
 import { buttonPrimary, buttonSecondary, input } from '../ui/styles';
 import { TransferProgress } from './TransferProgress';
@@ -26,6 +26,7 @@ export function ShareDialog({ project, getProject, onClose }: ShareDialogProps) 
   const running = liveSession.get();
   const hosting = !!(running && project && running.projectId === project.id && running.role === 'host');
   const [mode, setMode] = useState<InviteMode>('copy');
+  const [access, setAccess] = useState<Access>('edit');
   const [name, setName] = useState(() => myPeerName.get());
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [reply, setReply] = useState('');
@@ -42,16 +43,16 @@ export function ShareDialog({ project, getProject, onClose }: ShareDialogProps) 
   useEffect(() => {
     if (!project) return;
     setError(''); setReply(''); setCopied(false); setQr(false);
-    const waiting = round === 0 && invites.all().find((i) => i.projectId === project.id && i.mode === mode && i.status === 'waiting');
+    const waiting = round === 0 && invites.all().find((i) => i.projectId === project.id && i.mode === mode && i.access === access && i.status === 'waiting');
     if (waiting) { setCurrentId(waiting.id); return; }
     setCurrentId(null);
     const ticket = ++creating.current;
-    invites.create(project.id, getProject, mode).then(
+    invites.create(project.id, getProject, mode, access).then(
       (inv) => { if (ticket === creating.current) setCurrentId(inv.id); else invites.discard(inv.id); },
       (err) => setError(`Couldn’t prepare sharing: ${err instanceof Error ? err.message : String(err)}`),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project, mode, round]);
+  }, [project, mode, access, round]);
 
   const current = all.find((i) => i.id === currentId) ?? null;
 
@@ -59,6 +60,11 @@ export function ShareDialog({ project, getProject, onClose }: ShareDialogProps) 
     // The unused invite for the other mode isn't needed.
     if (current?.status === 'waiting') invites.discard(current.id);
     setMode(m);
+  };
+  const switchAccess = (a: Access) => {
+    if (a === access) return;
+    if (current?.status === 'waiting') invites.discard(current.id);
+    setAccess(a);
   };
 
   const copy = async () => {
@@ -120,8 +126,15 @@ export function ShareDialog({ project, getProject, onClose }: ShareDialogProps) 
               </button>
             ))}
           </div>
-          {mode === 'live' && !hosting && (
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name (shown to others)" aria-label="Your name" maxLength={24} className={input} />
+          {mode === 'live' && (
+            <div className="flex gap-2">
+              {!hosting && <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name (shown to others)" aria-label="Your name" maxLength={24} className={`${input} min-w-0 flex-1`} />}
+              <select value={access} onChange={(e) => switchAccess(e.target.value as Access)} aria-label="What they can do"
+                className={`${input} ${hosting ? 'flex-1' : 'w-32'} cursor-pointer`}>
+                <option value="edit">Can edit</option>
+                <option value="view">Can view</option>
+              </select>
+            </div>
           )}
 
           <div>

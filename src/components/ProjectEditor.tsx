@@ -26,6 +26,7 @@ import { useLiveSessionFor, useLiveSync } from '../hooks/useLiveSync';
 import { SharePanel } from './share/SharePanel';
 import NotFound from './NotFound';
 import { invites } from '../services/invites';
+import { markSynced } from '../services/backups';
 import { liveSession } from '../services/liveSession';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useDragAndDrop } from '../hooks/useDragAndDrop';
@@ -142,10 +143,15 @@ function ProjectEditor() {
   const lastSession = useRef(session);
   useEffect(() => {
     const prev = lastSession.current;
-    if (prev && !session && prev.ended) setSessionEnded(prev.ended);
+    if (prev && !session && prev.ended) {
+      setSessionEnded(prev.ended);
+      // What this copy was when the session left it: edits made alone after
+      // this get backed up before a later session replaces them.
+      if (prev.role === 'guest') markSynced(getLiveProject());
+    }
     if (session) setSessionEnded(null);
     lastSession.current = session;
-  }, [session]);
+  }, [session, getLiveProject]);
   // Leaving the story leaves (or, for the host, ends) its session, and drops links still waiting.
   useEffect(() => liveSession.endWhenLeft(projectId), [projectId]);
   useEffect(() => () => { if (projectId) invites.discardFor(projectId); }, [projectId]);
@@ -192,15 +198,25 @@ function ProjectEditor() {
   );
 
   const nodeStatus = useNodeStatusStore(nodes, edges, getLiveProject, project.boards);
-  const editorContext = useMemo(
-    () => ({ variables: project.variables, assets: project.assets, updateNodeData, updateNode, updateEdge, nodeStatus }),
-    [project.variables, project.assets, updateNodeData, updateNode, updateEdge, nodeStatus]
-  );
+  // A view-only guest in a live session: nothing here can change.
+  const readOnly = !!session && !session.canEdit;
+  const boardLocked = locked || readOnly;
+  const editorContext = useMemo(() => {
+    const noop = () => {};
+    return readOnly
+      ? { variables: project.variables, assets: project.assets, updateNodeData: noop, updateNode: noop, updateEdge: noop, nodeStatus, readOnly }
+      : { variables: project.variables, assets: project.assets, updateNodeData, updateNode, updateEdge, nodeStatus, readOnly };
+  }, [project.variables, project.assets, updateNodeData, updateNode, updateEdge, nodeStatus, readOnly]);
 
   const onToolbarPlay = useCallback(() => { setPlayStartNodeId(null); setIsPlaying(true); }, []);
   // The single export: a dialog with the formats, fed the live canvas.
   const onToolbarExport = useCallback(() => setExporting(getLiveProject()), [getLiveProject]);
-  const onToolbarShare = useCallback(() => setSharing(getLiveProject()), [getLiveProject]);
+  // Only the host invites: a guest in someone's live session can't start sharing.
+  const onToolbarShare = useCallback(() => {
+    const s = liveSession.get();
+    if (s && s.role === 'guest' && s.projectId === projectId) return;
+    setSharing(getLiveProject());
+  }, [getLiveProject, projectId]);
 
   const startPlayFromNode = React.useCallback((nodeId: string) => {
       setPlayStartNodeId(nodeId);
@@ -369,7 +385,7 @@ function ProjectEditor() {
   const editorActions: EditorAction[] = useMemo(() => {
     const flow = viewMode === 'flow';
     const single = selectedNodes.length === 1 ? selectedNodes[0] : undefined;
-    const editable = flow && !locked;
+    const editable = flow && !boardLocked;
     const add = (id: string, label: string, type: NodeTypeKey, keys: ShortcutKeys): EditorAction =>
       ({ id, label, category: 'Edit', keys, run: () => addAtCenter(type), enabled: editable });
     const panelAction = (id: PanelId, label: string, keys: ShortcutKeys): EditorAction =>
@@ -417,7 +433,7 @@ function ProjectEditor() {
       panelAction('assets', 'Assets', KEYS.panelAssets),
       panelAction('problems', 'Problems', KEYS.panelProblems),
     ];
-  }, [undo, redo, canUndo, canRedo, selectedNodes, ctx, executeCommand, saveNow, copySelected, cutSelected, pasteClipboard, selectAll, deselectAll, canPlay, onToolbarExport, onToolbarShare, setViewMode, viewMode, locked, minimap, snap, setMinimap, setSnap, tidyBoard, addAtCenter, duplicateNodes, startPlayFromNode, reactFlowInstance]);
+  }, [undo, redo, canUndo, canRedo, selectedNodes, ctx, executeCommand, saveNow, copySelected, cutSelected, pasteClipboard, selectAll, deselectAll, canPlay, onToolbarExport, onToolbarShare, setViewMode, viewMode, boardLocked, locked, minimap, snap, setMinimap, setSnap, tidyBoard, addAtCenter, duplicateNodes, startPlayFromNode, reactFlowInstance]);
 
   useShortcuts(editorActions);
 
@@ -426,7 +442,7 @@ function ProjectEditor() {
   const alignRef = useRef({ alignSelection, distributeSelection, arrange });
   alignRef.current = { alignSelection, distributeSelection, arrange };
   const boardMenu = useMemo(() => ({
-    locked,
+    locked: boardLocked,
     onUnlock: () => setLocked(false),
     canPaste: hasClipboard,
     paste: pasteClipboard,
@@ -443,7 +459,7 @@ function ProjectEditor() {
     duplicate: duplicateNodes,
     addConnected: addConnectedScene,
     focusNode,
-  }), [locked, hasClipboard, pasteClipboard, selectAll, reactFlowInstance, tidyBoard, minimap, setMinimap, snap, setSnap, duplicateNodes, addConnectedScene, focusNode]);
+  }), [boardLocked, hasClipboard, pasteClipboard, selectAll, reactFlowInstance, tidyBoard, minimap, setMinimap, snap, setSnap, duplicateNodes, addConnectedScene, focusNode]);
 
   const getMenuOptions = useMenuOptions({
       menu,
@@ -534,7 +550,7 @@ function ProjectEditor() {
             onPaneClick={onPaneClick}
             onInit={setReactFlowInstance}
             onDragOver={onDragOver}
-            onDrop={locked ? undefined : onDrop}
+            onDrop={boardLocked ? undefined : onDrop}
             nodeTypes={nodeTypes}
             fitView={!focusOnMount}
             edgeTypes={edgeTypes}
@@ -552,9 +568,10 @@ function ProjectEditor() {
             onlyRenderVisibleElements={nodes.length > CULL_ABOVE}
             snapToGrid={snap}
             snapGrid={[20, 20]}
-            nodesDraggable={!locked}
-            nodesConnectable={!locked}
-            edgesUpdatable={!locked}
+            nodesDraggable={!boardLocked}
+            nodesConnectable={!boardLocked}
+            edgesUpdatable={!boardLocked}
+            deleteKeyCode={boardLocked ? null : undefined}
           >
             <Background color="#52525b" gap={20} size={1} variant={BackgroundVariant.Dots} />
             {minimap && (
@@ -600,6 +617,7 @@ function ProjectEditor() {
           onPanel={setPanel}
           onExport={onToolbarExport}
           onShare={onToolbarShare}
+          canShare={session?.role !== 'guest'}
           onPalette={() => setShowCommandPalette(true)}
           onHelp={() => setHelpOpen(true)}
           onSave={saveNow}
@@ -631,7 +649,7 @@ function ProjectEditor() {
             onMinimap={setMinimap}
             snap={snap}
             onSnap={setSnap}
-            locked={locked}
+            locked={boardLocked}
             onLocked={setLocked}
           />
         )}
@@ -651,7 +669,7 @@ function ProjectEditor() {
       <ShareDialog project={sharing} getProject={getLiveProject} onClose={() => setSharing(null)} />
       {/* Sharing, top right under Play. */}
       <div className="absolute right-3 top-[3.75rem] z-30 flex flex-col items-end gap-2">
-        {projectId && <SharePanel projectId={projectId} session={session} onInvite={onToolbarShare} />}
+        {projectId && <SharePanel projectId={projectId} session={session} onInvite={onToolbarShare} onFocusNode={focusNode} />}
         {!session && sessionEnded && (
           <div className="flex w-64 items-start gap-2 rounded-xl border border-nt-line bg-nt-surface/95 py-2 pl-3 pr-1.5 text-xs text-nt-ink-2 shadow-lg" role="status">
             <span className="flex-1 leading-relaxed">{sessionEnded}</span>

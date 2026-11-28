@@ -19,6 +19,7 @@
     "dist:win": "npm run build:electron && electron-builder --win",
     "dist:mac": "npm run build:electron && electron-builder --mac",
     "test": "vitest run --passWithNoTests",
+    "test:e2e": "node e2e/run.mjs",
     "lint": "eslint ."
   },
   "devDependencies": {

@@ -6,6 +6,7 @@ import { withDefaultZIndex } from '../core/nodes/nodeRegistry';
 import { liveSession, LiveSession, Op } from '../services/liveSession';
 import { compactProject } from '../services/storageService';
 import { fileOf } from '../services/liveShare';
+import { editingNode } from '../editor/editingNode';
 
 // Keeps the editor and a live session in step. Changes are found by
 // comparing state, not by hooking every editing command: whatever changed a
@@ -290,16 +291,49 @@ export function useLiveSync({ session, ready, nodes, edges, setNodes, setEdges, 
       });
     };
 
-    return session.attach({
-      onOps: (ops) => {
+    // A node's name for the activity list, from the change or from what's here.
+    const labelOf = (board: string, id: string, value: StoryNode | null) => {
+      const data = (value?.data ?? (board === latest.current.activeBoard
+        ? latest.current.nodes.find((n) => n.id === id)?.data
+        : latest.current.project.boards.find((b) => b.id === board)?.nodes.find((n) => n.id === id)?.data)) as { label?: string; text?: string } | undefined;
+      return data?.label || data?.text?.slice(0, 40) || 'a node';
+    };
+
+    // Others' changes to the node you're typing in wait until you stop. If you
+    // changed it meanwhile, yours is the later edit and theirs is dropped.
+    const held = new Map<string, { board: string; id: string; value: StoryNode | null; seenJson: string | undefined }>();
+    const offStop = editingNode.onStop(() => {
+      for (const [key, h] of held) {
+        if (editingNode.get() === h.id) continue;
+        held.delete(key);
+        const now = latest.current.nodes.find((n) => n.id === h.id);
+        if ((now ? jsonOfNode(now) : undefined) === h.seenJson) applyNodes(h.board, [{ id: h.id, value: h.value }]);
+      }
+    });
+
+    const detach = session.attach({
+      onOps: (ops, from) => {
+        const peer = session.peers.find((p) => p.id === from);
         const nodeOps = new Map<string, { id: string; value: StoryNode | null }[]>();
         const edgeOps = new Map<string, { id: string; value: StoryEdge | null }[]>();
         for (const op of ops) {
-          if (op.key === 'meta') { applyMeta(op.value as Meta); continue; }
+          if (op.key === 'meta') {
+            applyMeta(op.value as Meta);
+            if (peer) session.record({ peerId: peer.id, name: peer.name, color: peer.color, key: op.key, label: 'story settings' });
+            continue;
+          }
           const [kind, board, ...rest] = op.key.split(':');
           const id = rest.join(':');
           const into = kind === 'node' ? nodeOps : kind === 'edge' ? edgeOps : null;
           if (!into) continue;
+          if (kind === 'node') {
+            if (peer) session.record({ peerId: peer.id, name: peer.name, color: peer.color, key: op.key, nodeId: id, label: labelOf(board, id, op.value as StoryNode | null), deleted: op.value === null });
+            if (board === latest.current.activeBoard && editingNode.get() === id) {
+              const now = latest.current.nodes.find((n) => n.id === id);
+              held.set(op.key, { board, id, value: op.value as StoryNode | null, seenJson: now ? jsonOfNode(now) : undefined });
+              continue;
+            }
+          }
           if (!into.has(board)) into.set(board, []);
           into.get(board)!.push({ id, value: op.value as never });
         }
@@ -307,6 +341,7 @@ export function useLiveSync({ session, ready, nodes, edges, setNodes, setEdges, 
         edgeOps.forEach((list, board) => applyEdges(board, list));
       },
     });
+    return () => { detach(); offStop(); };
   }, [session, ready, setNodes, setEdges, setProject]);
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);

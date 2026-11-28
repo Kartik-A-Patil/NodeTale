@@ -16,6 +16,8 @@ export interface EditorContextValue {
   updateEdge: (id: string, applyPatch: (edge: Edge) => Edge, mergeKey?: string) => void;
   /** Start / ending / dead-end badges; read per node with useNodeStatus. */
   nodeStatus: NodeStatusStore;
+  /** Watching a live session without edit rights: nodes don't open for editing. */
+  readOnly?: boolean;
 }
 
 export const EditorContext = createContext<EditorContextValue | null>(null);

@@ -95,5 +95,39 @@ it('relays media and notices people leaving', async () => {
   hostToA[1].close();
   expect(host.peers.map((p) => p.name)).toEqual(['Host', 'Bo']);
   expect(b.peers.map((p) => p.name)).toEqual(['Host', 'Bo']);
-  expect(a.ended).toMatch(/host ended/);
+  expect(a.ended).toMatch(/Lost the connection to Host/); // closed without a goodbye
+  expect(host.notices[0].text).toBe('Ana disconnected');
+});
+
+it('tells leaving and ending apart from a lost connection', async () => {
+  b.end('You left the session.', true);
+  await new Promise((r) => setTimeout(r, 200));
+  expect(host.notices[0].text).toBe('Bo left');
+  host.end('You ended the session.', true);
+  await new Promise((r) => setTimeout(r, 200));
+  expect(a.ended).toMatch(/Host ended the session/);
+});
+
+it('ignores changes from a view-only guest, who can’t send any', async () => {
+  const [hostEnd, viewerEnd] = pair();
+  host.addGuest(hostEnd as any, 'view');
+  const viewer = new LiveSession('guest', 'p1', { id: 'V', name: '', color: '' });
+  await viewer.join(viewerEnd as any, 'Vi');
+  expect(viewer.canEdit).toBe(false);
+  expect(host.peers.find((p) => p.name === 'Vi')?.access).toBe('view');
+  viewer.sendOps([{ key: 'node:b:n1', value: 'nope' }]);          // the viewer's own side refuses
+  (viewerEnd as any).send(JSON.stringify({ t: 'op', from: 'V', seq: 1, ops: [{ key: 'node:b:n1', value: 'forced' }] })); // and the host ignores a forced one
+  expect(hostSeen).toEqual([]);
+  expect(aSeen).toEqual([]);
+  a.sendOps([{ key: 'node:b:n2', value: 'Ana edits' }]);
+  const seen: unknown[] = [];
+  viewer.attach({ onOps: (ops) => seen.push(...ops) });
+  a.sendOps([{ key: 'node:b:n3', value: 'more' }]);
+  expect(seen).toEqual([{ key: 'node:b:n2', value: 'Ana edits' }, { key: 'node:b:n3', value: 'more' }]); // but sees everything (earlier ones handed over on attach)
+});
+
+it('groups repeated edits to one thing in the activity list', () => {
+  const entry = { peerId: 'A', name: 'Ana', color: '', key: 'node:b:n1', label: 'Hall', nodeId: 'n1' };
+  host.record(entry); host.record({ ...entry, label: 'Hallway' }); host.record({ ...entry, key: 'node:b:n2', label: 'Cellar' });
+  expect(host.activity.map((x) => x.label)).toEqual(['Cellar', 'Hallway']);
 });

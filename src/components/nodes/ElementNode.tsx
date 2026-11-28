@@ -1,4 +1,5 @@
 import React, {
+  useEffect,
   memo,
   useState,
   useMemo,
@@ -22,20 +23,28 @@ import {
 } from "../../services/logicService";
 import { extractScriptCode } from "../../utils/html";
 import { nodePropsEqual } from "./nodePropsEqual";
+import { editingNode } from "../../editor/editingNode";
 import { useEditor } from "../../editor/EditorContext";
 import { useNodeStatus } from "../../editor/nodeStatusStore";
 import { EditableTitle, NodeFrame, NodeHeader, NodeResizeGrip, StatusBadge, nodeIconButton, useNodeEditRequest } from "./nodeChrome";
 
 const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
   const { getNode } = useReactFlow();
-  const { variables, assets: projectAssets, updateNodeData, updateNode } = useEditor();
+  const { variables, assets: projectAssets, updateNodeData, updateNode, readOnly } = useEditor();
   const status = useNodeStatus(id);
   const [editingField, setEditingField] = useState<"content" | null>(null);
-  useNodeEditRequest(id, "content", () => { setEditStart(undefined); setEditingField("content"); });
+  useNodeEditRequest(id, "content", () => { if (!readOnly) { setEditStart(undefined); setEditingField("content"); } });
   const [selectedAudioForConfig, setSelectedAudioForConfig] = useState<Asset | null>(
     null
   );
   const [isExpanded, setIsExpanded] = useState(false);
+  // While typing here (inline or in the big editor), live changes to this node wait.
+  const typing = editingField === "content" || isExpanded;
+  useEffect(() => {
+    if (!typing) return;
+    editingNode.start(id);
+    return () => editingNode.stop(id);
+  }, [typing, id]);
   const [editStart, setEditStart] = useState<EditStart>();
   const [isAssetOver, setIsAssetOver] = useState(false);
 
@@ -168,7 +177,7 @@ const ElementNode = ({ id, data, selected }: NodeProps<ElementNodeData>) => {
               <StoryText
                 html={data.content || ""}
                 placeholder="Double click to add content…"
-                onStartEdit={(start) => {
+                onStartEdit={readOnly ? undefined : (start) => {
                   setEditStart(start);
                   setEditingField("content");
                 }}

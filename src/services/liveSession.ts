@@ -14,7 +14,13 @@ import { Channel, sendBytes } from './liveShare';
 // changed itself until its own change comes back, so whatever the host saw
 // last is what everyone ends up with.
 
-export interface Peer { id: string; name: string; color: string }
+export type Access = 'edit' | 'view';
+export interface Peer { id: string; name: string; color: string; access?: Access }
+
+/** A recent change by someone else, for the activity list. */
+export interface Activity { peerId: string; name: string; color: string; key: string; label: string; nodeId?: string; deleted?: boolean; at: number }
+/** Something worth a line in the panel: someone left, disconnected, joined. */
+export interface Notice { id: number; text: string; at: number }
 
 /** One entity's new value (null: deleted). Keys: "node:<board>:<id>", "edge:<board>:<id>", "meta". */
 export interface Op { key: string; value: unknown }
@@ -24,7 +30,9 @@ type Message =
   | { t: 'welcome'; you: Peer; peers: Peer[]; project: Project }
   | { t: 'peers'; peers: Peer[] }
   | { t: 'op'; from: string; seq: number; ops: Op[] }
-  | { t: 'asset'; from: string; id: string; size: number; type: string };
+  | { t: 'asset'; from: string; id: string; size: number; type: string }
+  /** Said before closing on purpose, so the others can tell leaving from a lost connection. */
+  | { t: 'bye'; from: string; why: 'left' | 'ended' };
 
 // Distinct, readable on the dark canvas; the host always takes the first.
 export const PEER_COLORS = ['#f97316', '#38bdf8', '#a3e635', '#f472b6', '#facc15', '#c084fc', '#2dd4bf', '#fb7185'];
@@ -32,14 +40,18 @@ export const PEER_COLORS = ['#f97316', '#38bdf8', '#a3e635', '#f472b6', '#facc15
 interface Link {
   ch: Channel & { close?: () => void; addEventListener(type: 'close', fn: () => void): void };
   peerId?: string;
+  /** Host: what this guest may do (view-only guests' changes are ignored). */
+  access: Access;
+  /** They said goodbye (so closing isn't a lost connection). */
+  saidBye?: boolean;
   /** Files go one at a time per channel: their pieces mustn't interleave. */
   fileQueue: Promise<void>;
   incoming: { id: string; size: number; type: string; parts: ArrayBuffer[]; got: number; from: string } | null;
 }
 
 export interface SessionEvents {
-  /** Changes from others, to apply to the editor. */
-  onOps?: (ops: Op[]) => void;
+  /** Changes from others (and who made them), to apply to the editor. */
+  onOps?: (ops: Op[], from: string) => void;
   /** A media file someone added has arrived (and is saved). */
   onAsset?: (id: string) => void;
   /** Who's here, or the session itself, changed. */
@@ -58,7 +70,12 @@ export class LiveSession {
   private pending = new Map<string, number>();
   private events: SessionEvents = {};
   /** Changes that arrived before the editor was ready for them. */
-  private backlog: Op[] = [];
+  private backlog: { ops: Op[]; from: string }[] = [];
+  /** Recent changes by others, newest first. */
+  activity: Activity[] = [];
+  /** Recent comings and goings, newest first. */
+  notices: Notice[] = [];
+  private noticeId = 0;
   private listeners = new Set<() => void>();
   /** Host: the story as it is now, for people joining. */
   getProject: () => Project | null = () => null;
@@ -83,7 +100,7 @@ export class LiveSession {
   attach(events: SessionEvents) {
     this.events = events;
     if (this.backlog.length && events.onOps) {
-      events.onOps(this.backlog);
+      for (const { ops, from } of this.backlog) events.onOps(ops, from);
       this.backlog = [];
     }
     return () => { if (this.events === events) this.events = {}; };
@@ -91,9 +108,12 @@ export class LiveSession {
 
   // ---- connections ----
 
-  /** Host: a guest whose copy has arrived joins the session. */
-  addGuest(ch: Link['ch']) {
-    const link: Link = { ch, fileQueue: Promise.resolve(), incoming: null };
+  /** View-only guests can't change anything. */
+  get canEdit() { return this.me.access !== 'view'; }
+
+  /** Host: a guest whose copy has arrived joins the session, to edit or only to watch. */
+  addGuest(ch: Link['ch'], access: Access = 'edit') {
+    const link: Link = { ch, access, fileQueue: Promise.resolve(), incoming: null };
     this.links.push(link);
     this.listen(link);
     ch.addEventListener('close', () => this.dropLink(link));
@@ -101,11 +121,16 @@ export class LiveSession {
 
   /** Guest: join over the channel the copy arrived on; resolves with the story as it is right now. */
   join(ch: Link['ch'], name: string): Promise<Project> {
-    const link: Link = { ch, fileQueue: Promise.resolve(), incoming: null };
+    const link: Link = { ch, access: 'edit', fileQueue: Promise.resolve(), incoming: null };
     this.links = [link];
     const welcomed = new Promise<Project>((resolve) => { this.onWelcome = resolve; });
     this.listen(link);
-    ch.addEventListener('close', () => this.end('The host ended the session. You still have your own copy.'));
+    ch.addEventListener('close', () => {
+      const host = this.peers.find((p) => p.id !== this.me.id)?.name ?? 'the host';
+      this.end(link.saidBye
+        ? `${host} ended the session. You still have your own copy.`
+        : `Lost the connection to ${host}. You still have your own copy; ask for a new link to rejoin.`);
+    });
     // The host starts listening once our copy has arrived, which can be just
     // after we say hello: repeat it until welcomed (the host ignores repeats).
     const hello = () => this.post(link, { t: 'hello', peer: { id: this.me.id, name } });
@@ -115,9 +140,25 @@ export class LiveSession {
   }
   private onWelcome: ((p: Project) => void) | null = null;
 
+  /** A line in the panel for a while: "Ana left", "Bo disconnected". */
+  private notice(text: string) {
+    this.notices = [{ id: ++this.noticeId, text, at: Date.now() }, ...this.notices].slice(0, 5);
+  }
+
+  /** Note someone's change for the activity list; repeated edits to one thing (typing, dragging) make one entry. */
+  record(entry: Omit<Activity, 'at'>) {
+    const at = Date.now();
+    const [last] = this.activity;
+    if (last && last.peerId === entry.peerId && last.key === entry.key && at - last.at < 15000) this.activity = [{ ...last, ...entry, at }, ...this.activity.slice(1)];
+    else this.activity = [{ ...entry, at }, ...this.activity].slice(0, 30);
+    this.changed();
+  }
+
   private dropLink(link: Link) {
     this.links = this.links.filter((l) => l !== link);
     if (link.peerId) {
+      const name = this.peers.find((p) => p.id === link.peerId)?.name ?? 'Someone';
+      if (!this.ended) this.notice(link.saidBye ? `${name} left` : `${name} disconnected`);
       this.peers = this.peers.filter((p) => p.id !== link.peerId);
       this.broadcast({ t: 'peers', peers: this.peers });
       this.changed();
@@ -135,7 +176,7 @@ export class LiveSession {
 
   /** Your changes, to everyone. */
   sendOps(ops: Op[]) {
-    if (!ops.length || this.ended) return;
+    if (!ops.length || this.ended || !this.canEdit) return;
     const seq = ++this.seq;
     if (this.role === 'guest') ops.forEach((op) => this.pending.set(op.key, seq));
     const m: Message = { t: 'op', from: this.me.id, seq, ops };
@@ -172,8 +213,9 @@ export class LiveSession {
     switch (m.t) {
       case 'hello': {
         if (this.role !== 'host' || link.peerId === m.peer.id) return; // a repeat
-        const peer: Peer = { id: m.peer.id, name: m.peer.name || 'Guest', color: PEER_COLORS[this.peers.length % PEER_COLORS.length] };
+        const peer: Peer = { id: m.peer.id, name: m.peer.name || 'Guest', color: PEER_COLORS[this.peers.length % PEER_COLORS.length], access: link.access };
         link.peerId = peer.id;
+        this.notice(`${peer.name} joined${peer.access === 'view' ? ' (view only)' : ''}`);
         this.peers = [...this.peers.filter((p) => p.id !== peer.id), peer];
         const project = this.getProject();
         if (project) this.post(link, { t: 'welcome', you: peer, peers: this.peers, project });
@@ -194,7 +236,8 @@ export class LiveSession {
         return;
       case 'op':
         if (this.role === 'host') {
-          this.apply(m.ops);
+          if (link.access === 'view') return; // view-only: ignored, not passed on
+          this.apply(m.ops, m.from);
           this.broadcast(m); // to everyone, the sender too: that's its confirmation
           return;
         }
@@ -202,7 +245,10 @@ export class LiveSession {
           for (const op of m.ops) if (this.pending.get(op.key) === m.seq) this.pending.delete(op.key);
           return;
         }
-        this.apply(m.ops.filter((op) => !this.pending.has(op.key)));
+        this.apply(m.ops.filter((op) => !this.pending.has(op.key)), m.from);
+        return;
+      case 'bye':
+        link.saidBye = true;
         return;
       case 'asset':
         link.incoming = { id: m.id, size: m.size, type: m.type, parts: [], got: 0, from: m.from };
@@ -217,6 +263,14 @@ export class LiveSession {
     f.parts.push(part);
     f.got += part.byteLength;
     if (f.got >= f.size) this.finishFile(link);
+    else this.changed(); // progress for the panel
+  }
+
+  /** Media arriving right now, for "Receiving media · 40%". */
+  get receiving(): { files: number; done: number; total: number } | null {
+    const incoming = this.links.map((l) => l.incoming).filter((f): f is NonNullable<Link['incoming']> => !!f);
+    if (!incoming.length) return null;
+    return { files: incoming.length, done: incoming.reduce((s, f) => s + f.got, 0), total: incoming.reduce((s, f) => s + f.size, 0) };
   }
 
   private async finishFile(link: Link) {
@@ -225,24 +279,29 @@ export class LiveSession {
     const blob = new Blob(f.parts, { type: f.type });
     await getStorageAdapter().saveAsset(blob, f.id);
     this.events.onAsset?.(f.id);
+    this.changed();
     // Host passes it on to everyone else.
     if (this.role === 'host') {
       for (const l of this.links) if (l !== link && l.peerId) this.queueFile(l, { t: 'asset', from: f.from, id: f.id, size: f.size, type: f.type }, blob);
     }
   }
 
-  private apply(ops: Op[]) {
+  private apply(ops: Op[], from: string) {
     if (!ops.length) return;
-    if (this.events.onOps) this.events.onOps(ops);
-    else this.backlog.push(...ops);
+    if (this.events.onOps) this.events.onOps(ops, from);
+    else this.backlog.push({ ops, from });
   }
 
   // ---- ending ----
 
-  end(reason = 'The session ended.') {
+  /** End (host) or leave (guest). `byChoice`: say goodbye first, so the others can tell it from a lost connection. */
+  end(reason = 'The session ended.', byChoice = false) {
     if (this.ended) return;
     this.ended = reason;
-    for (const l of this.links) { try { l.ch.close?.(); } catch { /* already closed */ } }
+    const links = this.links;
+    if (byChoice) for (const l of links) this.post(l, { t: 'bye', from: this.me.id, why: this.role === 'host' ? 'ended' : 'left' });
+    // A moment for the goodbye to go out before the channels close.
+    setTimeout(() => { for (const l of links) { try { l.ch.close?.(); } catch { /* already closed */ } } }, byChoice ? 150 : 0);
     this.links = [];
     this.changed();
     if (current === this) {

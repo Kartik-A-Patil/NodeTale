@@ -4,6 +4,8 @@ import { Handle, NodeResizeControl, Position, useReactFlow, useStore } from 'rea
 import type { LucideIcon } from 'lucide-react';
 import { AlertCircle, EyeOff, Flag, FlagTriangleRight, OctagonX } from 'lucide-react';
 import type { NodeStatus } from '../../core/graph/nodeStatus';
+import { useEditor } from '../../editor/EditorContext';
+import { editingNode } from '../../editor/editingNode';
 
 // Shared pieces every canvas node is built from, so the node types differ only
 // in their body. Colours come from the theme tokens; a node's own colour is
@@ -115,8 +117,15 @@ interface EditableTitleProps {
 
 /** Double-click to rename; Enter or blur finishes. */
 export function EditableTitle({ nodeId, value, placeholder, onChange, className = 'text-sm font-semibold text-nt-ink' }: EditableTitleProps) {
+  const { readOnly } = useEditor();
   const [editing, setEditing] = useState(false);
-  useNodeEditRequest(nodeId, 'title', () => setEditing(true));
+  useNodeEditRequest(nodeId, 'title', () => { if (!readOnly) setEditing(true); });
+  // While renaming, live changes to this node wait.
+  useEffect(() => {
+    if (!editing || !nodeId) return;
+    editingNode.start(nodeId);
+    return () => editingNode.stop(nodeId);
+  }, [editing, nodeId]);
   if (editing) {
     return (
       <input
@@ -135,7 +144,7 @@ export function EditableTitle({ nodeId, value, placeholder, onChange, className 
     );
   }
   return (
-    <div className={`cursor-text truncate ${className}`} title="Double click to rename" onDoubleClick={() => setEditing(true)}>
+    <div className={`${readOnly ? '' : 'cursor-text'} truncate ${className}`} title={readOnly ? undefined : 'Double click to rename'} onDoubleClick={() => { if (!readOnly) setEditing(true); }}>
       {value || <span className="text-nt-ink-3">{placeholder}</span>}
     </div>
   );

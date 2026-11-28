@@ -2,7 +2,8 @@ import { Project } from '../models/story';
 import { createInvite, Invite, Progress } from './liveShare';
 import { replyInviteKey } from './connectCode';
 import { codeFromPasted, shareUrl } from './shareLink';
-import { liveSession, LiveSession, myPeerName, PEER_COLORS } from './liveSession';
+import { liveSession, LiveSession, myPeerName, PEER_COLORS, Access } from './liveSession';
+import { backUp } from './backups';
 import { shortId } from '../utils/id';
 
 // Invites waiting for a reply live here, not in the Share dialog: the dialog
@@ -22,11 +23,11 @@ export interface PendingInvite {
   status: InviteStatus;
   progress: Progress | null;
   error: string;
-  /** Live invites: the guest's name once they've joined. */
-  joined?: string;
+  /** Live invites: may they edit, or only watch? */
+  access: Access;
 }
 
-const entries = new Map<string, { info: PendingInvite; invite: Invite }>();
+const entries = new Map<string, { info: PendingInvite; invite: Invite; getProject: () => Project }>();
 let snapshot: PendingInvite[] = [];
 const listeners = new Set<() => void>();
 
@@ -49,13 +50,13 @@ export const invites = {
   all: () => snapshot,
 
   /** A new invite for one person. `getProject` is read when they connect, so they get the story as it is then. */
-  async create(projectId: string, getProject: () => Project, mode: InviteMode): Promise<PendingInvite> {
+  async create(projectId: string, getProject: () => Project, mode: InviteMode, access: Access = 'edit'): Promise<PendingInvite> {
     const invite = await createInvite(getProject, { live: mode === 'live' });
     const info: PendingInvite = {
-      id: invite.key, projectId, mode, link: shareUrl(invite.code) ?? invite.code,
+      id: invite.key, projectId, mode, access, link: shareUrl(invite.code) ?? invite.code,
       status: 'waiting', progress: null, error: '',
     };
-    entries.set(info.id, { info, invite });
+    entries.set(info.id, { info, invite, getProject });
     changed();
     return info;
   },
@@ -76,16 +77,19 @@ export const invites = {
         ? 'That reply is for a link that’s no longer waiting. Send them a new link.'
         : 'That isn’t a reply code. Ask them for the code their page shows.');
     }
-    const { info, invite } = entry;
+    const { info, invite, getProject } = entry;
     update(info.id, { status: 'sending', error: '' });
     try {
       const channel = await invite.accept(code, (progress) => update(info.id, { progress }));
       if (info.mode === 'live') {
         const running = liveSession.get();
-        const session = running && running.projectId === info.projectId && running.role === 'host'
-          ? running
-          : liveSession.start(new LiveSession('host', info.projectId, { id: shortId(), name: myPeerName.get() || 'Host', color: PEER_COLORS[0] }));
-        session.addGuest(channel);
+        let session = running && running.projectId === info.projectId && running.role === 'host' ? running : null;
+        if (!session) {
+          // A session is starting: keep a copy of the story as it was, to go back to.
+          await backUp(getProject(), 'before live session').catch(() => {});
+          session = liveSession.start(new LiveSession('host', info.projectId, { id: shortId(), name: myPeerName.get() || 'Host', color: PEER_COLORS[0], access: 'edit' }));
+        }
+        session.addGuest(channel, info.access);
       } else {
         invite.close();
       }

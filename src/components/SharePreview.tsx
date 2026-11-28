@@ -4,7 +4,8 @@ import { Check, Copy, PenLine, Play } from 'lucide-react';
 import { Project } from '../models/story';
 import { answerInvite, Answer, Progress } from '../services/liveShare';
 import { finalizeAndSaveImportedProject } from '../services/projectImport';
-import { saveProject } from '../services/storageService';
+import { loadProject, saveProject } from '../services/storageService';
+import { backUp, editedSinceSession, markSynced } from '../services/backups';
 import { liveSession, LiveSession, myPeerName } from '../services/liveSession';
 import { shortId } from '../utils/id';
 import { buttonPrimary, buttonSecondary, input } from './ui/styles';
@@ -72,7 +73,12 @@ export default function SharePreview() {
         myPeerName.set(me);
         const session = liveSession.start(new LiveSession('guest', received.id, { id: shortId(), name: me, color: '' }));
         const now = await session.join(channel, me);
+        // Rejoining replaces your copy with theirs: if you'd changed it on your
+        // own since the last session, keep that version as a backup first.
+        const mine = await loadProject(now.id);
+        if (mine && editedSinceSession(mine)) await backUp(mine, 'your copy before rejoining').catch(() => {});
         await saveProject({ ...now, modifiedAt: Date.now() });
+        markSynced(now);
         answer.current = null; // the connection now belongs to the session
         if (!cancelled) navigate(`/${now.id}`, { replace: true });
         return;
