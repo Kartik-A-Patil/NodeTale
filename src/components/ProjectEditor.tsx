@@ -366,7 +366,7 @@ function ProjectEditor() {
       { id: 'save', label: 'Save', category: 'File', keys: KEYS.save, run: saveNow },
       { id: 'validate', label: 'Show problems', category: 'File', run: () => window.dispatchEvent(new CustomEvent('nodetale:show-problems')) },
       { id: 'export', label: 'Export the story', category: 'File', run: onToolbarExport },
-      { id: 'share', label: 'Share a link to the story', category: 'File', run: onToolbarShare },
+      { id: 'share', label: 'Share the story', category: 'File', run: onToolbarShare },
       { id: 'play', label: 'Play the story', category: 'Story', run: () => { setPlayStartNodeId(null); setIsPlaying(true); }, enabled: canPlay },
       { id: 'play-here', label: 'Play from the selected scene', category: 'Story', keys: KEYS.playFromHere, run: () => single && startPlayFromNode(single.id), enabled: flow && single?.type === 'elementNode' },
       ...VIEW_MODES.map((v, i) => ({ id: `view-${v.id}`, label: `View: ${v.label}`, category: 'View' as const, keys: { key: String(i + 1), alt: true }, run: () => setViewMode(v.id) })),

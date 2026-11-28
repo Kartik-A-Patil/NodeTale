@@ -1,45 +1,11 @@
-import { Project, StoryNode } from '../models/story';
-import { compactProject } from './storageService';
+// Codes that travel between two people by hand: the invite in a share link
+// (after the #, which never reaches a server) and the reply code sent back.
+// "v2." + base64url(deflate-raw(JSON)): the browser's own compression, no
+// library. The prefix lets a later format still recognise old codes.
 
-// Share links carry a whole story inside the URL, after the #. That part is
-// never sent to a server, so a link works from the static site and stays
-// private to whoever has it. Stories only: images, sound and video are far too
-// big for a link (the single HTML export carries those).
-//
-// Format: "v1." + base64url(deflate-raw(JSON of the compacted story)).
-// The prefix lets a later format change still read old links.
+const PREFIX = 'v2.';
 
-const PREFIX = 'v1.';
-/** Beyond this many characters some chat apps and email clients cut links off. */
-export const LONG_LINK = 8000;
-
-// Pasted images inside scene text, as data: URLs: media too, so not in links.
-const INLINE_IMAGE = /<img\b[^>]*\bsrc=["']data:[^"']*["'][^>]*>/gi;
-
-const storyOnlyNode = (node: StoryNode): StoryNode => {
-  const data = { ...node.data } as Record<string, unknown>;
-  delete data.assets;
-  delete data.audioSettings;
-  if (typeof data.content === 'string' && data.content.includes('data:')) data.content = data.content.replace(INLINE_IMAGE, '');
-  return { ...node, data } as unknown as StoryNode;
-};
-
-/** The story as a link carries it: text, logic and variables; no media, no cover. */
-export function toSharedStory(project: Project): Project {
-  const compact = compactProject(project);
-  return {
-    ...compact,
-    id: '',
-    coverImage: undefined,
-    modifiedAt: undefined,
-    assets: [],
-    folders: [],
-    boards: compact.boards.map((b) => ({ ...b, nodes: b.nodes.map(storyOnlyNode) })),
-  };
-}
-
-// The browser's own deflate (CompressionStream): no library. Response wraps
-// the bytes as a stream in every environment that has one.
+// Response wraps the bytes as a stream in every environment that has one.
 const through = async (bytes: Uint8Array, stream: CompressionStream | DecompressionStream) =>
   new Uint8Array(await new Response(new Response(bytes).body!.pipeThrough(stream)).arrayBuffer());
 
@@ -54,34 +20,26 @@ const fromBase64Url = (text: string) => {
   return Uint8Array.from(binary, (c) => c.charCodeAt(0));
 };
 
-/** The code for a story ("v1.…"): what goes after the # in a share link. */
-export async function encodeStory(project: Project): Promise<string> {
-  const json = new TextEncoder().encode(JSON.stringify(toSharedStory(project)));
+export class ShareCodeError extends Error {}
+
+export async function packCode(value: unknown): Promise<string> {
+  const json = new TextEncoder().encode(JSON.stringify(value));
   return PREFIX + toBase64Url(await through(json, new CompressionStream('deflate-raw')));
 }
 
-export class ShareLinkError extends Error {}
-
-/** The story in a code, or a plain-language error for a damaged or foreign one. */
-export async function decodeStory(code: string): Promise<Project> {
-  if (!code.startsWith(PREFIX)) throw new ShareLinkError('This doesn’t look like a NodeTale share link.');
-  let story: unknown;
+export async function unpackCode<T>(code: string): Promise<T> {
+  if (!code.startsWith(PREFIX)) throw new ShareCodeError('This doesn’t look like a NodeTale share code.');
   try {
     const bytes = await through(fromBase64Url(code.slice(PREFIX.length)), new DecompressionStream('deflate-raw'));
-    story = JSON.parse(new TextDecoder().decode(bytes));
+    return JSON.parse(new TextDecoder().decode(bytes)) as T;
   } catch {
-    throw new ShareLinkError('This link is incomplete or damaged. Ask for it to be sent again, in full.');
+    throw new ShareCodeError('This code is incomplete or damaged. Ask for it to be sent again, in full.');
   }
-  const p = story as Partial<Project>;
-  if (!p || typeof p.name !== 'string' || !Array.isArray(p.boards) || !Array.isArray(p.variables)) {
-    throw new ShareLinkError('This link doesn’t contain a story.');
-  }
-  return { assets: [], folders: [], activeBoardId: p.boards[0]?.id ?? '', ...p } as Project;
 }
 
-/** The code inside whatever was pasted: a full link, "…#v1.…", or the code itself. */
+/** The code inside whatever was pasted: a full link, "…#v2.…", or the code itself. */
 export function codeFromPasted(text: string): string {
-  const trimmed = text.trim();
+  const trimmed = text.trim().replace(/\s+/g, '');
   const hash = trimmed.indexOf('#');
   return hash >= 0 ? trimmed.slice(hash + 1) : trimmed;
 }

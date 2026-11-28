@@ -114,7 +114,7 @@ export const Toolbar = forwardRef<HTMLInputElement, ToolbarProps>(function Toolb
               </DropdownMenuItem>
               <DropdownMenuItem className="flex-col items-start whitespace-normal px-3 py-2 focus:bg-nt-raised" onSelect={onOpenLink}>
                 <span className="block text-sm text-nt-ink">Open a share link…</span>
-                <span className="block text-xs text-nt-ink-3">Play or copy a story someone sent you</span>
+                <span className="block text-xs text-nt-ink-3">Receive a story someone is sharing</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
