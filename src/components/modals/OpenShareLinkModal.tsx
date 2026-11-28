@@ -26,7 +26,7 @@ export function OpenShareLinkModal({ open, onClose, onOpen }: { open: boolean; o
         autoFocus
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder="https://…/share#v2.…"
+        placeholder="Paste the link or code"
         aria-label="Share link or code"
         rows={4}
         className="w-full resize-none break-all rounded-md border border-nt-line-strong bg-nt-bg p-2.5 font-mono text-xs text-nt-ink placeholder:text-nt-ink-3"

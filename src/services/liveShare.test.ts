@@ -14,7 +14,6 @@ vi.mock('./storage', () => ({
 }));
 
 const { sendStory, receiveStory } = await import('./liveShare');
-const { packCode, unpackCode, codeFromPasted } = await import('./shareLink');
 
 // Two connected ends of an in-memory data channel.
 function channelPair() {
@@ -56,13 +55,5 @@ it('sends a story and every media file, byte for byte, and skips files it can’
   expect([...saved.keys()].sort()).toEqual(['img1', 'snd1']);
   expect(new Uint8Array(await saved.get('img1')!.arrayBuffer())).toEqual(new Uint8Array(await senderFiles.get('img1')!.arrayBuffer()));
   expect(saved.get('img1')!.type).toBe('image/jpeg');
-  expect(last.at(-1)).toEqual({ done: 70_005, total: 70_005, files: 2, fileCount: 2 });
-});
-
-it('packs codes small and reads them back from a pasted link', async () => {
-  const code = await packCode({ kind: 'invite', name: 'Demo', sdp: 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n'.repeat(20) });
-  expect(code).toMatch(/^v2\.[A-Za-z0-9_-]+$/);
-  expect(code.length).toBeLessThan(250);
-  expect(await unpackCode(codeFromPasted(`https://x.app/share#${code}\n`))).toMatchObject({ kind: 'invite', name: 'Demo' });
-  await expect(unpackCode('v2.broken')).rejects.toThrow(/incomplete or damaged/);
+  expect(last.at(-1)).toEqual({ name: 'Demo', done: 70_005, total: 70_005, files: 2, fileCount: 2 });
 });

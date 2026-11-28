@@ -26,19 +26,21 @@ interface PlayModeProps {
 
 const FADE_MS = 600;
 
-// Ramps volume instead of cutting: returns a cancel function.
+// Ramps volume instead of cutting: returns a cancel function. A timer, not
+// requestAnimationFrame, which stops in background tabs and would leave a
+// sound that started there silent.
 function fadeVolume(audio: HTMLAudioElement, to: number, done?: () => void) {
   const from = audio.volume;
   const start = performance.now();
-  let frame = 0;
-  const tick = (now: number) => {
-    const t = Math.min(1, (now - start) / FADE_MS);
+  const timer = setInterval(() => {
+    const t = Math.min(1, (performance.now() - start) / FADE_MS);
     audio.volume = from + (to - from) * t;
-    if (t < 1) frame = requestAnimationFrame(tick);
-    else done?.();
-  };
-  frame = requestAnimationFrame(tick);
-  return () => cancelAnimationFrame(frame);
+    if (t >= 1) {
+      clearInterval(timer);
+      done?.();
+    }
+  }, 30);
+  return () => clearInterval(timer);
 }
 
 // A scene's sound. Keyed by asset id, so a sound shared by consecutive scenes

@@ -42,3 +42,17 @@ it('stores only what the author set, and loading restores the rest', async () =>
   expect(toCanvasEdge(board.edges[0])).toMatchObject({ type: 'floating', markerEnd: arrow, style: { stroke: '#71717a' } });
   expect(toCanvasEdge(board.edges[1]).style).toEqual({ stroke: '#ef4444' });
 });
+
+it('drops references to media that no longer exists', () => {
+  const project: any = {
+    id: 'p', name: 'p', activeBoardId: 'b', variables: [], folders: [],
+    assets: [{ id: 'a1', name: 'x.mp3', url: '', type: 'audio', parentId: null }],
+    boards: [{ id: 'b', name: 'b', edges: [], nodes: [
+      { id: 's', type: 'elementNode', position: { x: 0, y: 0 }, data: { label: 'S', content: '', assets: ['gone', 'a1'], audioSettings: { gone: { loop: true, delay: 0 }, a1: { loop: true, delay: 0 } } } },
+      { id: 't', type: 'elementNode', position: { x: 0, y: 0 }, data: { label: 'T', content: '', assets: ['gone'] } },
+    ] }],
+  };
+  const [s, t] = compactProject(project).boards[0].nodes as any[];
+  expect(s.data).toEqual({ label: 'S', content: '', assets: ['a1'], audioSettings: { a1: { loop: true, delay: 0 } } });
+  expect(t.data).toEqual({ label: 'T', content: '' });
+});

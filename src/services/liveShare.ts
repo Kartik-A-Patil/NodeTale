@@ -1,7 +1,7 @@
 import { Project } from '../models/story';
 import { getStorageAdapter } from './storage';
 import { compactProject } from './storageService';
-import { packCode, unpackCode, ShareCodeError } from './shareLink';
+import { encodeConnectCode, decodeConnectCode } from './connectCode';
 
 // Sharing a story straight from one browser to another, media included, with
 // nothing in between: no server, no relay. WebRTC carries the data; the two
@@ -10,19 +10,22 @@ import { packCode, unpackCode, ShareCodeError } from './shareLink';
 // public address, so the two can reach each other across networks.
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }];
-/** Candidates found within this time go in the code; waiting longer rarely finds more. */
-const GATHER_MS = 4000;
 
-interface InviteCode { kind: 'invite'; name: string; sdp: string }
-interface ReplyCode { kind: 'reply'; sdp: string }
-
-// A code has to hold every way to reach this browser, so wait for candidate gathering to finish.
+// A code must hold the ways to reach this browser. Addresses arrive within
+// milliseconds, but "gathering complete" can take seconds (a STUN server that
+// never answers), so stop shortly after the first public address, or after a
+// short wait with local ones only (same network).
 const gathered = (pc: RTCPeerConnection) =>
   new Promise<void>((resolve) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const finish = (ms: number) => { clearTimeout(timer); timer = setTimeout(resolve, ms); };
     if (pc.iceGatheringState === 'complete') return resolve();
-    const done = () => { if (pc.iceGatheringState === 'complete') resolve(); };
-    pc.addEventListener('icegatheringstatechange', done);
-    setTimeout(resolve, GATHER_MS);
+    pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') resolve(); });
+    pc.addEventListener('icecandidate', (e) => {
+      if (!e.candidate) return resolve();
+      if (/ typ srflx/.test(e.candidate.candidate)) finish(150);
+    });
+    finish(1500);
   });
 
 const failedHere = (pc: RTCPeerConnection, onFail: () => void) =>
@@ -30,7 +33,7 @@ const failedHere = (pc: RTCPeerConnection, onFail: () => void) =>
     if (pc.connectionState === 'failed') onFail();
   });
 
-export const CONNECT_FAILED =
+const CONNECT_FAILED =
   'Couldn’t connect. Some office, school or mobile networks block direct connections; try another network (or both on the same Wi-Fi).';
 
 // ---------- the transfer: what goes over the connection ----------
@@ -46,6 +49,8 @@ export interface Channel {
 }
 
 export interface Progress {
+  /** The story's name, once known. */
+  name?: string;
   /** Bytes of media sent or received so far, and in all. */
   done: number;
   total: number;
@@ -97,7 +102,8 @@ export async function sendStory(ch: Channel, project: Project, onProgress: (p: P
   send({ t: 'story', project: { ...story, assets: story.assets.map((a) => ({ ...a, url: '' })) }, media });
 
   let done = 0;
-  onProgress({ done, total, files: 0, fileCount: files.length });
+  const name = project.name;
+  onProgress({ name, done, total, files: 0, fileCount: files.length });
   for (const [i, { asset, blob }] of files.entries()) {
     send({ t: 'file', id: asset.id, size: blob.size, type: blob.type });
     const bytes = await blob.arrayBuffer();
@@ -105,9 +111,9 @@ export async function sendStory(ch: Channel, project: Project, onProgress: (p: P
       await drained(ch);
       ch.send(bytes.slice(at, at + CHUNK));
       done += Math.min(CHUNK, bytes.byteLength - at);
-      onProgress({ done, total, files: i, fileCount: files.length });
+      onProgress({ name, done, total, files: i, fileCount: files.length });
     }
-    onProgress({ done, total, files: i + 1, fileCount: files.length });
+    onProgress({ name, done, total, files: i + 1, fileCount: files.length });
   }
   send({ t: 'done' });
   await received;
@@ -117,7 +123,9 @@ export async function sendStory(ch: Channel, project: Project, onProgress: (p: P
 export function receiveStory(ch: Channel, onProgress: (p: Progress) => void): Promise<Project> {
   return new Promise((resolve, reject) => {
     let project: Project | null = null;
+    let name: string | undefined;
     let total = 0, done = 0, files = 0, fileCount = 0;
+    const report = () => onProgress({ name, done, total, files, fileCount });
     let current: { id: string; size: number; type: string; parts: ArrayBuffer[]; got: number } | null = null;
     const saves: Promise<unknown>[] = [];
 
@@ -127,7 +135,7 @@ export function receiveStory(ch: Channel, onProgress: (p: Progress) => void): Pr
       saves.push(getStorageAdapter().saveAsset(blob, current.id));
       current = null;
       files++;
-      onProgress({ done, total, files, fileCount });
+      report();
     };
 
     ch.addEventListener('message', (e) => {
@@ -138,16 +146,17 @@ export function receiveStory(ch: Channel, onProgress: (p: Progress) => void): Pr
           current.parts.push(part);
           current.got += part.byteLength;
           done += part.byteLength;
-          onProgress({ done, total, files, fileCount });
+          report();
           if (current.got >= current.size) finishFile();
           return;
         }
         const m = JSON.parse(e.data) as Message;
         if (m.t === 'story') {
           project = m.project;
+          name = m.project.name;
           fileCount = m.media.length;
           total = m.media.reduce((sum, x) => sum + x.size, 0);
-          onProgress({ done, total, files, fileCount });
+          report();
         } else if (m.t === 'file') {
           current = { id: m.id, size: m.size, type: m.type, parts: [], got: 0 };
           if (m.size === 0) finishFile();
@@ -182,15 +191,13 @@ export async function createInvite(project: Project): Promise<Invite> {
   channel.binaryType = 'arraybuffer';
   await pc.setLocalDescription(await pc.createOffer());
   await gathered(pc);
-  const code = await packCode({ kind: 'invite', name: project.name, sdp: pc.localDescription!.sdp } satisfies InviteCode);
+  const code = encodeConnectCode(pc.localDescription!.sdp, 'invite');
 
   return {
     code,
     close: () => pc.close(),
     accept: async (reply, onProgress) => {
-      const answer = await unpackCode<ReplyCode>(reply);
-      if (answer.kind !== 'reply') throw new ShareCodeError('That’s not a reply code. Ask them for the code their page shows.');
-      await pc.setRemoteDescription({ type: 'answer', sdp: answer.sdp });
+      await pc.setRemoteDescription({ type: 'answer', sdp: decodeConnectCode(reply, 'reply') });
       await new Promise<void>((resolve, reject) => {
         if (channel.readyState === 'open') return resolve();
         channel.addEventListener('open', () => resolve());
@@ -202,8 +209,6 @@ export async function createInvite(project: Project): Promise<Invite> {
 }
 
 export interface Answer {
-  /** The story's name, from the invite. */
-  name: string;
   /** Send this back to the person sharing. */
   reply: string;
   /** Resolves with the story once it and every file have arrived (files are saved as they come). */
@@ -213,18 +218,16 @@ export interface Answer {
 
 /** Their side: answer an invite from a share link. */
 export async function answerInvite(code: string): Promise<Answer> {
-  const invite = await unpackCode<InviteCode>(code);
-  if (invite.kind !== 'invite') throw new ShareCodeError('This isn’t a share link. It may be a reply code meant for the person sharing.');
+  const offer = decodeConnectCode(code, 'invite');
   const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
   const channel = new Promise<RTCDataChannel>((resolve) =>
     pc.addEventListener('datachannel', (e) => { e.channel.binaryType = 'arraybuffer'; resolve(e.channel); }));
-  await pc.setRemoteDescription({ type: 'offer', sdp: invite.sdp });
+  await pc.setRemoteDescription({ type: 'offer', sdp: offer });
   await pc.setLocalDescription(await pc.createAnswer());
   await gathered(pc);
-  const reply = await packCode({ kind: 'reply', sdp: pc.localDescription!.sdp } satisfies ReplyCode);
+  const reply = encodeConnectCode(pc.localDescription!.sdp, 'reply');
 
   return {
-    name: invite.name,
     reply,
     close: () => pc.close(),
     receive: (onProgress) =>

@@ -77,10 +77,11 @@ export const StoryNode: React.FC<StoryNodeProps> = ({ label, content, options, o
 
   return (
     <div
-      className={`flex flex-col justify-center h-full p-8 md:p-16 overflow-y-auto ${hasVisual ? "w-full bg-black" : "w-full mx-auto"}`}
+      // my-auto, not justify-center: centred when it fits, scrollable from the top when it doesn't.
+      className={`flex flex-col h-full p-8 md:p-16 overflow-y-auto ${hasVisual ? "w-full bg-black" : "w-full mx-auto"}`}
       onClick={() => !revealed && setRevealed(true)}
     >
-      <div className="max-w-xl w-full mx-auto flex flex-col gap-8 animate-in fade-in duration-500">
+      <div className="max-w-xl w-full m-auto flex flex-col gap-8 animate-in fade-in duration-500">
         <div className="space-y-6">
           <h1 className="text-3xl md:text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-200 font-serif tracking-tight">
             {label}

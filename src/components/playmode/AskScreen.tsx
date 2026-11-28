@@ -30,8 +30,8 @@ export const AskScreen: React.FC<AskScreenProps> = ({ title, questions, onAnswer
   };
 
   return (
-    <div className="flex h-full w-full flex-col justify-center overflow-y-auto p-8 md:p-16">
-      <form onSubmit={submit} className="mx-auto flex w-full max-w-xl flex-col gap-8 animate-in fade-in duration-500">
+    <div className="flex h-full w-full flex-col overflow-y-auto p-8 md:p-16">
+      <form onSubmit={submit} className="m-auto flex w-full max-w-xl flex-col gap-8 animate-in fade-in duration-500">
         <h1 className="font-serif text-3xl font-bold tracking-tight text-orange-300 md:text-4xl">{title}</h1>
         {questions.map((q, i) => (
           <label key={q.id} className="flex flex-col gap-3">

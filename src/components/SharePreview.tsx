@@ -4,23 +4,22 @@ import { Check, Copy, PenLine, Play } from 'lucide-react';
 import { Project } from '../models/story';
 import { answerInvite, Answer, Progress } from '../services/liveShare';
 import { finalizeAndSaveImportedProject } from '../services/projectImport';
-import { buttonPrimary, buttonSecondary } from './ui/styles';
+import { buttonPrimary, buttonSecondary, input } from './ui/styles';
 import { TransferProgress } from './share/TransferProgress';
 
 const PlayMode = React.lazy(() => import('./PlayMode'));
 
-type Step = 'answering' | 'waiting' | 'receiving' | 'done';
+type Step = 'opening' | 'waiting' | 'receiving' | 'done';
 
-// Opening a share link: answer the invite, show the reply code to send back,
-// then receive the story and its media straight from the sender's browser
-// and keep it as an editable copy. The code arrives in the URL's # (a link)
-// or as router state (pasted on the dashboard).
+// Opening a share link: show the reply code to send back, then receive the
+// story and its media straight from the sender's browser and keep it as an
+// editable copy. The code arrives in the URL's # (a link) or as router state
+// (pasted on the dashboard).
 export default function SharePreview() {
   const location = useLocation();
   const navigate = useNavigate();
   const code = (location.state as { code?: string } | null)?.code ?? location.hash.slice(1);
-  const [step, setStep] = useState<Step>('answering');
-  const [name, setName] = useState('');
+  const [step, setStep] = useState<Step>('opening');
   const [reply, setReply] = useState('');
   const [copied, setCopied] = useState(false);
   const [progress, setProgress] = useState<Progress | null>(null);
@@ -31,17 +30,16 @@ export default function SharePreview() {
 
   useEffect(() => {
     let cancelled = false;
-    setStep('answering');
+    setStep('opening');
     setError('');
     if (!code) {
-      setError('This link has no invite in it. Make sure the whole link was copied.');
+      setError('This link is missing its code. Make sure the whole link was copied.');
       return;
     }
     (async () => {
       const a = await answerInvite(code);
       if (cancelled) return a.close();
       answer.current = a;
-      setName(a.name);
       setReply(a.reply);
       setStep('waiting');
       const received = await a.receive((p) => {
@@ -70,6 +68,8 @@ export default function SharePreview() {
     }
   };
 
+  const title = story?.name ?? progress?.name;
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-nt-bg px-4 text-nt-ink">
       <main className="w-full max-w-md">
@@ -79,29 +79,20 @@ export default function SharePreview() {
             <p className="mt-2 text-sm leading-relaxed text-nt-ink-2">{error}</p>
             <button type="button" className={`${buttonSecondary} mt-6`} onClick={() => navigate('/')}>Go to my stories</button>
           </>
-        ) : step === 'answering' ? (
-          <p className="text-sm text-nt-ink-3" role="status">Opening the invite…</p>
         ) : (
           <>
-            <p className="text-sm text-nt-ink-3">{step === 'done' ? 'The story is yours' : 'Someone is sharing a story with you'}</p>
-            <h1 className="mt-1 text-2xl font-semibold [text-wrap:balance]">{name}</h1>
+            <h1 className="text-2xl font-semibold [text-wrap:balance]">{title ?? 'Someone is sharing a story with you'}</h1>
 
-            {step === 'waiting' && (
+            {(step === 'opening' || step === 'waiting') && (
               <>
-                <p className="mt-4 text-sm leading-relaxed text-nt-ink-2">
-                  Send this reply code back to them. The story and its media arrive here once they paste it. Keep this page open.
-                </p>
-                <textarea
-                  readOnly
-                  rows={4}
-                  value={reply}
-                  onFocus={(e) => e.currentTarget.select()}
-                  aria-label="Reply code"
-                  className="mt-3 w-full resize-none break-all rounded-md border border-nt-line bg-nt-surface p-2.5 font-mono text-xs leading-relaxed text-nt-ink-2"
-                />
-                <button type="button" className={`${buttonPrimary} mt-3`} onClick={copy}>
-                  {copied ? <Check size={15} aria-hidden /> : <Copy size={15} aria-hidden />} {copied ? 'Copied' : 'Copy reply code'}
-                </button>
+                <p className="mt-3 text-sm leading-relaxed text-nt-ink-2">Send them this reply code. The story arrives here, with all its media, once they paste it.</p>
+                <div className="mt-4 flex gap-2">
+                  <input readOnly value={reply || 'Preparing…'} onFocus={(e) => e.currentTarget.select()} aria-label="Reply code" className={`${input} min-w-0 flex-1 font-mono text-xs`} />
+                  <button type="button" className={buttonPrimary} onClick={copy} disabled={!reply}>
+                    {copied ? <Check size={15} aria-hidden /> : <Copy size={15} aria-hidden />} {copied ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+                {reply && <p className="mt-3 animate-pulse text-xs text-nt-ink-3" role="status">Waiting for them… keep this page open.</p>}
               </>
             )}
 
@@ -113,7 +104,7 @@ export default function SharePreview() {
 
             {step === 'done' && story && (
               <>
-                <p className="mt-4 text-sm leading-relaxed text-nt-ink-2">Saved to your stories, with all its images, sound and video.</p>
+                <p className="mt-4 text-sm text-nt-ink-2">Saved to your stories.</p>
                 <div className="mt-5 flex flex-wrap gap-2">
                   <button type="button" className={buttonPrimary} onClick={() => navigate(`/${story.id}`, { replace: true })}>
                     <PenLine size={15} aria-hidden /> Open in editor
@@ -124,10 +115,6 @@ export default function SharePreview() {
                 </div>
               </>
             )}
-
-            <button type="button" className="mt-8 block text-sm text-nt-ink-3 underline-offset-4 hover:text-nt-ink hover:underline" onClick={() => navigate('/')}>
-              Go to my stories
-            </button>
           </>
         )}
       </main>

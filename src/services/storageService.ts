@@ -34,9 +34,11 @@ const withoutEmpty = <T extends object>(o: T, keep: string[] = []): T =>
   Object.fromEntries(Object.entries(o).filter(([k, v]) => keep.includes(k) || !isEmpty(v))) as T;
 
 /** A node as it should be stored: whole-pixel geometry, no copies, no defaults, no paste debris. */
-const compactNode = (node: StoryNode): StoryNode => {
+const compactNode = (node: StoryNode, assetIds: Set<string>): StoryNode => {
   const { id, type, parentNode, extent } = node;
   const data = { ...node.data } as Record<string, unknown>;
+  // Media deleted from the project leaves its id behind in scenes.
+  if (Array.isArray(data.assets)) data.assets = data.assets.filter((a) => assetIds.has(a as string));
   if (typeof data.content === 'string' && data.content.includes(' data-start=')) data.content = data.content.replace(PASTE_ATTRS, '');
   // Audio settings for assets no longer on the scene.
   if (data.audioSettings && typeof data.audioSettings === 'object') {
@@ -80,15 +82,18 @@ const compactEdge = (edge: StoryEdge, sourceType: string | undefined): StoryEdge
 };
 
 /** Single storage shape for a project, used by every save and every export. */
-export const compactProject = (project: Project): Project => ({
-  ...project,
-  // Blob URLs die with the page; assets are read from storage by id.
-  assets: project.assets.map((a) => (a.url.startsWith('blob:') ? { ...a, url: '' } : a)),
-  boards: project.boards.map((board) => {
-    const types = new Map(board.nodes.map((n) => [n.id, n.type]));
-    return { ...board, nodes: board.nodes.map(compactNode), edges: board.edges.map((e) => compactEdge(e, types.get(e.source))) };
-  }),
-});
+export const compactProject = (project: Project): Project => {
+  const assetIds = new Set(project.assets.map((a) => a.id));
+  return {
+    ...project,
+    // Blob URLs die with the page; assets are read from storage by id.
+    assets: project.assets.map((a) => (a.url.startsWith('blob:') ? { ...a, url: '' } : a)),
+    boards: project.boards.map((board) => {
+      const types = new Map(board.nodes.map((n) => [n.id, n.type]));
+      return { ...board, nodes: board.nodes.map((n) => compactNode(n, assetIds)), edges: board.edges.map((e) => compactEdge(e, types.get(e.source))) };
+    }),
+  };
+};
 
 // Wrappers that map 1:1 to StorageAdapter methods
 
