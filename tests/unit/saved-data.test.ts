@@ -32,7 +32,8 @@ it('stores only what the author set, and loading restores the rest', async () =>
     ] }],
   };
   const [board] = compactProject(project).boards;
-  expect(board.nodes[0]).toEqual({ id: 's', type: 'elementNode', position: { x: 1, y: 3 }, width: 250, height: 150, data: { label: 'Start', content: '' } });
+  // A resized scene: its width and chosen height (style) are kept, its measured height isn't.
+  expect(board.nodes[0]).toEqual({ id: 's', type: 'elementNode', position: { x: 1, y: 3 }, width: 250, style: { height: 150 }, data: { label: 'Start', content: '' } });
   expect(board.nodes[1].data).toEqual({ label: 'If', branches: [] });
   expect(board.nodes[2]).toEqual({ id: 'c', type: 'commentNode', position: { x: 0, y: 0 }, data: { label: '', text: 'note' } });
   expect(board.edges[0]).toEqual({ id: 'e1', source: 's', target: 'k' });
@@ -54,4 +55,18 @@ it('drops references to media that no longer exists', () => {
   const [s, t] = compactProject(project).boards[0].nodes as any[];
   expect(s.data).toEqual({ label: 'S', content: '', assets: ['a1'], audioSettings: { a1: { loop: true, delay: 0 } } });
   expect(t.data).toEqual({ label: 'T', content: '' });
+});
+
+it('does not pin an unresized scene to an old measured height', () => {
+  const project: any = {
+    id: 'p', name: 'p', activeBoardId: 'b', variables: [], folders: [], assets: [],
+    boards: [{ id: 'b', name: 'b', edges: [], nodes: [
+      { id: 's', type: 'elementNode', position: { x: 0, y: 0 }, width: 250, height: 300, data: { label: 'S', content: '' } },
+      { id: 'g', type: 'sectionNode', position: { x: 0, y: 0 }, width: 600, height: 400, data: { label: 'Group' } },
+    ] }],
+  };
+  const [scene, section] = compactProject(project).boards[0].nodes as any[];
+  expect(scene.height).toBeUndefined();     // fits its text next time
+  expect(scene.style?.height).toBeUndefined();
+  expect(section.height).toBe(400);         // other nodes keep their size
 });
