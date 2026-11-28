@@ -11,7 +11,7 @@ import { shrinkCoverImage } from '../utils/coverImage';
 import { getLastOpened, useLocalPref } from '../utils/localPrefs';
 import { CreateProjectModal } from './modals/CreateProjectModal';
 import { DeleteProjectModal } from './modals/DeleteProjectModal';
-import { OpenShareLinkModal } from './modals/OpenShareLinkModal';
+import { OpenShareLinkDialog } from './share/OpenShareLinkDialog';
 import { Toolbar, SortKey, ViewKey } from './dashboard/Toolbar';
 import { FirstRun } from './dashboard/FirstRun';
 import { ProjectCard, ProjectRow, ProjectItemProps } from './dashboard/ProjectCard';
@@ -301,7 +301,7 @@ export default function Dashboard() {
       )}
 
       <CreateProjectModal open={creating} onClose={() => setCreating(false)} onCreate={createBlank} />
-      <OpenShareLinkModal open={openingLink} onClose={() => setOpeningLink(false)} onOpen={(code) => navigate('/share', { state: { code } })} />
+      <OpenShareLinkDialog open={openingLink} onClose={() => setOpeningLink(false)} onOpen={(code) => navigate('/share', { state: { code } })} />
       <DeleteProjectModal projectName={deleteTarget?.name ?? null} onClose={() => setDeleteTarget(null)} onConfirm={confirmDelete} />
     </div>
   );

@@ -13,7 +13,7 @@ import ReactFlow, {
 import ContextMenu from './ContextMenu';
 import { AssetSelectorModal } from './modals/AssetSelectorModal';
 import { ExportProjectModal } from './modals/ExportProjectModal';
-import { ShareStoryModal } from './modals/ShareStoryModal';
+import { ShareDialog } from './share/ShareDialog';
 import { HelpModal } from './modals/HelpModal';
 import { ViewMode, VIEW_MODES } from './views/viewModes';
 import { EditorTopBar, PanelId } from './editor/EditorTopBar';
@@ -23,7 +23,9 @@ import { useFlowLogic } from '../hooks/useFlowLogic';
 import { useResolvedEdgeLabels } from '../hooks/useResolvedEdgeLabels';
 import { useNodeContent } from '../hooks/useNodeContent';
 import { useLiveSessionFor, useLiveSync } from '../hooks/useLiveSync';
-import { LivePill } from './live/LivePill';
+import { SharePanel } from './share/SharePanel';
+import NotFound from './NotFound';
+import { invites } from '../services/invites';
 import { liveSession } from '../services/liveSession';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useDragAndDrop } from '../hooks/useDragAndDrop';
@@ -106,6 +108,7 @@ function ProjectEditor() {
     project,
     setProject,
     isInitializing,
+    notFound,
     lastSaved,
     saveNow,
     getLiveProject,
@@ -143,8 +146,19 @@ function ProjectEditor() {
     if (session) setSessionEnded(null);
     lastSession.current = session;
   }, [session]);
-  // Leaving the story leaves (or, for the host, ends) its session.
+  // Leaving the story leaves (or, for the host, ends) its session, and drops links still waiting.
   useEffect(() => liveSession.endWhenLeft(projectId), [projectId]);
+  useEffect(() => () => { if (projectId) invites.discardFor(projectId); }, [projectId]);
+  // Closing the tab would end the session for everyone, or cut a transfer short: ask first.
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => {
+      const s = liveSession.get();
+      const hostingOthers = s && s.projectId === projectId && s.role === 'host' && s.peers.length > 1;
+      if (hostingOthers || (projectId && invites.busy(projectId))) e.preventDefault();
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [projectId]);
 
   // Keyed on the selected ids, not `nodes`: a drag changes `nodes` every frame,
   // and a fresh array here would rebuild editorActions (re-binding the global
@@ -492,6 +506,9 @@ function ProjectEditor() {
     );
   }
 
+  // A link to a story that isn't on this device.
+  if (notFound) return <NotFound what="story" />;
+
   return (
     <EditorContext.Provider value={editorContext}>
     {/* Canvas-first: the board fills the window; everything else floats over it.
@@ -631,19 +648,17 @@ function ProjectEditor() {
       )}
 
       <ExportProjectModal project={exporting} onClose={() => setExporting(null)} />
-      <ShareStoryModal project={sharing} getProject={getLiveProject} onClose={() => setSharing(null)} />
-      {(session || sessionEnded) && (
-        <div className="absolute left-1/2 top-[4.25rem] z-30 -translate-x-1/2">
-          {session ? (
-            <LivePill session={session} onInvite={onToolbarShare} />
-          ) : (
-            <div className="flex items-center gap-3 rounded-full border border-nt-line bg-nt-surface/95 py-1.5 pl-4 pr-1.5 text-xs text-nt-ink-2 shadow-lg" role="status">
-              {sessionEnded}
-              <button type="button" onClick={() => setSessionEnded(null)} className="rounded-full px-2 py-1 text-nt-ink-3 hover:bg-nt-raised hover:text-nt-ink">Dismiss</button>
-            </div>
-          )}
-        </div>
-      )}
+      <ShareDialog project={sharing} getProject={getLiveProject} onClose={() => setSharing(null)} />
+      {/* Sharing, top right under Play. */}
+      <div className="absolute right-3 top-[3.75rem] z-30 flex flex-col items-end gap-2">
+        {projectId && <SharePanel projectId={projectId} session={session} onInvite={onToolbarShare} />}
+        {!session && sessionEnded && (
+          <div className="flex w-64 items-start gap-2 rounded-xl border border-nt-line bg-nt-surface/95 py-2 pl-3 pr-1.5 text-xs text-nt-ink-2 shadow-lg" role="status">
+            <span className="flex-1 leading-relaxed">{sessionEnded}</span>
+            <button type="button" onClick={() => setSessionEnded(null)} className="rounded px-2 py-0.5 text-nt-ink-3 hover:bg-nt-raised hover:text-nt-ink">Dismiss</button>
+          </div>
+        )}
+      </div>
       <HelpModal isOpen={helpOpen} onClose={() => setHelpOpen(false)} />
 
       <CommandPalette

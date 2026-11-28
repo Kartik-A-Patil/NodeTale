@@ -61,7 +61,7 @@ export function useFlowLogic(projectIdOrName?: string) {
     }));
   }, []);
 
-    const { project, setProject, isInitializing, lastSaved, saveNow, getLiveProject } = useProjectState(nodes, edges, setNodes, setEdges, projectIdOrName);
+    const { project, setProject, isInitializing, notFound, lastSaved, saveNow, getLiveProject } = useProjectState(nodes, edges, setNodes, setEdges, projectIdOrName);
 
     // Clipboard for copy/paste (stores nodes + edges snapshot)
     const clipboardRef = useRef<{ nodes: CanvasNode[]; edges: Edge[] } | null>(null);
@@ -259,6 +259,7 @@ export function useFlowLogic(projectIdOrName?: string) {
     project,
     setProject,
     isInitializing,
+    notFound,
     lastSaved,
     saveNow,
     getLiveProject,

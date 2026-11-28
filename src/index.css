@@ -38,6 +38,16 @@
   --nt-branch-7: 0.792 0 90;
 }
 
+/* Not found: a story path draws itself, and its last branch ends at a "?". */
+.nt-lost-line { stroke-dasharray: 220; stroke-dashoffset: 220; animation: nt-lost-draw 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.nt-lost-line[stroke-dasharray="5 6"] { stroke-dasharray: 5 6; stroke-dashoffset: 0; opacity: 0; animation: nt-lost-fade 0.5s ease-out forwards; }
+.nt-lost-node { opacity: 0; transform-box: fill-box; transform-origin: center; animation: nt-lost-pop 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.nt-lost-end { animation: nt-lost-pop 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards, nt-lost-wait 2.4s ease-in-out 1.9s infinite; }
+@keyframes nt-lost-draw { to { stroke-dashoffset: 0; } }
+@keyframes nt-lost-fade { to { opacity: 1; } }
+@keyframes nt-lost-pop { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: none; } }
+@keyframes nt-lost-wait { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
 /* Play Mode: a scene's paragraphs fade in one after another (StoryNode sets --i). */
 .nt-reveal:not(.is-revealed) > * {
   animation: nt-reveal-in 450ms ease-out both;

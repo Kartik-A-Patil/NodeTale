@@ -3,6 +3,7 @@ import {
   ArrowLeft, ChevronDown, Plus, Settings2, Variable, Image as ImageIcon, TriangleAlert, MoreHorizontal,
   Download, Command, HelpCircle, Play, Copy, X, LayoutList,
   Link2,
+  Share2,
 } from 'lucide-react';
 import { Board } from '../../models/story';
 import { VIEW_MODES, ViewMode } from '../views/viewModes';
@@ -167,6 +168,10 @@ export const EditorTopBar = memo((props: EditorTopBarProps) => {
             <button type="button" onClick={props.onClearJump} className={`${toolButton} h-6 min-w-6`} aria-label="Clear jump target"><X size={13} /></button>
           </div>
         )}
+        <button type="button" onClick={props.onShare} title="Share this story, or edit it together"
+          className="inline-flex h-10 items-center gap-2 rounded-xl border border-nt-line bg-nt-surface/95 px-3.5 text-sm font-medium text-nt-ink shadow-lg shadow-black/40 backdrop-blur transition-colors hover:bg-nt-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-nt-focus">
+          <Share2 size={15} aria-hidden /> Share
+        </button>
         {viewMode === 'flow' && (
           <button type="button" onClick={props.onPlay} disabled={!canPlay}
             title={canPlay ? 'Play the story from Start' : 'Name a scene “Start” to play'}

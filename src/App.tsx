@@ -17,6 +17,7 @@ if (Router === BrowserRouter && window.location.hash.startsWith('#/')) {
 const Dashboard = React.lazy(() => import('./components/Dashboard'));
 const ProjectEditor = React.lazy(() => import('./components/ProjectEditor'));
 const SharePreview = React.lazy(() => import('./components/SharePreview'));
+const NotFound = React.lazy(() => import('./components/NotFound'));
 
 export default function App() {
   const [isMigrating, setIsMigrating] = useState(true);
@@ -43,6 +44,7 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/share" element={<SharePreview />} />
           <Route path="/:projectId" element={<ProjectEditor />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </React.Suspense>
     </Router>

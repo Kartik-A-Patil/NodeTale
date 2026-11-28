@@ -1,7 +1,7 @@
 import { Project } from '../models/story';
 import { getStorageAdapter } from './storage';
 import { compactProject } from './storageService';
-import { encodeConnectCode, decodeConnectCode, isLiveInvite } from './connectCode';
+import { encodeConnectCode, decodeConnectCode, isLiveInvite, inviteKeyOf } from './connectCode';
 
 // Sharing a story straight from one browser to another, media included, with
 // nothing in between: no server, no relay. WebRTC carries the data; the two
@@ -190,6 +190,8 @@ const keepAlive = (ch: RTCDataChannel, pc: RTCPeerConnection) => Object.assign(c
 export interface Invite {
   /** Goes after the # in the share link. */
   code: string;
+  /** Names this invite in replies (see replyInviteKey). */
+  key: string;
   /** Paste the other person's reply: connects, sends everything, resolves when
    *  they have it. For a live invite, with the still-open channel to edit over. */
   accept: (reply: string, onProgress: (p: Progress) => void) => Promise<RTCDataChannel>;
@@ -208,6 +210,7 @@ export async function createInvite(project: Project | (() => Project), opts: { l
 
   return {
     code,
+    key: inviteKeyOf(pc.localDescription!.sdp),
     close: () => pc.close(),
     accept: async (reply, onProgress) => {
       await pc.setRemoteDescription({ type: 'answer', sdp: decodeConnectCode(reply, 'reply') });
@@ -243,7 +246,7 @@ export async function answerInvite(code: string): Promise<Answer> {
   await pc.setLocalDescription(await pc.createAnswer());
   await gathered(pc);
   const live = isLiveInvite(code);
-  const reply = encodeConnectCode(pc.localDescription!.sdp, 'reply', live);
+  const reply = encodeConnectCode(pc.localDescription!.sdp, 'reply', live, inviteKeyOf(offer));
 
   return {
     live,

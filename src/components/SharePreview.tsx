@@ -34,6 +34,15 @@ export default function SharePreview() {
   const nameRef = useRef(name);
   nameRef.current = name;
   const answer = useRef<Answer | null>(null);
+  // Nobody connected for a while: the link may be stale (one per person, and
+  // only while the sender keeps the story open).
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    setSlow(false);
+    if (step !== 'waiting') return;
+    const timer = setTimeout(() => setSlow(true), 2 * 60 * 1000);
+    return () => clearTimeout(timer);
+  }, [step]);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,7 +129,12 @@ export default function SharePreview() {
                     {copied ? <Check size={15} aria-hidden /> : <Copy size={15} aria-hidden />} {copied ? 'Copied' : 'Copy'}
                   </button>
                 </div>
-                {reply && <p className="mt-3 animate-pulse text-xs text-nt-ink-3" role="status">Waiting for them… keep this page open.</p>}
+                {reply && !slow && <p className="mt-3 animate-pulse text-xs text-nt-ink-3" role="status">Waiting for them… keep this page open.</p>}
+                {slow && (
+                  <p className="mt-3 text-xs leading-relaxed text-amber-300" role="status">
+                    Still waiting. Make sure they pasted your reply code. If it’s been a while, the link may have expired: each link works once, while their story stays open. Ask them for a new one. This page keeps waiting meanwhile.
+                  </p>
+                )}
               </>
             )}
 

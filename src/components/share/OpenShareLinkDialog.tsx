@@ -4,7 +4,7 @@ import { Dialog } from '../ui/NativeDialog';
 import { buttonPrimary, buttonSecondary } from '../ui/styles';
 
 // Paste a share link (or the bare code the desktop app shares) to open it.
-export function OpenShareLinkModal({ open, onClose, onOpen }: { open: boolean; onClose: () => void; onOpen: (code: string) => void }) {
+export function OpenShareLinkDialog({ open, onClose, onOpen }: { open: boolean; onClose: () => void; onOpen: (code: string) => void }) {
   const [text, setText] = useState('');
   useEffect(() => { if (open) setText(''); }, [open]);
   const code = codeFromPasted(text);

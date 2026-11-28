@@ -82,6 +82,7 @@ export function useProjectState(
   const edgesRef = useRef(edges);
   const prevActiveBoardIdRef = useRef<string | null>(null);
   const hasLoadedInitialDataRef = useRef(false);
+  const [notFound, setNotFound] = useState(false);
   const lastSavedHashRef = useRef<string>('');
 
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
@@ -111,7 +112,9 @@ export function useProjectState(
           }
           prevActiveBoardIdRef.current = savedProject.activeBoardId;
         } else {
-            console.error('[useProjectState] ✗ Project not found:', projectIdOrName);
+            // A link to a story that isn't here (wrong, or deleted): the
+            // editor shows "not found" rather than an empty starter story.
+            setNotFound(true);
         }
       } catch (error) {
         console.error('[useProjectState] ✗ Failed to load project:', error);
@@ -248,5 +251,5 @@ export function useProjectState(
     };
   }, []);
 
-  return { project, setProject, isInitializing, lastSaved, saveNow, getLiveProject };
+  return { project, setProject, isInitializing, notFound, lastSaved, saveNow, getLiveProject };
 }

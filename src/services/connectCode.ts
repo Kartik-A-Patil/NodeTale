@@ -11,9 +11,10 @@ export type CodeKind = 'invite' | 'reply';
 type Setup = 'actpass' | 'active' | 'passive';
 type CandType = 'host' | 'srflx' | 'relay';
 interface Candidate { type: CandType; addr: string; port: number }
-interface Essentials { kind: CodeKind; live: boolean; setup: Setup; ufrag: string; pwd: string; fingerprint: Uint8Array; candidates: Candidate[] }
+interface Essentials { kind: CodeKind; live: boolean; setup: Setup; ufrag: string; pwd: string; fingerprint: Uint8Array; candidates: Candidate[]; inviteKey?: string }
 
-const VERSION = 1;
+// 2: replies name the invite they answer, so several invites can wait at once.
+const VERSION = 2;
 const SETUPS: Setup[] = ['actpass', 'active', 'passive'];
 const TYPES: CandType[] = ['host', 'srflx', 'relay'];
 const MDNS = /^([0-9a-f]{8})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{12})\.local$/i;
@@ -38,7 +39,7 @@ function expandIpv6(addr: string): Uint8Array | null {
 }
 const ipv6Text = (b: Uint8Array) => Array.from({ length: 8 }, (_, i) => ((b[i * 2] << 8) | b[i * 2 + 1]).toString(16)).join(':');
 
-function parse(sdp: string, kind: CodeKind, live: boolean): Essentials {
+function parse(sdp: string, kind: CodeKind, live: boolean, inviteKey?: string): Essentials {
   const line = (key: string) => sdp.match(new RegExp(`^a=${key}:(.+)$`, 'm'))?.[1]?.trim();
   const ufrag = line('ice-ufrag'), pwd = line('ice-pwd'), setup = line('setup') as Setup | undefined;
   const fp = line('fingerprint');
@@ -49,7 +50,7 @@ function parse(sdp: string, kind: CodeKind, live: boolean): Essentials {
     if (!(IPV4.test(addr) || MDNS.test(addr) || expandIpv6(addr))) continue;
     if (!candidates.some((c) => c.addr === addr && c.port === +port)) candidates.push({ type: type as CandType, addr, port: +port });
   }
-  return { kind, live, setup, ufrag, pwd, fingerprint: hexBytes(fp.slice(8).replace(/:/g, '')), candidates: candidates.slice(0, MAX_CANDIDATES) };
+  return { kind, live, inviteKey, setup, ufrag, pwd, fingerprint: hexBytes(fp.slice(8).replace(/:/g, '')), candidates: candidates.slice(0, MAX_CANDIDATES) };
 }
 
 function toBytes(e: Essentials): Uint8Array {
@@ -58,6 +59,7 @@ function toBytes(e: Essentials): Uint8Array {
   const text = (s: string) => out.push(s.length, ...Array.from(s, (c) => c.charCodeAt(0)));
   text(e.ufrag);
   text(e.pwd);
+  if (e.kind === 'reply') text(e.inviteKey ?? '');
   out.push(...e.fingerprint);
   out.push(e.candidates.length);
   for (const c of e.candidates) {
@@ -85,9 +87,11 @@ function fromBytes(b: Uint8Array): Essentials {
     setup: SETUPS[(head >> 1) & 3] ?? 'actpass',
     ufrag: text(),
     pwd: text(),
-    fingerprint: take(32),
+    fingerprint: new Uint8Array(0),
     candidates: [],
   };
+  if (e.kind === 'reply') e.inviteKey = text();
+  e.fingerprint = take(32);
   const count = take(1)[0];
   for (let n = 0; n < count; n++) {
     const flags = take(1)[0];
@@ -107,9 +111,23 @@ function fromBytes(b: Uint8Array): Essentials {
 const toBase64Url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const fromBase64Url = (text: string) => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
 
-/** A connection description as a short code. `live`: an invite to edit together, not just receive a copy. */
-export function encodeConnectCode(sdp: string, kind: CodeKind, live = false): string {
-  return toBase64Url(toBytes(parse(sdp, kind, live)));
+/** A connection description as a short code. `live`: an invite to edit together, not just
+ *  receive a copy. A reply carries `inviteKey`, naming the invite it answers. */
+export function encodeConnectCode(sdp: string, kind: CodeKind, live = false, inviteKey?: string): string {
+  return toBase64Url(toBytes(parse(sdp, kind, live, inviteKey)));
+}
+
+/** What identifies an invite: its ICE username, which its replies name. */
+export const inviteKeyOf = (sdp: string): string => sdp.match(/^a=ice-ufrag:(.+)$/m)?.[1]?.trim() ?? '';
+
+/** Which invite a reply answers (null if it isn't a readable reply). */
+export function replyInviteKey(code: string): string | null {
+  try {
+    const e = fromBytes(fromBase64Url(code));
+    return e.kind === 'reply' ? e.inviteKey ?? null : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Whether an invite code asks to edit together. */
